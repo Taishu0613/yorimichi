@@ -48,19 +48,22 @@ struct NewMunicipalityAlertSettingsSection: View {
     private static func footerText(for status: NewMunicipalityAlertMonitor.Status, mode: NewMunicipalityAlertMode) -> String {
         switch status {
         case .off:
-            "まだ記録していない市区町村、または都道府県に入ったとき、アプリを閉じていてもお知らせします。位置情報を「常に」許可する必要があります。"
+            "まだ記録していない市区町村、または都道府県に入ったとき、アプリを閉じていてもお知らせします。位置情報を「常に」許可する必要があります。\(assurance)"
         case .awaitingLocationPermission:
-            "\(areaDescription(for: mode))に入ったとき、アプリを閉じていてもお知らせします。位置情報を「常に」許可する必要があります。"
+            "\(areaDescription(for: mode))に入ったとき、アプリを閉じていてもお知らせします。位置情報を「常に」許可する必要があります。\(assurance)"
         case .active:
             "\(areaDescription(for: mode))に入ったとき、アプリを閉じていてもお知らせします。大まかな位置で判定するため、境界を越えてから少し遅れることがあります。"
         case .needsAlwaysLocation:
-            "アプリを閉じている間も判定するには、設定アプリで位置情報を「常に」にしてください。"
+            "アプリを閉じている間も判定するには、設定アプリで位置情報を「常に」にしてください。\(assurance)"
         case .locationDenied:
             "位置情報が許可されていないため判定できません。設定アプリで位置情報を「常に」にしてください。"
         case .notificationsDenied:
             "通知が許可されていません。設定アプリで通知を許可してください。"
         }
     }
+
+    /// 「常に」の許可を求める・勧める場面で添える。
+    private static let assurance = LocationUsageAssurance.battery + LocationUsageAssurance.privacy
 
     private static func areaDescription(for mode: NewMunicipalityAlertMode) -> String {
         switch mode {
