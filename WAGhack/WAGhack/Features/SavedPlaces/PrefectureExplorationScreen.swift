@@ -52,7 +52,7 @@ struct PrefectureExplorationScreen: View {
                     } header: {
                         Text("政令指定都市")
                     } footer: {
-                        Text("区を1つ訪れると市も訪問済みになります。すべての区を回ると、地図で市全体がオレンジに塗られます。")
+                        Text("区を1つ訪れると市も訪問済みになり、地図で市の外周が水色の線で囲まれます。")
                     }
                 }
                 Section {
@@ -97,14 +97,14 @@ struct PrefectureExplorationScreen: View {
     }
 }
 
-/// 政令指定都市の1行。色は地図の市の外周(`DesignatedCityStyle`)と同じオレンジにそろえる。
+/// 政令指定都市の1行。色は地図の市の外周(`DesignatedCityStyle`)と同じ水色にそろえる。
 private struct DesignatedCityExplorationRow: View {
     let city: DesignatedCityExploration
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: city.isComplete ? "crown.fill" : "building.columns.fill")
-                .foregroundStyle(.orange)
+                .foregroundStyle(.cyan)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
@@ -116,7 +116,7 @@ private struct DesignatedCityExplorationRow: View {
                         .monospacedDigit()
                 }
                 ProgressView(value: city.progress.fraction)
-                    .tint(.orange)
+                    .tint(.cyan)
                     .accessibilityLabel("区の踏破率")
                     .accessibilityValue(city.progress.percentageText)
             }

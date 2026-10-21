@@ -23,7 +23,7 @@ struct MunicipalityPuzzleLayer: MapContent {
     let visitedCodes: Set<String>
     /// 政令指定都市の外周(`MunicipalityPuzzleStore.designatedCityOutlines`)。
     let designatedCityOutlines: [BoundaryPiece]
-    /// 政令指定都市の訪問状況。訪れた市は外周を縁取り、全区を訪れた市は区をまとめて特別な色で塗る。
+    /// 政令指定都市の訪問状況。訪れた市は外周を縁取る。
     let designatedCities: DesignatedCityMapState
     /// 現在地の市区町村。「次にはめるピース」として縁取りで目立たせる。
     let currentCode: String?
@@ -49,7 +49,6 @@ struct MunicipalityPuzzleLayer: MapContent {
         ForEach(visibleMunicipalityPieces) { piece in
             let style = MunicipalityPieceStyle(
                 isVisited: visitedCodes.contains(piece.code),
-                isInCompletedCity: designatedCities.completedWardCodes.contains(piece.code),
                 lineWidths: lineWidths,
                 emphasis: municipalityLook(for: piece.code)
             )
@@ -197,14 +196,11 @@ struct MunicipalityPieceStyle {
 
     /// - Parameter emphasis: 演出中の見た目。指定された項目だけ通常の見た目より優先する。
     ///   演出の線の太さは以前の固定値を基準に書かれているため、今の縮尺の太さに合わせて拡大する。
-    /// - Parameter isInCompletedCity: 全区を訪れた政令指定都市の区か。市の外周と同じ色で塗り、市の制覇を見せる。
-    init(isVisited: Bool, isInCompletedCity: Bool = false, lineWidths: BoundaryLineWidths, emphasis: MapAreaEffectLook? = nil) {
+    init(isVisited: Bool, lineWidths: BoundaryLineWidths, emphasis: MapAreaEffectLook? = nil) {
         // 訪問済みの色は、アプリのテーマ色(.teal。進捗カードやタブのtintと同じ)に揃える。
         // 未開拓は薄い灰色で面を塗る。塗りは地名ラベルより下の階層なので、濃くしすぎなければ地名は読める。
-        let normalFill: Color = isInCompletedCity ? DesignatedCityStyle.completedFill
-            : isVisited ? .teal.opacity(0.35) : .gray.opacity(0.22)
-        let normalStroke: Color = isInCompletedCity ? DesignatedCityStyle.outlineStroke
-            : isVisited ? .teal.opacity(0.9) : .gray.opacity(0.55)
+        let normalFill: Color = isVisited ? .teal.opacity(0.35) : .gray.opacity(0.22)
+        let normalStroke: Color = isVisited ? .teal.opacity(0.9) : .gray.opacity(0.55)
         fill = emphasis?.fill?.color ?? normalFill
         stroke = emphasis?.pieceStroke?.paint.color ?? normalStroke
         // 訪問済みも未訪問と同じ太さ。訪問済みは塗りで分かる。県境より常に細く、県境との区別は太さと色
@@ -248,29 +244,23 @@ enum PrefectureConquestStyle {
 struct DesignatedCityMapState {
     /// 区を1つでも訪れた市の`DesignatedCity.key`。
     let visitedKeys: Set<String>
-    /// 全区を訪れた市の区の行政区域コード。
-    let completedWardCodes: Set<String>
 
-    static let empty = DesignatedCityMapState(visitedKeys: [], completedWardCodes: [])
+    static let empty = DesignatedCityMapState(visitedKeys: [])
 
-    init(visitedKeys: Set<String>, completedWardCodes: Set<String>) {
+    init(visitedKeys: Set<String>) {
         self.visitedKeys = visitedKeys
-        self.completedWardCodes = completedWardCodes
     }
 
     init(_ cities: [DesignatedCityExploration]) {
         visitedKeys = Set(cities.filter(\.isVisited).map(\.key))
-        completedWardCodes = Set(cities.filter(\.isComplete).flatMap { $0.wards.map(\.code) })
     }
 }
 
-/// 政令指定都市の見た目。区(teal)と区別できるよう、市はオレンジにする。
-/// 都道府県の段階は色相を変えずに濃さだけで表すが(`PrefectureConquestStyle`)、市は「区とは別の単位」と
-/// 一目で分かることが目的なので色相を変える。色だけに頼らないよう、外周は区の線より太い線にしている。
+/// 政令指定都市の見た目。市は外周を水色(.cyan)の線で縁取るだけで、中は塗らない。
+/// 区の塗り(teal)と色相が近いので、市の色で塗ると区と見分けにくい。線だけなら区の塗りの上でも判別できる。
+/// 色だけに頼らないよう、外周は区の線より太い線にしている。
 enum DesignatedCityStyle {
-    static let outlineStroke = Color.orange.opacity(0.9)
-    /// 全区を訪れた市の区の塗り。訪問済みの区(teal 0.35)と同じ濃さにして、色の違いだけが目立つようにする。
-    static let completedFill = Color.orange.opacity(0.35)
+    static let outlineStroke = Color.cyan
     /// 県境と同じ太さ。区の線(`municipalityLine`)より太く、現在地の縁取りより細い。
     static func outlineStrokeStyle(_ lineWidths: BoundaryLineWidths) -> StrokeStyle {
         StrokeStyle(lineWidth: lineWidths.prefectureBorder, lineCap: .round, lineJoin: .round)
