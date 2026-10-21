@@ -18,6 +18,8 @@ struct PremiumPurchaseScreen: View {
     /// 自動更新サブスクリプションでは、利用規約へのリンクをアプリ内に置く必要がある(App Store審査ガイドライン3.1.2)。
     /// 独自の規約を用意していないため、Appleの標準使用許諾契約を使う。
     private static let termsOfUseURL = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
+    /// プライバシーポリシーへのリンクも同じく必要。リポジトリ Taishu0613/yorimichi-support のGitHub Pagesで公開している。
+    private static let privacyPolicyURL = URL(string: "https://taishu0613.github.io/yorimichi-support/privacy/")!
 
     var body: some View {
         NavigationStack {
@@ -46,7 +48,10 @@ struct PremiumPurchaseScreen: View {
 
                     VStack(spacing: 8) {
                         Text("月額プランは、期間の終了の24時間前までに解約しない限り自動で更新されます。解約はApp Storeのサブスクリプションの設定から行えます。")
-                        Link("利用規約", destination: Self.termsOfUseURL)
+                        HStack(spacing: 16) {
+                            Link("利用規約", destination: Self.termsOfUseURL)
+                            Link("プライバシーポリシー", destination: Self.privacyPolicyURL)
+                        }
                     }
                     .font(.footnote)
                     .foregroundStyle(.secondary)
