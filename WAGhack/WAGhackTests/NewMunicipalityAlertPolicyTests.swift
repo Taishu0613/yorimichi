@@ -154,18 +154,38 @@ struct NewMunicipalityAlertPolicyTests {
 
     // MARK: - お知らせ
 
-    @Test func お知らせは見るまで毎回出し見た後は出さない() {
+    @Test func 記録がある人にはチュートリアルの後に見るまで毎回出し見た後は出さない() {
         let userDefaults = makeUserDefaults()
-        let gate = NewMunicipalityAlertAnnouncementGate(userDefaults: userDefaults)
+        let gate = NewMunicipalityAlertAnnouncementGate(userDefaults: userDefaults, hasRecordedPlaces: true)
+        #expect(gate.timing == .afterTutorial)
         #expect(gate.isPresented)
         gate.markSeen()
         #expect(!gate.isPresented)
-        #expect(!NewMunicipalityAlertAnnouncementGate(userDefaults: userDefaults).isPresented)
+        #expect(!NewMunicipalityAlertAnnouncementGate(userDefaults: userDefaults, hasRecordedPlaces: true).isPresented)
+    }
+
+    @Test func 記録が無い人には最初の記録のお祝いを閉じるまで出さない() {
+        let gate = NewMunicipalityAlertAnnouncementGate(userDefaults: makeUserDefaults(), hasRecordedPlaces: false)
+        #expect(gate.timing == .afterFirstRecord)
+        #expect(!gate.isPresented)
+        gate.firstVisitCelebrationDidFinish()
+        #expect(gate.isPresented)
+    }
+
+    @Test func 最初の記録までに設定でモードを選んでいたらお祝いの後も出さない() {
+        let userDefaults = makeUserDefaults()
+        let gate = NewMunicipalityAlertAnnouncementGate(userDefaults: userDefaults, hasRecordedPlaces: false)
+        userDefaults.set(NewMunicipalityAlertMode.prefecture.rawValue, forKey: "newMunicipalityAlert.mode")
+        gate.firstVisitCelebrationDidFinish()
+        #expect(!gate.isPresented)
     }
 
     @Test func 既に通知を選んでいる人にはお知らせを出さない() {
         let userDefaults = makeUserDefaults()
         userDefaults.set(NewMunicipalityAlertMode.municipality.rawValue, forKey: "newMunicipalityAlert.mode")
-        #expect(!NewMunicipalityAlertAnnouncementGate(userDefaults: userDefaults).isPresented)
+        #expect(!NewMunicipalityAlertAnnouncementGate(userDefaults: userDefaults, hasRecordedPlaces: true).isPresented)
+        let gate = NewMunicipalityAlertAnnouncementGate(userDefaults: userDefaults, hasRecordedPlaces: false)
+        gate.firstVisitCelebrationDidFinish()
+        #expect(!gate.isPresented)
     }
 }

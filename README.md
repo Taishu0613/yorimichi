@@ -248,8 +248,9 @@ MapKitはポリゴン1枚ごとに描画を持つため、枚数がそのまま�
   判定の規則（同じ区域では通知しない・12時間は再通知しない・前面では通知しない）は市区町村と共通で、`NewMunicipalityAlertPolicy`に区域のコードを渡して判定する。履歴はモードごとに別のキーで持つ。
 - **文言**: 「東京都中央区に初訪問です！よりみちを開いて記録しませんか？」／「埼玉県に初訪問です！…」。タイトルは付けない（アプリ名はOSが添える）。文言は`NewMunicipalityAlertMessage`。
 - **チュートリアル**: 「初めての街に入ったら、お知らせ」のページを、位置情報の許可を予告する最後のページの直前に追加した。
-- **お知らせ（「通知機能が追加されました」）**: この機能を含む版を初めて起動したとき、チュートリアルの後に1回だけ出す。その場で「市区町村ごと」「都道府県のみ」「今はしない」を選べ、オンにすると通知と位置情報「常に」の許可を求める。
-  - 版番号ではなく「見たか」（`announcement.newMunicipalityAlert.seen`）を保存するため、新規インストールでも、以降の版から使い始めた人でも1回出る。既にいずれかのモードを選んでいる人には出さない。
+- **お知らせ（通知の案内カード）**: 1回だけ出し、その場で「市区町村ごと」「都道府県のみ」「今はしない」を選べる。オンにすると通知と位置情報「常に」の許可を求める。
+  - 2026-10-22 変更: 出す時機を記録の有無で分けた（`NewMunicipalityAlertAnnouncementGate.Timing`）。起動時に記録がある人（アップデートで来た人）には、従来どおりチュートリアルの後に「通知機能が追加されました」として出す。記録が無い新規の人には、初めて市区町村を記録したお祝いシートを閉じた後に「次の初めての街も、お知らせしましょうか？」として出す（「みどころを見る」で詳細へ進んだ場合は割り込まず、次の初訪問のお祝いの後に回す）。新規の人はチュートリアルから位置情報「使用中」の許可・「日本」の儀式・最初の記録まで途切れずに進み、価値を体験した後で「常に」の許可を求めるため。
+  - 版番号ではなく「見たか」（`announcement.newMunicipalityAlert.seen`）を保存するため、新規インストールでも、以降の版から使い始めた人でも1回出る。既にいずれかのモードを選んでいる人（最初の記録までに設定で選んだ人を含む）には出さない。
   - 地図の常駐シートや儀式シートと競合しないよう、シートではなくチュートリアルと同じく`ContentView`のZStackに重ね、表示中は地図を`isActive=false`にしておく。
 - **設定の引き継ぎ**: オン/オフだけだった版（`newMunicipalityAlert.isEnabled`）でオンにしていた人は、市区町村モードとして`newMunicipalityAlert.mode`へ移す。市区町村モードの履歴は以前と同じキーを使い、JSONのキー名`lastMunicipalityCode`も保つ。
 
@@ -273,7 +274,7 @@ MapKitはポリゴン1枚ごとに描画を持つため、枚数がそのまま�
 | `NewMunicipalityAlertPolicy.swift` | モード・通知の文言・通知するかの判定と履歴（値型。位置情報・通知・SwiftDataに依存しない） |
 | `NewMunicipalityAlertMonitor.swift` | 位置の監視・許可の要求・住所照合・モードに応じた区域の決定・通知の発行。`WAGhackApp`が所有し、environmentで画面へ渡す |
 | `NewMunicipalityAlertSettingsSection.swift` | 「旅の記録」画面のモード選択と許可の案内 |
-| `NewMunicipalityAlertAnnouncement.swift` | 「通知機能が追加されました」のお知らせと、1回だけ出すためのゲート |
+| `NewMunicipalityAlertAnnouncement.swift` | 通知の案内カードと、出す時機を決めて1回だけ出すためのゲート |
 
 - モードは`UserDefaults`の`newMunicipalityAlert.mode`、判定の履歴は市区町村が`newMunicipalityAlert.history`、都道府県が`newMunicipalityAlert.prefectureHistory`（JSON）。永続モデル（SwiftData）は変更しない。
 - 裏で起動し直された場合も位置を受け取れるよう、`WAGhackApp`の初期化で`startIfEnabled()`を呼ぶ（画面が作られるのを待たない）。
