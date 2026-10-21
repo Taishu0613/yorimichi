@@ -16,6 +16,8 @@ struct MapVisitResult {
     let municipalityName: String
     let isFirstVisit: Bool
     let milestone: Int?
+    /// この記録で初めて訪れた政令指定都市(区を記録して市も訪問済みになった)のマスタの行政区域コード。
+    var firstDesignatedCityCode: String? = nil
 
     /// 節目は初訪問でしか起きないが、初訪問より重い達成として祝うため、両方に当てはまる時は節目を優先する。
     var kind: Kind {
@@ -74,7 +76,14 @@ struct MapVisitRecorder {
         if let previousProgress, let currentProgress {
             milestone = MapVisitResult.crossedMilestone(before: previousProgress, after: currentProgress)
         }
+        let city = after.designatedCities.first { city in
+            city.code == visit.municipality.code || city.wards.contains { $0.code == visit.municipality.code }
+        }
+        let isFirstCityVisit = city.map { city in
+            city.isVisited && before.designatedCities.first { $0.code == city.code }?.isVisited != true
+        } ?? false
         return MapVisitResult(municipalityName: visit.municipality.municipalityName,
-                              isFirstVisit: isFirstVisit, milestone: milestone)
+                              isFirstVisit: isFirstVisit, milestone: milestone,
+                              firstDesignatedCityCode: isFirstCityVisit ? city?.code : nil)
     }
 }

@@ -3,6 +3,8 @@ import SwiftUI
 struct MunicipalityDetailScreen: View {
     let municipality: Municipality?
     let fallbackName: String
+    /// 政令指定都市そのものを開いたときの区の訪問状況。渡されたら区の一覧を出す。
+    var designatedCity: DesignatedCityExploration? = nil
 
     /// マップのシート内でだけ渡される。プレビューなど渡されない場所では形を出さない。
     @Environment(SilhouetteMapStore.self) private var silhouetteStore: SilhouetteMapStore?
@@ -13,8 +15,9 @@ struct MunicipalityDetailScreen: View {
     private static let shapeVerticalPadding: CGFloat = 16
 
     /// 背景に形を敷くか。Storeが渡されない場所(プレビューなど)や市区町村が不明なときは敷かない。
+    /// 政令指定都市は境界データに市そのものの形が無い(区の形だけ)ので敷かない。
     private var showsShape: Bool {
-        municipality?.code != nil && silhouetteStore != nil
+        municipality?.code != nil && silhouetteStore != nil && designatedCity == nil
     }
 
     var body: some View {
@@ -39,6 +42,24 @@ struct MunicipalityDetailScreen: View {
                 LabeledContent("都道府県", value: municipality?.prefectureName ?? "")
                 LabeledContent("市区町村", value: municipality?.municipalityName ?? fallbackName)
                 LabeledContent("行政区域コード", value: municipality?.code ?? "")
+            }
+
+            if let designatedCity {
+                Section {
+                    ForEach(designatedCity.wards) { ward in
+                        let isVisited = designatedCity.visitedWardCodes.contains(ward.code)
+                        Label {
+                            Text(ward.name)
+                                .foregroundStyle(isVisited ? .primary : .secondary)
+                        } icon: {
+                            Image(systemName: isVisited ? "checkmark.seal.fill" : "circle.dashed")
+                                .foregroundStyle(isVisited ? .teal : .secondary)
+                        }
+                        .accessibilityValue(isVisited ? "訪問済み" : "未訪問")
+                    }
+                } header: {
+                    Text("区 \(designatedCity.progress.visited) / \(designatedCity.progress.total)")
+                }
             }
 
             TriviaSection(

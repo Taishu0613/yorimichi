@@ -310,3 +310,24 @@ struct PrefectureConquestLevelTests {
         #expect(PrefectureConquestLevel(prefecture(visited: 8, total: 8)) == .complete)
     }
 }
+
+struct DesignatedCityOutlineTests {
+    @Test func 隣り合う区の共有の辺を消して市の外周だけを残す() throws {
+        // 横に並んだ2つの正方形の区(共有の辺は向きが逆)。外周は2x1の長方形になる。
+        let west = square([(0, 0), (0, 1), (1, 1), (1, 0)])
+        let east = square([(1, 0), (2, 0), (2, 1), (1, 1)])
+        let rings = DesignatedCityOutline.rings(of: [west, east])
+        let ring = try #require(rings.first)
+        #expect(rings.count == 1)
+        // 閉じた輪で、6頂点(+終点)を通る。共有の辺(1,0)-(1,1)は含まない。
+        #expect(ring.exterior.count == 7)
+        #expect(ring.exterior.first?.latitude == ring.exterior.last?.latitude)
+        #expect(ring.exterior.first?.longitude == ring.exterior.last?.longitude)
+        #expect(ring.boundingBox == GeoBoundingBox(minLongitude: 0, minLatitude: 0, maxLongitude: 2, maxLatitude: 1))
+    }
+
+    private func square(_ points: [(Double, Double)]) -> BoundaryPolygon {
+        let coordinates = (points + [points[0]]).map { CLLocationCoordinate2D(latitude: $0.1, longitude: $0.0) }
+        return BoundaryPolygon(exterior: coordinates, holes: [], boundingBox: GeoBoundingBox(enclosing: coordinates)!)
+    }
+}
