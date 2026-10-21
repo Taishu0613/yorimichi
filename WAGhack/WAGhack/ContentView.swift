@@ -13,13 +13,16 @@ struct ContentView: View {
 
     @State private var masterLoadState: MasterLoadState
     @State private var tutorialGate = TutorialGate()
-    @State private var alertAnnouncementGate = NewMunicipalityAlertAnnouncementGate()
+    @State private var alertAnnouncementGate: NewMunicipalityAlertAnnouncementGate
     /// アプリのルートで渡される。プレビューなど渡されない場所では通知のお知らせを出さない。
     @Environment(NewMunicipalityAlertMonitor.self) private var newMunicipalityAlert: NewMunicipalityAlertMonitor?
 
     init(modelContainer: ModelContainer? = nil) {
         self.modelContainer = modelContainer
         _masterLoadState = State(initialValue: Self.initialMasterLoadState(modelContainer: modelContainer))
+        _alertAnnouncementGate = State(initialValue: NewMunicipalityAlertAnnouncementGate(
+            hasRecordedPlaces: Self.hasRecordedPlaces(modelContainer: modelContainer)
+        ))
     }
 
     /// 地図が操作の主役になってよい状態か。読み込み画面・チュートリアル・通知のお知らせの裏にいる間はfalse。
@@ -27,7 +30,7 @@ struct ContentView: View {
         masterLoadState.isReady && !tutorialGate.isPresented && !isAlertAnnouncementPresented
     }
 
-    /// 通知機能のお知らせはチュートリアルの後に出す。チュートリアルで通知の説明を読んだ直後に、その場で選べるようにするため。
+    /// 通知の案内は、チュートリアルの後(既に記録がある人)か最初の記録の後(新規の人)に出す。いつ出すかはゲートが決める。
     private var isAlertAnnouncementPresented: Bool {
         masterLoadState.isReady && !tutorialGate.isPresented
             && alertAnnouncementGate.isPresented && newMunicipalityAlert != nil
@@ -40,7 +43,10 @@ struct ContentView: View {
             // まとめて走ると画面が固まって見えるため、読み込み画面・チュートリアルの裏で先に生成しておく。
             // 裏にいる間はisActive=falseにして、現在地取得(位置情報の許可ダイアログ)やシートの
             // 自動提示を止める(fullScreenCoverで重ねるとそれらの自動提示と競合するため、ZStackで重ねる)。
-            MapScreen(isActive: isMapActive)
+            MapScreen(
+                isActive: isMapActive,
+                onFirstVisitCelebrationFinished: { alertAnnouncementGate.firstVisitCelebrationDidFinish() }
+            )
                 .allowsHitTesting(isMapActive)
                 .accessibilityHidden(!isMapActive)
 
@@ -58,7 +64,7 @@ struct ContentView: View {
                     // 閉じる時のフェードアウト中も地図より手前に描かれるよう、明示的に前面へ置く。
                     .zIndex(1)
             } else if isAlertAnnouncementPresented, let newMunicipalityAlert {
-                NewMunicipalityAlertAnnouncement { mode in
+                NewMunicipalityAlertAnnouncement(timing: alertAnnouncementGate.timing) { mode in
                     withAnimation { alertAnnouncementGate.markSeen() }
                     if mode != .off {
                         newMunicipalityAlert.setMode(mode)
@@ -133,6 +139,14 @@ struct ContentView: View {
             storedMunicipalityCount: storedCount
         )
         return needsSynchronization ? .idle : .ready
+    }
+
+    /// 通知の案内をいつ出すか(`NewMunicipalityAlertAnnouncementGate.Timing`)を決めるため、記録が既にあるかを調べる。
+    /// 件数を数えるだけなので初回描画前に同期で行っても軽い。失敗したら新規扱いにして、最初の記録の後に案内する。
+    private static func hasRecordedPlaces(modelContainer: ModelContainer?) -> Bool {
+        guard let modelContainer else { return false }
+        let count = (try? modelContainer.mainContext.fetchCount(FetchDescriptor<SavedPlace>())) ?? 0
+        return count > 0
     }
 
     private func loadMunicipalityMaster() async {

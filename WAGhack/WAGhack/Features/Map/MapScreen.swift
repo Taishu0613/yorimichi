@@ -7,6 +7,9 @@ struct MapScreen: View {
     /// それらの裏でもMapScreenを生成しておく。falseの間はシートの提示も現在地取得(位置情報の
     /// 許可ダイアログ)も始めない。出してしまうと手前の読み込み画面やチュートリアルをシートが覆う。
     var isActive = true
+    /// 市区町村の初訪問のお祝いシートを閉じたとき(みどころへ進んだときを除く)に呼ぶ。
+    /// 最初の記録を終えた区切りで、ContentViewが通知の案内を出すために使う。
+    var onFirstVisitCelebrationFinished: () -> Void = {}
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -734,7 +737,13 @@ struct MapScreen: View {
             // 未訪問の場所を記録する唯一の入口なので、スワイプで取りこぼせないようにする。
             .interactiveDismissDisabled()
         }
-        .sheet(isPresented: $isMunicipalityCelebrationPresented) {
+        .sheet(isPresented: $isMunicipalityCelebrationPresented, onDismiss: {
+            // 「みどころを見る」で詳細へ進んだ場合(sheetPathが積まれている)は、読んでいる最中に割り込まない。
+            // その場合の案内は次の初訪問のお祝いの後に回る。
+            if sheetPath.isEmpty {
+                onFirstVisitCelebrationFinished()
+            }
+        }) {
             // 誘いシートと同じ理由で、measuredSheetHeightは`if let`の外(Group)に付ける。
             Group {
                 if let result = viewModel.result {
