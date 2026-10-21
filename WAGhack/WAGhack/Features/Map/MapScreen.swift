@@ -813,7 +813,7 @@ struct MapScreen: View {
     /// 誘いシート(MunicipalityFirstVisitSheet)の「記録する」。初めての都道府県なら、記録する前に特別感のある確認シートを挟む。
     private func handleSaveTap() {
         if isFirstPrefectureVisit {
-            performAfterJapanIntro { isPrefectureIntroPresented = true }
+            performAfterJapanIntro { presentPrefectureIntro() }
         } else {
             performAfterJapanIntro { saveVisit(trigger: .firstVisitInvitation) }
         }
@@ -830,7 +830,7 @@ struct MapScreen: View {
     /// ピン選択中や旅の記録を広げている最中は、そちらの表示を優先して割り込まない。
     private func handlePrefectureVisitChange() {
         guard !isSheetExpanded, selectedPlace == nil, isFirstPrefectureVisit else { return }
-        performAfterJapanIntro { isPrefectureIntroPresented = true }
+        performAfterJapanIntro { presentPrefectureIntro() }
     }
 
     /// 現在地が初めての市区町村に変わったら、記録ボタンを待たずに誘いのシートを見せる。
@@ -869,8 +869,22 @@ struct MapScreen: View {
             // 直前のシート提示アニメーション(またはOS標準の許可ダイアログ)と重ならないよう、
             // 他の儀式シート遷移と同じく一呼吸置く。
             try? await Task.sleep(for: .milliseconds(350))
+            // 日本は都道府県を束ねる単位なので、地図も都道府県の表示で迎える。カメラは現在地のまま動かさない
+            // (今いる場所から旅が始まることを見せるため。`waitForMapToSettleBeforeJapanIntro`参照)。
+            preferredProgressPage = .prefectures
             isJapanIntroPresented = true
         }
+    }
+
+    /// 初めての都道府県の儀式を出す。記録するのは都道府県なので、地図を都道府県の表示にして県全体へ寄せ、
+    /// 確定したときの塗りがはまる演出を県の単位で見せる。この後の市区町村の誘いでは市区町村の表示へ戻す
+    /// (`confirmPrefectureVisit`)。初回は日本→都道府県→市区町村の順に記録するので、地図の単位もそれに合わせる。
+    private func presentPrefectureIntro() {
+        if let municipality = viewModel.currentVisit?.municipality, let location = viewModel.currentLocation {
+            preferredProgressPage = .prefectures
+            requestAreaFocus(on: municipality, at: location.coordinate, zoomingTo: .prefectures)
+        }
+        isPrefectureIntroPresented = true
     }
 
     /// 地図が現在地へ移動し終えたら「日本」の儀式を出すよう待ち合わせる。移動完了は`handleCameraSettled`で
@@ -996,6 +1010,11 @@ struct MapScreen: View {
                 try? await Task.sleep(for: .milliseconds(350))
             }
             guard !isCurrentPlaceVisited else { return }
+            // 次に記録するのは市区町村なので、地図を市区町村の表示にして区域全体へ寄せてから誘う。
+            if let location = viewModel.currentLocation, selectedPlaceID == nil {
+                preferredProgressPage = .municipalities
+                requestAreaFocus(on: municipality, at: location.coordinate, zoomingTo: .municipalities)
+            }
             isMunicipalityInvitationPresented = true
         }
     }
