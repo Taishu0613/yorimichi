@@ -125,11 +125,11 @@ struct AutoRecordPolicyTests {
         #expect(!policy.shouldRecord(isEnabled: true, isUnlocked: true, horizontalAccuracy: -1))
     }
 
-    @Test func 自動記録したときの通知の文言() {
-        #expect(NewMunicipalityAlertMessage.autoRecordedBody(areaName: "東京都中央区", recordedName: "東京都中央区")
-            == "東京都中央区に初訪問です！よりみちに記録しました。")
-        #expect(NewMunicipalityAlertMessage.autoRecordedBody(areaName: "埼玉県", recordedName: "埼玉県川口市")
-            == "埼玉県に初訪問です！埼玉県川口市をよりみちに記録しました。")
+    @Test func 自動記録したときはサブタイトルで記録を伝える() {
+        #expect(NewMunicipalityAlertMessage.content(areaName: "東京都中央区", triviaExcerpt: "築地場外市場。", recordedName: "東京都中央区")
+            == .init(title: "東京都中央区に初訪問", subtitle: "よりみちに記録しました", body: "築地場外市場。"))
+        #expect(NewMunicipalityAlertMessage.content(areaName: "埼玉県", triviaExcerpt: nil, recordedName: "埼玉県川口市")
+            == .init(title: "埼玉県に初訪問", subtitle: "", body: "埼玉県川口市をよりみちに記録しました。"))
     }
 }
 

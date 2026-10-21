@@ -21,21 +21,44 @@ enum NewMunicipalityAlertMode: String, CaseIterable, Identifiable {
 }
 
 /// 通知の文言。地図画面の誘いシートと同じく「初訪問」と呼ぶ。
+/// タイトルで区域を、本文でその土地のみどころ(なければ怪奇・都市伝説)の冒頭を見せ、開いて続きを読みたくなるようにする。
 enum NewMunicipalityAlertMessage {
-    /// - Parameter areaName: 市区町村なら都道府県名から続けた名前(「東京都中央区」)、都道府県なら県名(「埼玉県」)。
-    static func body(areaName: String) -> String {
-        "\(areaName)に初訪問です！よりみちを開いて記録しませんか？"
+    struct Content: Equatable {
+        let title: String
+        /// 空なら付けない。
+        let subtitle: String
+        let body: String
     }
 
-    /// 有料機能「自動で記録」で記録まで済ませたときの文言。
+    /// 本文に載せる豆知識の長さの上限(文字)。ロック画面・バナーで切れずに読める3行ほどに収める。
+    static let excerptLimit = 60
+
     /// - Parameters:
-    ///   - areaName: 知らせる区域の名前(`body(areaName:)`と同じ)。
-    ///   - recordedName: 記録した市区町村の、都道府県名から続けた名前。都道府県モードでは区域と異なるため書き添える。
-    static func autoRecordedBody(areaName: String, recordedName: String) -> String {
-        if areaName == recordedName {
-            return "\(areaName)に初訪問です！よりみちに記録しました。"
+    ///   - areaName: 市区町村なら都道府県名から続けた名前(「東京都中央区」)、都道府県なら県名(「埼玉県」)。
+    ///   - triviaExcerpt: 本文に載せる豆知識の冒頭(`triviaExcerpt(famousThingsTrivia:historyTrivia:placeName:)`)。
+    ///     無ければ記録を誘う一文にする。
+    ///   - recordedName: 有料機能「自動で記録」で記録した市区町村の、都道府県名から続けた名前。記録しなかった場合はnil。
+    ///     都道府県モードでは区域と異なるため書き添える。
+    static func content(areaName: String, triviaExcerpt: String?, recordedName: String?) -> Content {
+        let title = "\(areaName)に初訪問"
+        let recordedNote = recordedName.map { $0 == areaName ? "よりみちに記録しました" : "\($0)をよりみちに記録しました" }
+        guard let triviaExcerpt else {
+            return Content(title: title, subtitle: "", body: recordedNote.map { "\($0)。" } ?? "よりみちを開いて記録しませんか？")
         }
-        return "\(areaName)に初訪問です！\(recordedName)をよりみちに記録しました。"
+        return Content(title: title, subtitle: recordedNote ?? "", body: triviaExcerpt)
+    }
+
+    /// みどころの最初の一文(無ければ怪奇・都市伝説の最初の一文)。長ければ`excerptLimit`で切って「…」を付ける。
+    /// どちらも空(マスタに豆知識が無い市区町村)ならnil。
+    /// - Parameter placeName: 豆知識の市区町村が通知の区域と違う(都道府県モード)ときに頭に添える名前。
+    static func triviaExcerpt(famousThingsTrivia: String, historyTrivia: String, placeName: String?) -> String? {
+        let trivia = [famousThingsTrivia, historyTrivia]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+        guard let trivia else { return nil }
+        let sentence = trivia.firstIndex(where: { "。！？".contains($0) }).map { String(trivia[...$0]) } ?? trivia
+        let excerpt = sentence.count > excerptLimit ? String(sentence.prefix(excerptLimit - 1)) + "…" : sentence
+        return placeName.map { "\($0)：\(excerpt)" } ?? excerpt
     }
 }
 

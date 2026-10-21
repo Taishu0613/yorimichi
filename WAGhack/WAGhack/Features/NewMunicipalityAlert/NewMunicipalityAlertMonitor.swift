@@ -204,16 +204,21 @@ final class NewMunicipalityAlertMonitor: NSObject {
             )
             saveHistory(decision.updatedHistory, for: mode)
             if decision.shouldNotify {
-                let body: String
-                if let recordedName = await autoRecordIfPossible(
+                let recordedName = await autoRecordIfPossible(
                     municipality: municipality, municipalities: municipalities,
                     localizedAddress: addresses.localizedAddress, location: location, context: context
-                ) {
-                    body = NewMunicipalityAlertMessage.autoRecordedBody(areaName: area.name, recordedName: recordedName)
-                } else {
-                    body = NewMunicipalityAlertMessage.body(areaName: area.name)
-                }
-                try await postNotification(identifier: area.notificationIdentifier, body: body)
+                )
+                let content = NewMunicipalityAlertMessage.content(
+                    areaName: area.name,
+                    triviaExcerpt: NewMunicipalityAlertMessage.triviaExcerpt(
+                        famousThingsTrivia: municipality.famousThingsTrivia,
+                        historyTrivia: municipality.historyTrivia,
+                        // 都道府県には豆知識が無いため、いま居る市区町村のものを名前を添えて見せる。
+                        placeName: mode == .prefecture ? municipality.municipalityName : nil
+                    ),
+                    recordedName: recordedName
+                )
+                try await postNotification(identifier: area.notificationIdentifier, content: content)
             }
         } catch {
             // 裏の処理なのでユーザーには見せない。次に位置が届いたときに判定し直す。
@@ -223,7 +228,7 @@ final class NewMunicipalityAlertMonitor: NSObject {
 
     /// 「自動で記録」が使えるなら現在地の市区町村を記録する。
     /// - Returns: 記録した市区町村の、都道府県名から続けた名前。記録しなかった・できなかった場合はnil
-    ///   (従来の「記録しませんか？」の通知に戻す)。
+    ///   (記録を誘う通知に戻す)。
     private func autoRecordIfPossible(
         municipality: Municipality,
         municipalities: [Municipality],
@@ -281,10 +286,12 @@ final class NewMunicipalityAlertMonitor: NSObject {
         }
     }
 
-    private func postNotification(identifier: String, body: String) async throws {
+    private func postNotification(identifier: String, content message: NewMunicipalityAlertMessage.Content) async throws {
         let content = UNMutableNotificationContent()
-        // タイトルは付けない。アプリ名(よりみち)はOSが添えるため、本文の一文だけで伝わる。
-        content.body = body
+        // アプリ名(よりみち)はOSが添えるため、タイトルには区域名を入れる。
+        content.title = message.title
+        content.subtitle = message.subtitle
+        content.body = message.body
         content.sound = .default
         content.threadIdentifier = "newMunicipality"
         // 同じ区域の通知が残っていれば置き換える。タップするとアプリが開き、地図画面が現在地を確認して誘いシートを出す。

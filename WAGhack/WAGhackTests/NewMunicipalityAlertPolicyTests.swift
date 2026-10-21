@@ -120,9 +120,30 @@ struct NewMunicipalityAlertPolicyTests {
 
     // MARK: - 文言
 
-    @Test func 通知の文言は区域名に初訪問ですと続ける() {
-        #expect(NewMunicipalityAlertMessage.body(areaName: "東京都中央区") == "東京都中央区に初訪問です！よりみちを開いて記録しませんか？")
-        #expect(NewMunicipalityAlertMessage.body(areaName: "埼玉県") == "埼玉県に初訪問です！よりみちを開いて記録しませんか？")
+    @Test func 通知のタイトルは区域名に初訪問で本文は豆知識の冒頭() {
+        let content = NewMunicipalityAlertMessage.content(areaName: "東京都中央区", triviaExcerpt: "築地場外市場。", recordedName: nil)
+        #expect(content == .init(title: "東京都中央区に初訪問", subtitle: "", body: "築地場外市場。"))
+    }
+
+    @Test func 豆知識が無ければ本文は記録を誘う() {
+        let content = NewMunicipalityAlertMessage.content(areaName: "埼玉県", triviaExcerpt: nil, recordedName: nil)
+        #expect(content == .init(title: "埼玉県に初訪問", subtitle: "", body: "よりみちを開いて記録しませんか？"))
+    }
+
+    @Test func 豆知識はみどころの最初の一文を優先し無ければ都市伝説を使う() {
+        #expect(NewMunicipalityAlertMessage.triviaExcerpt(
+            famousThingsTrivia: "大通公園が定番。時計台もある。", historyTrivia: "かっぱ淵の伝説。", placeName: nil
+        ) == "大通公園が定番。")
+        #expect(NewMunicipalityAlertMessage.triviaExcerpt(
+            famousThingsTrivia: "", historyTrivia: "かっぱ淵の伝説。続き。", placeName: "札幌市"
+        ) == "札幌市：かっぱ淵の伝説。")
+        #expect(NewMunicipalityAlertMessage.triviaExcerpt(famousThingsTrivia: "", historyTrivia: "", placeName: nil) == nil)
+    }
+
+    @Test func 長い一文は上限で切って三点リーダーを付ける() {
+        let long = String(repeating: "あ", count: 100) + "。"
+        let excerpt = NewMunicipalityAlertMessage.triviaExcerpt(famousThingsTrivia: long, historyTrivia: "", placeName: nil)
+        #expect(excerpt == String(repeating: "あ", count: NewMunicipalityAlertMessage.excerptLimit - 1) + "…")
     }
 
     // MARK: - モードの保存
