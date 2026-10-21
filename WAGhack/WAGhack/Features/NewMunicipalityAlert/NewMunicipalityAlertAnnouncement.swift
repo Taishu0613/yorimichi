@@ -41,7 +41,7 @@ final class NewMunicipalityAlertAnnouncementGate {
     }
 
     /// 市区町村の初訪問のお祝いを閉じたときに呼ぶ。最初の記録を待っている人にだけカードを出す。
-    /// 待っている間に「旅の記録」の設定で自分からモードを選んでいたら、もう案内は要らないので出さない。
+    /// 待っている間に「設定」画面で自分からモードを選んでいたら、もう案内は要らないので出さない。
     func firstVisitCelebrationDidFinish() {
         guard isPending, timing == .afterFirstRecord else { return }
         guard NewMunicipalityAlertMonitor.loadMode(from: userDefaults) == .off else {
@@ -136,7 +136,7 @@ struct NewMunicipalityAlertAnnouncement: View {
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text("「旅の記録」からいつでも変更できます。オンにすると、通知と位置情報（常に）の許可を確認します。")
+            Text("画面右下の歯車の「設定」からいつでも変更できます。オンにすると、通知と位置情報（常に）の許可を確認します。")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

@@ -130,7 +130,7 @@ SwiftDataのQueryを取得層として維持し、単一実装だけのRepositor
 - ピン表示: 地図右下の丸ボタンで、記録した場所のピンの表示／非表示を切り替える。選択は`@AppStorage("map.showsPlacePins")`で端末に保存（初期値は表示）。再記録直後の吹き出しはピンを隠していても出す。
 - 塗り分けはSwiftDataの`SavedPlace`から毎回導出し、ポリゴン側に訪問状態を持たない。記録を削除すると塗りも戻る。
 - 政令指定都市は区のコードで記録されるため、区のピースが埋まる。親市だけの記録では塗らない（踏破率の規則と同じ）。
-- 出典（国土数値情報 N03、CC BY 4.0）は「旅の記録」画面の末尾に`attribution.txt`の文面で表示する。
+- 出典（国土数値情報 N03、CC BY 4.0）は「設定」画面の末尾に`attribution.txt`の文面で表示する。
 - 進捗に添える小さな地図（記録済みの区画をティール、未記録を薄い灰色で塗る）。
   - 踏破率ヘッダー（56pt）: 市区町村ページに現在地の都道府県、都道府県ページに日本地図。
   - 旅の記録シート（96pt）: 進捗の隣に日本地図。都道府県シート（96pt）: 進捗の隣にその県（市区町村ごとに塗り分け）。
@@ -238,7 +238,7 @@ MapKitはポリゴン1枚ごとに描画を持つため、枚数がそのまま�
 ## 初めての市区町村で通知（2026-10-12）
 
 ブランチ: `feature/first-city-notification`。記録が一度もない市区町村に入ったら、アプリを閉じていてもローカル通知で知らせる。
-「旅の記録」画面の「初訪問の通知」で、オフ／市区町村ごと／都道府県のみ から選ぶ（初期値はオフ）。
+「設定」画面の「初訪問の通知」で、オフ／市区町村ごと／都道府県のみ から選ぶ（初期値はオフ）。
 
 ### 2026-10-12 追加: モードの選択・文言・お知らせ
 
@@ -267,13 +267,13 @@ MapKitはポリゴン1枚ごとに描画を持つため、枚数がそのまま�
 
 `大幅な位置の変化 → NewMunicipalityAlertMonitor → AddressResolver + MunicipalityMatcher → SavedPlaceの記録コード → NewMunicipalityAlertPolicy → UNUserNotificationCenter`
 
-`Features/NewMunicipalityAlert/`にまとめてあり、フォルダと`WAGhackApp`・`SavedPlacesScreen`・`ContentView`（お知らせ）・`TutorialContent`（1ページ）の該当箇所を消せば機能を外せる。
+`Features/NewMunicipalityAlert/`にまとめてあり、フォルダと`WAGhackApp`・`SettingsScreen`・`ContentView`（お知らせ）・`TutorialContent`（1ページ）の該当箇所を消せば機能を外せる。
 
 | ファイル | 責務 |
 |---|---|
 | `NewMunicipalityAlertPolicy.swift` | モード・通知の文言・通知するかの判定と履歴（値型。位置情報・通知・SwiftDataに依存しない） |
 | `NewMunicipalityAlertMonitor.swift` | 位置の監視・許可の要求・住所照合・モードに応じた区域の決定・通知の発行。`WAGhackApp`が所有し、environmentで画面へ渡す |
-| `NewMunicipalityAlertSettingsSection.swift` | 「旅の記録」画面のモード選択と許可の案内 |
+| `NewMunicipalityAlertSettingsSection.swift` | 「設定」画面のモード選択と許可の案内 |
 | `NewMunicipalityAlertAnnouncement.swift` | 通知の案内カードと、出す時機を決めて1回だけ出すためのゲート |
 
 - モードは`UserDefaults`の`newMunicipalityAlert.mode`、判定の履歴は市区町村が`newMunicipalityAlert.history`、都道府県が`newMunicipalityAlert.prefectureHistory`（JSON）。永続モデル（SwiftData）は変更しない。
@@ -284,7 +284,7 @@ MapKitはポリゴン1枚ごとに描画を持つため、枚数がそのまま�
 
 ブランチ: `feature/auto-record-premium`。初訪問の通知を出すときに、その場所の市区町村を記録まで済ませる。月額200円のサブスクリプションと買い切り1,200円のどちらかで解放する。
 
-- 「旅の記録」画面の通知の設定の下にある「自動で記録」から購入画面を開く。購入済みならスイッチになる。購入・復元するとスイッチは自動でオンになる。
+- 「設定」画面の通知の設定の下にある「自動で記録」から購入画面を開く。購入済みならスイッチになる。購入・復元するとスイッチは自動でオンになる。
 - 通知がオフの間は動かない。アプリを閉じている間に通知が届く場面だけで記録する（前面にある間は従来どおり地図画面の誘いシートに任せる）。
 - 都道府県モードでは、初めての都道府県で通知するときに、そのとき居る市区町村を記録する。
 - 位置の精度が500mより粗いときは記録せず、従来の「記録しませんか？」の通知にする（`AutoRecordPolicy.maximumHorizontalAccuracy`）。
@@ -320,3 +320,13 @@ MapKitはポリゴン1枚ごとに描画を持つため、枚数がそのまま�
 - 購入状態の正はStoreKit。`PremiumStore.isUnlocked`は画面用で、記録する直前は`refreshEntitlements()`で確かめ直す。
 - スイッチは`UserDefaults`の`autoRecord.isEnabled`、飛行判定の履歴は`newMunicipalityAlert.flightState`（JSON）。永続モデル（SwiftData）は変更しない。
 - 判定のロジックは`AutoRecordTests`で検証する。購入の流れ・実機での飛行判定は未検証。
+
+## フッターと設定画面の分離（2026-10-22）
+
+ブランチ: `claude/footer-settings`。Apple Musicのタブバー（主役のタブと、右端に離して置いた検索ボタン）にならい、地図下の常駐シート（フッター）を「旅の記録」の1行と右端の歯車ボタンに分けた。
+
+- 歯車から`Features/Settings/SettingsScreen.swift`をシートで開く。中身は「初訪問の通知」「自動で記録」（有料機能）「地図の境界データ」（出典）。以前は「旅の記録」の一覧の末尾にあったが、記録を見返す画面から外した。
+- 「旅の記録」の一覧は進捗と記録だけになる。
+- 設定を開いている間は、初訪問の誘い・都道府県の儀式のシートを出さず、閉じた時に改めて判定する（旅の記録を広げている間と同じ扱い）。
+- TabViewにしなかったのは、地図の常駐シートが中段・全画面に広がる構成とタブバーが重なるため。iOS 26のタブバーの検索ボタン（`Tab(role: .search)`）を設定に流用するのも役割が違うため避けた。
+

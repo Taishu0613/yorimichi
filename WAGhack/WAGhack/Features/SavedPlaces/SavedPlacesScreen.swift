@@ -87,15 +87,7 @@ struct SavedPlacesScreen: View {
                 }
             }
 
-            NewMunicipalityAlertSettingsSection()
-            AutoRecordSettingsSection()
-
-            // マップの市区町村ポリゴンの出典(CC BY 4.0の表示義務)。地図の上は操作部品で埋まっているため、ここに置く。
-            Section {
-                BoundaryAttributionView()
-            } header: {
-                Text("地図の境界データ")
-            }
+            // 通知・有料機能・地図の出典は、フッターの歯車から開く設定画面(SettingsScreen)に置く。
         }
         .task { await silhouetteStore?.loadJapanMapIfNeeded() }
         .navigationTitle("旅の記録")

@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// 「旅の記録」画面に置く、初めての場所の通知のモード(オフ／市区町村ごと／都道府県のみ)。
+/// 「設定」画面(SettingsScreen)に置く、初めての場所の通知のモード(オフ／市区町村ごと／都道府県のみ)。
 /// 許可が足りない場合は、何が足りないかを脚注で伝え、設定アプリへの導線を出す。
 struct NewMunicipalityAlertSettingsSection: View {
     /// アプリのルートで渡される。プレビューなど渡されない場所では何も出さない。
