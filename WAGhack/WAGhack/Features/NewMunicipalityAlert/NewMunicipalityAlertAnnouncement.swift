@@ -95,6 +95,14 @@ struct NewMunicipalityAlertAnnouncement: View {
             .controlSize(.large)
             .tint(.teal)
 
+            VStack(alignment: .leading, spacing: 8) {
+                Label(LocationUsageAssurance.battery, systemImage: "leaf")
+                Label(LocationUsageAssurance.privacy, systemImage: "lock.iphone")
+            }
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
             Text("「旅の記録」からいつでも変更できます。オンにすると、通知と位置情報（常に）の許可を確認します。")
                 .font(.footnote)
                 .foregroundStyle(.secondary)

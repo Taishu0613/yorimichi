@@ -20,6 +20,9 @@ import UserNotifications
 /// 電池を大きく使う割に、市区町村の判定には精度が過剰なため採らなかった。
 ///
 /// 前面にある間は地図画面が自前の誘いシートを出すので通知は出さない(判定の履歴だけ進める)。
+///
+/// 有料機能「自動で記録」をオンにしていれば、通知するときに現在地の市区町村を記録まで済ませる(`AutoRecordPolicy`)。
+/// 飛行機に乗っているらしいときは、通知も記録もしない(`FlightDetector`)。
 @Observable
 final class NewMunicipalityAlertMonitor: NSObject {
     enum Status: Equatable {
@@ -39,6 +42,8 @@ final class NewMunicipalityAlertMonitor: NSObject {
     /// 市区町村モードの履歴は、市区町村だけだった版と同じキーを使い続ける(出入りの記録を引き継ぐため)。
     private static let municipalityHistoryKey = "newMunicipalityAlert.history"
     private static let prefectureHistoryKey = "newMunicipalityAlert.prefectureHistory"
+    private static let autoRecordKey = "autoRecord.isEnabled"
+    private static let flightStateKey = "newMunicipalityAlert.flightState"
     /// 判定に使う位置の精度の上限(m)。大幅な位置の変化は基地局・Wi-Fiによる粗い位置で届くことが多く、
     /// 地図画面の自動判定(100m)と同じ基準では大半を捨ててしまうため緩めてある。
     /// これより粗い位置では境界付近で隣の市区町村と取り違えやすい。仮の値で、実機で調整する。
@@ -48,9 +53,13 @@ final class NewMunicipalityAlertMonitor: NSObject {
     private(set) var mode: NewMunicipalityAlertMode
     private(set) var locationAuthorization: CLAuthorizationStatus
     private(set) var notificationAuthorization: UNAuthorizationStatus = .notDetermined
+    /// 有料機能「自動で記録」のスイッチ。実際に動くのは有料機能を解放していて、通知のモードがオフでない間だけ。
+    /// 解放が切れても(サブスクリプションの期限切れなど)スイッチは残し、買い直したら元どおり動くようにする。
+    private(set) var isAutoRecordEnabled: Bool
 
     @ObservationIgnored private let locationManager = CLLocationManager()
     @ObservationIgnored private let modelContainer: ModelContainer
+    @ObservationIgnored private let premiumStore: PremiumStore
     @ObservationIgnored private let userDefaults: UserDefaults
     @ObservationIgnored private let logger = Logger(subsystem: "com.wakasugi.yorimichi", category: "NewMunicipalityAlert")
     /// 判定中に次の位置が届いても重ねて判定しない。大幅な位置の変化は数分おきにしか届かないため取りこぼしは小さい。
@@ -73,10 +82,12 @@ final class NewMunicipalityAlertMonitor: NSObject {
 
     /// CLLocationManagerは生成したスレッドのRunLoopへdelegateを呼ぶため、メインスレッドで生成すること
     /// (このクラスはMainActorに隔離されている)。
-    init(modelContainer: ModelContainer, userDefaults: UserDefaults = .standard) {
+    init(modelContainer: ModelContainer, premiumStore: PremiumStore, userDefaults: UserDefaults = .standard) {
         self.modelContainer = modelContainer
+        self.premiumStore = premiumStore
         self.userDefaults = userDefaults
         mode = Self.loadMode(from: userDefaults)
+        isAutoRecordEnabled = userDefaults.bool(forKey: Self.autoRecordKey)
         locationAuthorization = locationManager.authorizationStatus
         super.init()
         locationManager.delegate = self
@@ -114,6 +125,12 @@ final class NewMunicipalityAlertMonitor: NSObject {
         }
     }
 
+    /// 「自動で記録」の設定から呼ぶ。有料機能を解放しているかは、記録する直前に確かめる。
+    func setAutoRecordEnabled(_ isEnabled: Bool) {
+        isAutoRecordEnabled = isEnabled
+        userDefaults.set(isEnabled, forKey: Self.autoRecordKey)
+    }
+
     /// 保存されたモードを読む。市区町村のオン/オフしか無かった版でオンにしていた場合は、市区町村モードとして引き継ぐ。
     static func loadMode(from userDefaults: UserDefaults) -> NewMunicipalityAlertMode {
         if let rawValue = userDefaults.string(forKey: modeKey) {
@@ -144,6 +161,15 @@ final class NewMunicipalityAlertMonitor: NSObject {
         guard mode != .off, !isChecking,
               location.horizontalAccuracy >= 0, location.horizontalAccuracy <= Self.maximumHorizontalAccuracy
         else { return }
+        // 住所の確認(通信あり)より先に判定し、上空では何もしない。通知の履歴も進めないので、
+        // 着陸後に出発前と違う区域にいれば、改めて初訪問として扱われる。
+        let flight = FlightDetector().evaluate(FlightDetector.Reading(location), state: loadFlightState())
+        saveFlightState(flight.updatedState)
+        guard !flight.isFlying else {
+            logger.notice("飛行機に乗っているとみなし、初訪問の判定をしませんでした")
+            return
+        }
+
         isChecking = true
         // 裏で起こされた場合、位置を渡された後すぐに停止されることがあるため、住所の確認(通信あり)を
         // 終えるまでの実行時間を願い出る。
@@ -178,11 +204,50 @@ final class NewMunicipalityAlertMonitor: NSObject {
             )
             saveHistory(decision.updatedHistory, for: mode)
             if decision.shouldNotify {
-                try await postNotification(identifier: area.notificationIdentifier, areaName: area.name)
+                let body: String
+                if let recordedName = await autoRecordIfPossible(
+                    municipality: municipality, municipalities: municipalities,
+                    localizedAddress: addresses.localizedAddress, location: location, context: context
+                ) {
+                    body = NewMunicipalityAlertMessage.autoRecordedBody(areaName: area.name, recordedName: recordedName)
+                } else {
+                    body = NewMunicipalityAlertMessage.body(areaName: area.name)
+                }
+                try await postNotification(identifier: area.notificationIdentifier, body: body)
             }
         } catch {
             // 裏の処理なのでユーザーには見せない。次に位置が届いたときに判定し直す。
             logger.error("初めての区域の判定に失敗しました: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// 「自動で記録」が使えるなら現在地の市区町村を記録する。
+    /// - Returns: 記録した市区町村の、都道府県名から続けた名前。記録しなかった・できなかった場合はnil
+    ///   (従来の「記録しませんか？」の通知に戻す)。
+    private func autoRecordIfPossible(
+        municipality: Municipality,
+        municipalities: [Municipality],
+        localizedAddress: String,
+        location: CLLocation,
+        context: ModelContext
+    ) async -> String? {
+        // 表示用のキャッシュではなく、端末内の購入記録で確かめ直す(期限切れ・返金を反映するため)。
+        guard isAutoRecordEnabled else { return nil }
+        let isUnlocked = await premiumStore.refreshEntitlements()
+        guard AutoRecordPolicy().shouldRecord(
+            isEnabled: isAutoRecordEnabled, isUnlocked: isUnlocked, horizontalAccuracy: location.horizontalAccuracy
+        ) else { return nil }
+        do {
+            // 地図画面の記録ボタンと同じ手順で保存する(初訪問・再訪問の扱いや失敗時の巻き戻しを揃えるため)。
+            _ = try MapVisitRecorder().record(
+                MunicipalityVisit(localizedAddress: localizedAddress, location: location, municipality: municipality),
+                municipalities: municipalities,
+                context: context
+            )
+            return municipality.prefectureName + municipality.municipalityName
+        } catch {
+            logger.error("自動記録に失敗しました: \(error.localizedDescription, privacy: .public)")
+            return nil
         }
     }
 
@@ -216,10 +281,10 @@ final class NewMunicipalityAlertMonitor: NSObject {
         }
     }
 
-    private func postNotification(identifier: String, areaName: String) async throws {
+    private func postNotification(identifier: String, body: String) async throws {
         let content = UNMutableNotificationContent()
         // タイトルは付けない。アプリ名(よりみち)はOSが添えるため、本文の一文だけで伝わる。
-        content.body = NewMunicipalityAlertMessage.body(areaName: areaName)
+        content.body = body
         content.sound = .default
         content.threadIdentifier = "newMunicipality"
         // 同じ区域の通知が残っていれば置き換える。タップするとアプリが開き、地図画面が現在地を確認して誘いシートを出す。
@@ -247,6 +312,25 @@ final class NewMunicipalityAlertMonitor: NSObject {
             userDefaults.set(try JSONEncoder().encode(history), forKey: Self.historyKey(for: mode))
         } catch {
             logger.error("通知の履歴を保存できませんでした: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func loadFlightState() -> FlightDetector.State {
+        guard let data = userDefaults.data(forKey: Self.flightStateKey) else { return FlightDetector.State() }
+        do {
+            return try JSONDecoder().decode(FlightDetector.State.self, from: data)
+        } catch {
+            // 壊れていても失うのは直前の位置だけなので、空から始め直す。
+            logger.error("飛行中の判定の履歴を読めませんでした: \(error.localizedDescription, privacy: .public)")
+            return FlightDetector.State()
+        }
+    }
+
+    private func saveFlightState(_ state: FlightDetector.State) {
+        do {
+            userDefaults.set(try JSONEncoder().encode(state), forKey: Self.flightStateKey)
+        } catch {
+            logger.error("飛行中の判定の履歴を保存できませんでした: \(error.localizedDescription, privacy: .public)")
         }
     }
 

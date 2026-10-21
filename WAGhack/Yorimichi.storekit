@@ -1,0 +1,62 @@
+{
+  "identifier": "6B1C2E4A",
+  "nonRenewingSubscriptions": [],
+  "products": [
+    {
+      "displayPrice": "1200",
+      "familyShareable": false,
+      "internalID": "6745000002",
+      "localizations": [
+        {
+          "description": "初訪問の場所を自動で記録（買い切り）",
+          "displayName": "自動で記録（買い切り）",
+          "locale": "ja"
+        }
+      ],
+      "productID": "com.wakasugi.yorimichi.premium.lifetime",
+      "referenceName": "Premium Lifetime",
+      "type": "NonConsumable"
+    }
+  ],
+  "settings": {
+    "_failTransactionsEnabled": false,
+    "_locale": "ja",
+    "_storefront": "JPN",
+    "_storeKitErrors": []
+  },
+  "subscriptionGroups": [
+    {
+      "id": "21600001",
+      "localizations": [],
+      "name": "よりみち プレミアム",
+      "subscriptions": [
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "200",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "6745000001",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "初訪問の場所を自動で記録（月額）",
+              "displayName": "自動で記録（月額）",
+              "locale": "ja"
+            }
+          ],
+          "productID": "com.wakasugi.yorimichi.premium.monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "Premium Monthly",
+          "subscriptionGroupID": "21600001",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
+        }
+      ]
+    }
+  ],
+  "version": {
+    "major": 4,
+    "minor": 0
+  }
+}

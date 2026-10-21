@@ -26,6 +26,26 @@ enum NewMunicipalityAlertMessage {
     static func body(areaName: String) -> String {
         "\(areaName)に初訪問です！よりみちを開いて記録しませんか？"
     }
+
+    /// 有料機能「自動で記録」で記録まで済ませたときの文言。
+    /// - Parameters:
+    ///   - areaName: 知らせる区域の名前(`body(areaName:)`と同じ)。
+    ///   - recordedName: 記録した市区町村の、都道府県名から続けた名前。都道府県モードでは区域と異なるため書き添える。
+    static func autoRecordedBody(areaName: String, recordedName: String) -> String {
+        if areaName == recordedName {
+            return "\(areaName)に初訪問です！よりみちに記録しました。"
+        }
+        return "\(areaName)に初訪問です！\(recordedName)をよりみちに記録しました。"
+    }
+}
+
+/// 位置情報を「常に」許可してもらう前に添える説明。許可を迷う理由になりやすい電池と、位置の行き先に答える。
+/// 住所の確認(`AddressResolver`)ではAppleの地図サービスに座標を渡すため、「iPhoneの中で完結」とは書かない。
+/// 開発者のサーバーは無く、SwiftDataはCloudKitで同期していないので、下の2文は実装と一致している。
+/// 通信先やデータの保存先を変えるときは、この文言も見直すこと。
+enum LocationUsageAssurance {
+    static let battery = "GPSを動かし続けず、大まかな位置の変化だけを受け取るので、電池への負担はわずかです。"
+    static let privacy = "位置情報は開発者に送りません。記録はこのiPhoneの中だけに保存します。"
 }
 
 /// 「記録が一度もない場所に入った」通知の判定に使う、これまでの判定の履歴。モードごとに別々に持つ。
