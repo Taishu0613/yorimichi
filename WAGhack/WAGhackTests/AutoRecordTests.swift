@@ -174,3 +174,15 @@ struct PremiumEntitlementPolicyTests {
         #expect(!policy.isUnlocked(by: [other], now: now))
     }
 }
+
+@MainActor
+struct PremiumProductOrderTests {
+    @Test func 届いた商品は月額と買い切りの順に並べ知らない商品は除く() {
+        let received = [PremiumProduct.lifetimeID, "com.example.other", PremiumProduct.monthlyID]
+        #expect(PremiumProduct.inDisplayOrder(received, id: { $0 }) == [PremiumProduct.monthlyID, PremiumProduct.lifetimeID])
+    }
+
+    @Test func 商品が届かなければ空になる() {
+        #expect(PremiumProduct.inDisplayOrder([String](), id: { $0 }).isEmpty)
+    }
+}
