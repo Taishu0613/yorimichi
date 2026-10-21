@@ -1,3 +1,4 @@
+import os
 import StoreKit
 import SwiftUI
 
@@ -6,7 +7,17 @@ import SwiftUI
 /// 商品の名前・説明・価格・購入ボタンはStoreKitの`ProductView`に任せる。App Store Connectに登録した内容と
 /// 端末の地域の価格がそのまま出るため、価格を自前で書かずに済み、購入の確認画面もOS標準になる。
 /// 却下した案: `StoreView`は商品の一覧だけで、何ができるようになるかの説明を上に置けないため、`ProductView`を並べた。
+///
+/// 商品は先に`Product.products(for:)`で読み込んでから`ProductView`に渡す。IDだけを渡す形では、商品が見つからない
+/// (App Store Connectに未登録・通信できない)ときに読み込み中の表示のまま止まり、買えない理由が分からなかったため。
 struct PremiumPurchaseScreen: View {
+    private enum ProductsState {
+        case loading
+        case loaded([Product])
+        /// 商品が1つも見つからなかった、または読み込みに失敗した。
+        case unavailable
+    }
+
     /// 購入または復元で解放されたときに呼ぶ。閉じるのはこの画面が行う。
     let onUnlocked: () -> Void
 
@@ -14,6 +25,8 @@ struct PremiumPurchaseScreen: View {
     @Environment(\.dismiss) private var dismiss
     @State private var isRestoring = false
     @State private var errorMessage: String?
+    @State private var productsState: ProductsState = .loading
+    private static let logger = Logger(subsystem: "com.wakasugi.yorimichi", category: "Premium")
 
     /// 自動更新サブスクリプションでは、利用規約へのリンクをアプリ内に置く必要がある(App Store審査ガイドライン3.1.2)。
     /// 独自の規約を用意していないため、Appleの標準使用許諾契約を使う。
@@ -27,13 +40,7 @@ struct PremiumPurchaseScreen: View {
                 VStack(spacing: 24) {
                     header
 
-                    VStack(spacing: 12) {
-                        ForEach(PremiumProduct.allIDs, id: \.self) { productID in
-                            ProductView(id: productID)
-                                .padding()
-                                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        }
-                    }
+                    products
 
                     Button {
                         Task { await restore() }
@@ -62,6 +69,7 @@ struct PremiumPurchaseScreen: View {
                 .frame(maxWidth: .infinity)
             }
             .tint(.teal)
+            .task { await loadProducts() }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("閉じる", systemImage: "xmark") { dismiss() }
@@ -107,6 +115,58 @@ struct PremiumPurchaseScreen: View {
             .font(.subheadline)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private var products: some View {
+        switch productsState {
+        case .loading:
+            ProgressView()
+                .frame(maxWidth: .infinity, minHeight: 120)
+        case .loaded(let products):
+            VStack(spacing: 12) {
+                ForEach(products) { product in
+                    ProductView(product)
+                        .padding()
+                        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+            }
+        case .unavailable:
+            VStack(spacing: 12) {
+                Text("商品情報を読み込めませんでした")
+                    .font(.headline)
+                Text("通信状況を確認して、もう一度お試しください。")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Button("再試行") {
+                    Task { await loadProducts() }
+                }
+                .buttonStyle(.bordered)
+            }
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
+            .padding()
+            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+    }
+
+    private func loadProducts() async {
+        productsState = .loading
+        do {
+            let products = PremiumProduct.inDisplayOrder(
+                try await Product.products(for: PremiumProduct.allIDs), id: \.id
+            )
+            if products.isEmpty {
+                // App Store Connectに未登録、またはStoreKit Configurationを使わずに起動した。
+                Self.logger.error("購入できる商品が見つかりませんでした")
+                productsState = .unavailable
+            } else {
+                productsState = .loaded(products)
+            }
+        } catch {
+            Self.logger.error("商品を読み込めませんでした: \(error.localizedDescription, privacy: .public)")
+            productsState = .unavailable
         }
     }
 

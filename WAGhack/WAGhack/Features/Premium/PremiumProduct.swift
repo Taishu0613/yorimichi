@@ -10,6 +10,11 @@ enum PremiumProduct {
 
     /// 購入画面に並べる順。
     static let allIDs = [monthlyID, lifetimeID]
+
+    /// App Storeから届いた商品を`allIDs`の順に並べ、知らない商品を除く。届く順は保証されないため。
+    static func inDisplayOrder<Item>(_ items: [Item], id: (Item) -> String) -> [Item] {
+        allIDs.compactMap { productID in items.first { id($0) == productID } }
+    }
 }
 
 /// StoreKitの購入記録から、有料機能を解放するかを決める。StoreKitには依存しない。
