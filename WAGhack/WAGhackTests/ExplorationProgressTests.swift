@@ -115,6 +115,29 @@ struct ExplorationProgressTests {
         #expect(store.summary(municipalities: [municipality], savedPlaces: remaining).progress.visited == 0)
     }
 
+    @Test func 区を1つ訪れると政令指定都市も訪問済みになり全区で制覇() throws {
+        let municipalities = [
+            entry("23100", "名古屋市"), entry("23101", "名古屋市千種区"), entry("23102", "名古屋市東区"),
+            entry("23201", "豊橋市"), entry("13101", "千代田区")
+        ]
+        let started = calculator.summarize(municipalities: municipalities, visitedCodes: ["23101", "13101"])
+        let city = try #require(started.designatedCities.first)
+        #expect(started.designatedCities.count == 1)
+        #expect(city.name == "名古屋市")
+        #expect(city.wards.map(\.code) == ["23101", "23102"])
+        #expect(city.isVisited && !city.isComplete)
+        #expect(started.designatedCityProgress.visited == 1)
+        // 市の訪問は区の踏破率に影響しない。
+        #expect(started.progress.total == 4)
+
+        let complete = calculator.summarize(municipalities: municipalities, visitedCodes: ["23101", "23102"])
+        #expect(complete.designatedCities.first?.isComplete == true)
+        // 区を特定できず市のコードで記録された訪問でも、市は訪問済みになる。
+        let cityOnly = calculator.summarize(municipalities: municipalities, visitedCodes: ["23100"])
+        #expect(cityOnly.designatedCities.first?.isVisited == true)
+        #expect(cityOnly.designatedCities.first?.progress.visited == 0)
+    }
+
     private func entry(_ code: String, _ name: String, isPrefecture: Bool = false) -> ExplorationMunicipality {
         ExplorationMunicipality(
             code: code, name: name, prefectureCode: String(code.prefix(2)),

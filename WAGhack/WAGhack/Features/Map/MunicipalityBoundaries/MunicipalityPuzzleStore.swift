@@ -62,6 +62,9 @@ final class MunicipalityPuzzleStore {
     private(set) var prefectureBorders: [BoundaryLinePiece] = []
     /// 今の表示範囲の都道府県の面。制覇率の塗り専用で、「県境のみ」の読み込みのときだけ用意する(それ以外は空)。
     private(set) var prefectureAreas: [BoundaryPiece] = []
+    /// 今の表示範囲の政令指定都市の外周(`DesignatedCityOutline`)。`code`は`DesignatedCity.key`。
+    /// 縁取り専用で穴を持たない。市区町村の読み込みのときだけ用意する(それ以外は空)。
+    private(set) var designatedCityOutlines: [BoundaryPiece] = []
     /// 未訪問の市区町村まで描くか。falseのときは訪問済み・現在地のピースだけを描く。
     private(set) var showsUnvisitedMunicipalities = false
     private(set) var displayMode: BoundaryDisplayMode = .municipalities
@@ -81,6 +84,8 @@ final class MunicipalityPuzzleStore {
     /// 同じLODのまま全国を見て回るとピース数ぶん増えるが、1つあたりは座標の参照程度なので上限は設けていない。
     @ObservationIgnored private var pieceCache: [String: BoundaryPiece] = [:]
     @ObservationIgnored private var polylineCache: [String: MKPolyline] = [:]
+    /// 区をつなぎ合わせた市の外周。LODが変わるまで使い回す(キーは`DesignatedCity.key`)。
+    @ObservationIgnored private var designatedCityCache: [String: AdministrativeBoundary] = [:]
     @ObservationIgnored private let logger = Logger(subsystem: "com.wakasugi.yorimichi", category: "MunicipalityPuzzle")
 
     /// 画面の少し外側まで先に用意しておき、ドラッグ中に端が欠けて見えるのを減らす(上下左右それぞれ表示範囲の20%)。
@@ -214,6 +219,7 @@ final class MunicipalityPuzzleStore {
             prefectureBorders = []
             prefectureAreas = []
             municipalityPieces = []
+            designatedCityOutlines = []
             return
         }
         do {
@@ -249,12 +255,16 @@ final class MunicipalityPuzzleStore {
             if lod != currentLOD {
                 pieceCache = [:]
                 polylineCache = [:]
+                designatedCityCache = [:]
                 currentLOD = lod
             }
             let drawFilter = BoundaryPieceFilter(visibleWidthMeters: visibleWidth)
             prefectureBorders = makeLinePieces(lod: lod, from: borderLines, within: searchBox, filter: drawFilter)
             prefectureAreas = makePieces(.prefectures, lod: lod, from: prefectures, within: searchBox, filter: drawFilter)
             municipalityPieces = makePieces(.municipalities, lod: lod, from: municipalities, within: searchBox, filter: drawFilter)
+            designatedCityOutlines = makePieces(
+                "designatedCity", lod: lod, from: designatedCities(from: municipalities), within: searchBox, filter: drawFilter
+            )
             // 広域では網目が細かすぎて見分けられず重いだけなので、県境と訪問済みの市区町村だけを描く。
             let showsUnvisited = UnvisitedMunicipalityVisibility.isVisible(
                 current: showsUnvisitedMunicipalities, visibleWidthMeters: visibleWidth
@@ -278,8 +288,36 @@ final class MunicipalityPuzzleStore {
         return loaded
     }
 
+    /// 読み込んだ区から、政令指定都市ごとの外周を作る。区は都道府県単位のファイルにまとまっているので、
+    /// 1つの市の区は全部読み込まれているか、1つも読み込まれていないかのどちらかになる。
+    private func designatedCities(from municipalities: [AdministrativeBoundary]) -> [AdministrativeBoundary] {
+        let wardsByCity = Dictionary(grouping: municipalities.compactMap { boundary in
+            DesignatedCity.cityName(ofWard: boundary.name).map { (name: $0, ward: boundary) }
+        }) { DesignatedCity.key(prefectureCode: $0.ward.prefectureCode, cityName: $0.name) }
+        return wardsByCity.keys.sorted().compactMap { key in
+            if let cached = designatedCityCache[key] { return cached }
+            guard let wards = wardsByCity[key], let first = wards.first else { return nil }
+            let city = AdministrativeBoundary(
+                code: key, name: first.name, prefectureCode: first.ward.prefectureCode,
+                polygons: DesignatedCityOutline.rings(of: wards.flatMap { $0.ward.polygons })
+            )
+            designatedCityCache[key] = city
+            return city
+        }
+    }
+
     private func makePieces(
         _ layer: BoundaryLayer,
+        lod: Int,
+        from boundaries: [AdministrativeBoundary],
+        within searchBox: GeoBoundingBox,
+        filter: BoundaryPieceFilter
+    ) -> [BoundaryPiece] {
+        makePieces(layer.rawValue, lod: lod, from: boundaries, within: searchBox, filter: filter)
+    }
+
+    private func makePieces(
+        _ kind: String,
         lod: Int,
         from boundaries: [AdministrativeBoundary],
         within searchBox: GeoBoundingBox,
@@ -292,7 +330,7 @@ final class MunicipalityPuzzleStore {
             where filter.shouldDraw(polygon, at: index) && polygon.boundingBox.intersects(searchBox) {
                 // LODをidに含めること。含めないとLODが変わってもidが同じになり、地図側が古いLODの形を
                 // 置き換えずに残す。簡略化の違う2本の線が重なり、境界の一部だけが太い帯に見える不具合が出ていた。
-                let id = "lod\(lod)/\(layer.rawValue)/\(boundary.code)/\(index)"
+                let id = "lod\(lod)/\(kind)/\(boundary.code)/\(index)"
                 pieces.append(cachedPiece(id: id, code: boundary.code, for: polygon))
             }
         }

@@ -78,6 +78,8 @@ struct MapScreen: View {
     /// municipalities/savedPlacesが実際に変わった時だけ計算し直す。ピン選択などのUI操作のたびに
     /// 全市区町村(1,898件)を集計し直すと体感できるラグになるため、bodyでは計算しない。
     @State private var summary = ExplorationSummary(prefectures: [], eligibleCodes: [])
+    /// 地図に描く政令指定都市の訪問状況。summaryと同じ時だけ計算し直す。
+    @State private var designatedCityMapState = DesignatedCityMapState.empty
 
     /// 折りたたみ時のシート高さ。「旅の記録」の1行(MapRecordsSummaryRow)の高さで、現在地の取得中・
     /// 取得失敗の行(MapLocationStatusRow)も同じ1行の形にそろえてあるため、状態によらず1つの値にしている。
@@ -402,6 +404,8 @@ struct MapScreen: View {
                 prefectureAreas: puzzleStore.prefectureAreas,
                 showsUnvisitedMunicipalities: puzzleStore.showsUnvisitedMunicipalities,
                 visitedCodes: visitedMunicipalityCodes,
+                designatedCityOutlines: puzzleStore.designatedCityOutlines,
+                designatedCities: designatedCityMapState,
                 currentCode: viewModel.currentVisit?.municipality.code,
                 prefectureConquestLevels: prefectureConquestLevels,
                 emphasis: areaEffect.emphasis,
@@ -719,7 +723,13 @@ struct MapScreen: View {
             Group {
                 if let result = viewModel.result {
                     MunicipalityFirstVisitSheet(
-                        mode: .celebration(result: result, municipality: viewModel.currentVisit?.municipality),
+                        mode: .celebration(
+                            result: result,
+                            municipality: viewModel.currentVisit?.municipality,
+                            designatedCity: result.firstDesignatedCityCode.flatMap { code in
+                                municipalities.first { $0.code == code }
+                            }
+                        ),
                         dismiss: { isMunicipalityCelebrationPresented = false },
                         showDetail: {
                             isMunicipalityCelebrationPresented = false
@@ -745,6 +755,7 @@ struct MapScreen: View {
         summary = ExplorationProgressCalculator().summarize(
             models: municipalities, savedPlaces: savedPlaces, visitedPrefectures: visitedPrefectures
         )
+        designatedCityMapState = DesignatedCityMapState(summary.designatedCities)
     }
 
     private func expandedRoutes(for place: SavedPlace) -> [MapSheetRoute] {

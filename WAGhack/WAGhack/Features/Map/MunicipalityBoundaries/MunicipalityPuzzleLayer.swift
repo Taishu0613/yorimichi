@@ -9,7 +9,7 @@ import SwiftUI
 /// 重なりの階層(`mapOverlayLevel`):
 /// - 下(`.aboveRoads`、地名ラベルより下): 市区町村のピースの塗りと細い線、または都道府県の制覇率の塗り。塗っても地名が読める。
 ///   県境・海岸線の線(`MapPolyline`)もこの階層に置く(上の階層に置くと描かれないため。理由は描画箇所のコメント参照)。
-/// - 上(`.aboveLabels`): 現在地の縁取り。線だけなので地名はほぼ隠れない。
+/// - 上(`.aboveLabels`): 訪れた政令指定都市の外周と、現在地の縁取り。線だけなので地名はほぼ隠れない。
 ///
 /// 記録・脈打ちの演出(`emphasis`)は、該当する区域のスタイルを差し替えるだけで描く。ポリゴンを足したり
 /// 消したりしないのは、MapKitがポリゴン1枚ごとに描画を持ち、追加・削除のたびに作り直しが走って重くなるため。
@@ -21,6 +21,10 @@ struct MunicipalityPuzzleLayer: MapContent {
     /// falseのときは、未訪問の市区町村を描かない(広域表示で枚数を抑えるため)。
     let showsUnvisitedMunicipalities: Bool
     let visitedCodes: Set<String>
+    /// 政令指定都市の外周(`MunicipalityPuzzleStore.designatedCityOutlines`)。
+    let designatedCityOutlines: [BoundaryPiece]
+    /// 政令指定都市の訪問状況。訪れた市は外周を縁取り、全区を訪れた市は区をまとめて特別な色で塗る。
+    let designatedCities: DesignatedCityMapState
     /// 現在地の市区町村。「次にはめるピース」として縁取りで目立たせる。
     let currentCode: String?
     /// 都道府県コードごとの塗りの段階。nilでなければ都道府県の制覇率で塗る表示になり、市区町村のピースは描かない。
@@ -44,7 +48,10 @@ struct MunicipalityPuzzleLayer: MapContent {
         }
         ForEach(visibleMunicipalityPieces) { piece in
             let style = MunicipalityPieceStyle(
-                isVisited: visitedCodes.contains(piece.code), lineWidths: lineWidths, emphasis: municipalityLook(for: piece.code)
+                isVisited: visitedCodes.contains(piece.code),
+                isInCompletedCity: designatedCities.completedWardCodes.contains(piece.code),
+                lineWidths: lineWidths,
+                emphasis: municipalityLook(for: piece.code)
             )
             BoundaryPieceContent(
                 piece: piece, fill: style.fill, stroke: style.stroke, strokeStyle: style.strokeStyle, level: .aboveRoads
@@ -67,6 +74,16 @@ struct MunicipalityPuzzleLayer: MapContent {
                 stroke: emphasizedOutline?.paint.color ?? PrefectureConquestStyle.outlineStroke,
                 strokeStyle: emphasizedOutline?.strokeStyle(scaledBy: lineWidths.outlineScale)
                     ?? PrefectureConquestStyle.outlineStrokeStyle(lineWidths),
+                level: .aboveLabels
+            )
+        }
+        // 区の線より太い別の色で市の外周を囲み、区の集まりが1つの市であることを示す。現在地の縁取りより先(下)に置く。
+        ForEach(visitedDesignatedCityOutlines) { outline in
+            BoundaryPieceContent(
+                piece: outline,
+                fill: nil,
+                stroke: DesignatedCityStyle.outlineStroke,
+                strokeStyle: DesignatedCityStyle.outlineStrokeStyle(lineWidths),
                 level: .aboveLabels
             )
         }
@@ -123,6 +140,11 @@ struct MunicipalityPuzzleLayer: MapContent {
         }
     }
 
+    private var visitedDesignatedCityOutlines: [BoundaryPiece] {
+        guard prefectureConquestLevels == nil else { return [] }
+        return designatedCityOutlines.filter { designatedCities.visitedKeys.contains($0.code) }
+    }
+
     private var currentPieces: [BoundaryPiece] {
         guard prefectureConquestLevels == nil, let outlinedCode else { return [] }
         return municipalityPieces.filter { $0.code == outlinedCode }
@@ -175,11 +197,14 @@ struct MunicipalityPieceStyle {
 
     /// - Parameter emphasis: 演出中の見た目。指定された項目だけ通常の見た目より優先する。
     ///   演出の線の太さは以前の固定値を基準に書かれているため、今の縮尺の太さに合わせて拡大する。
-    init(isVisited: Bool, lineWidths: BoundaryLineWidths, emphasis: MapAreaEffectLook? = nil) {
+    /// - Parameter isInCompletedCity: 全区を訪れた政令指定都市の区か。市の外周と同じ色で塗り、市の制覇を見せる。
+    init(isVisited: Bool, isInCompletedCity: Bool = false, lineWidths: BoundaryLineWidths, emphasis: MapAreaEffectLook? = nil) {
         // 訪問済みの色は、アプリのテーマ色(.teal。進捗カードやタブのtintと同じ)に揃える。
         // 未開拓は薄い灰色で面を塗る。塗りは地名ラベルより下の階層なので、濃くしすぎなければ地名は読める。
-        let normalFill: Color = isVisited ? .teal.opacity(0.35) : .gray.opacity(0.22)
-        let normalStroke: Color = isVisited ? .teal.opacity(0.9) : .gray.opacity(0.55)
+        let normalFill: Color = isInCompletedCity ? DesignatedCityStyle.completedFill
+            : isVisited ? .teal.opacity(0.35) : .gray.opacity(0.22)
+        let normalStroke: Color = isInCompletedCity ? DesignatedCityStyle.outlineStroke
+            : isVisited ? .teal.opacity(0.9) : .gray.opacity(0.55)
         fill = emphasis?.fill?.color ?? normalFill
         stroke = emphasis?.pieceStroke?.paint.color ?? normalStroke
         // 訪問済みも未訪問と同じ太さ。訪問済みは塗りで分かる。県境より常に細く、県境との区別は太さと色
@@ -214,6 +239,39 @@ enum PrefectureConquestStyle {
     /// 塗られた都道府県の縁の色。段階によらず一定にし、訪問済み市区町村の線(`MunicipalityPieceStyle`)と揃える。
     static let outlineStroke = Color.teal.opacity(0.9)
     /// 太さは灰色の県境(`PrefectureBorderStyle`)と同じにして、下の灰色がはみ出して見えないようにする。
+    static func outlineStrokeStyle(_ lineWidths: BoundaryLineWidths) -> StrokeStyle {
+        StrokeStyle(lineWidth: lineWidths.prefectureBorder, lineCap: .round, lineJoin: .round)
+    }
+}
+
+/// 政令指定都市の地図上の訪問状況。`MunicipalityPuzzleLayer`が描き分けに使う。
+struct DesignatedCityMapState {
+    /// 区を1つでも訪れた市の`DesignatedCity.key`。
+    let visitedKeys: Set<String>
+    /// 全区を訪れた市の区の行政区域コード。
+    let completedWardCodes: Set<String>
+
+    static let empty = DesignatedCityMapState(visitedKeys: [], completedWardCodes: [])
+
+    init(visitedKeys: Set<String>, completedWardCodes: Set<String>) {
+        self.visitedKeys = visitedKeys
+        self.completedWardCodes = completedWardCodes
+    }
+
+    init(_ cities: [DesignatedCityExploration]) {
+        visitedKeys = Set(cities.filter(\.isVisited).map(\.key))
+        completedWardCodes = Set(cities.filter(\.isComplete).flatMap { $0.wards.map(\.code) })
+    }
+}
+
+/// 政令指定都市の見た目。区(teal)と区別できるよう、市はオレンジにする。
+/// 都道府県の段階は色相を変えずに濃さだけで表すが(`PrefectureConquestStyle`)、市は「区とは別の単位」と
+/// 一目で分かることが目的なので色相を変える。色だけに頼らないよう、外周は区の線より太い線にしている。
+enum DesignatedCityStyle {
+    static let outlineStroke = Color.orange.opacity(0.9)
+    /// 全区を訪れた市の区の塗り。訪問済みの区(teal 0.35)と同じ濃さにして、色の違いだけが目立つようにする。
+    static let completedFill = Color.orange.opacity(0.35)
+    /// 県境と同じ太さ。区の線(`municipalityLine`)より太く、現在地の縁取りより細い。
     static func outlineStrokeStyle(_ lineWidths: BoundaryLineWidths) -> StrokeStyle {
         StrokeStyle(lineWidth: lineWidths.prefectureBorder, lineCap: .round, lineJoin: .round)
     }

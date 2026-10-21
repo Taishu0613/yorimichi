@@ -652,6 +652,31 @@ private struct WikipediaImageStrip: View {
     }
 }
 
+/// 区の記録で政令指定都市も初めて訪問済みになったことを、祝福シートの中で伝えるカード。
+/// 区の豆知識とは別に、市そのものの「みどころ」(例: 名古屋市の名古屋城・ひつまぶし)を見せる。
+/// 色は地図の市の外周(`DesignatedCityStyle`)と同じオレンジにして、地図の線と結びつける。
+private struct DesignatedCityFirstVisitCard: View {
+    let city: Municipality
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("\(city.municipalityName) はじめて！", systemImage: "building.columns.fill")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.orange)
+            if !city.famousThingsTrivia.isEmpty {
+                Text(city.famousThingsTrivia)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(.orange.opacity(0.12), in: .rect(cornerRadius: 12))
+        .accessibilityElement(children: .combine)
+    }
+}
+
 /// 初めての都道府県に入ったときだけ、市区町村を記録する前に割り込んで見せる特別感のあるシート。
 /// 背景を水色にするのはMapScreen側の`.presentationBackground`で行い、ここは中身だけを持つ。
 /// 要素を1つずつ間を置いて出す「儀式感」のある演出にして、都道府県という単位の大きさを体験としても伝える。
@@ -884,7 +909,8 @@ struct MunicipalityFirstVisitSheet: View {
         /// 記録前。まだ訪問済みではない現在地に出会った瞬間に、記録を後押しする。
         case invitation(municipality: Municipality, save: () -> Void)
         /// 記録後。保存が完了した結果を祝う。都道府県情報が無い場合(区が特定できない等)はmunicipalityがnilになりうる。
-        case celebration(result: MapVisitResult, municipality: Municipality?)
+        /// designatedCityは、この記録で初めて訪れた政令指定都市(区の記録で市も訪問済みになった)。
+        case celebration(result: MapVisitResult, municipality: Municipality?, designatedCity: Municipality? = nil)
     }
 
     let mode: Mode
@@ -903,7 +929,7 @@ struct MunicipalityFirstVisitSheet: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var isMilestone: Bool {
-        guard case .celebration(let result, _) = mode else { return false }
+        guard case .celebration(let result, _, _) = mode else { return false }
         return result.milestone != nil
     }
     private var tint: Color { isMilestone ? .yellow : .teal }
@@ -918,8 +944,13 @@ struct MunicipalityFirstVisitSheet: View {
     private var municipality: Municipality? {
         switch mode {
         case .invitation(let municipality, _): municipality
-        case .celebration(_, let municipality): municipality
+        case .celebration(_, let municipality, _): municipality
         }
+    }
+
+    private var designatedCity: Municipality? {
+        guard case .celebration(_, _, let designatedCity) = mode else { return nil }
+        return designatedCity
     }
 
     /// 「みどころを見る」は記録後(celebration)だけで見せる。記録前に見せると、まだ自分の街になって
@@ -932,7 +963,7 @@ struct MunicipalityFirstVisitSheet: View {
     private var title: String {
         switch mode {
         case .invitation: "初めての街です！"
-        case .celebration(let result, _): result.title
+        case .celebration(let result, _, _): result.title
         }
     }
 
@@ -940,7 +971,7 @@ struct MunicipalityFirstVisitSheet: View {
         switch mode {
         case .invitation(let municipality, _):
             "\(municipality.municipalityName)は、あなたが初めて訪れた街。図鑑の1ページを増やそう"
-        case .celebration(let result, _):
+        case .celebration(let result, _, _):
             if let milestone = result.milestone {
                 "市区町村の踏破率が\(milestone)%を超えました。この調子で日本を制覇しましょう"
             } else {
@@ -981,6 +1012,10 @@ struct MunicipalityFirstVisitSheet: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+                    .opacity(showsSubtitle ? 1 : 0)
+            }
+            if let designatedCity {
+                DesignatedCityFirstVisitCard(city: designatedCity)
                     .opacity(showsSubtitle ? 1 : 0)
             }
             if !imageURLs.isEmpty {
