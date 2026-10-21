@@ -177,6 +177,7 @@ MapKitはポリゴン1枚ごとに描画を持つため、枚数がそのまま�
   → 最後にカメラが止まった範囲を`MapRegionMemory`（UserDefaults `map.lastRegion`）に保存し、次の起動では現在地が分かるまでその範囲を見せる。初回起動など保存が無いときは従来どおり`.automatic`。
 - 地図を現在地へ寄せるのが、住所の確認（`MKReverseGeocodingRequest`、通信あり）の後だった。
   → 起動時の現在地の取得では、座標が分かった時点で地図を寄せる（`MapViewModel.refresh`の`onLocationResolved`）。市区町村の特定と「現在地の市区町村を確認しています…」の表示はその後も続く。
+  市区町村が分かったら、ヘッダーのページ（全国/市区町村）によらず、市区町村ページで寄せるときと同じ縮尺（市区町村全体が収まる範囲）へ寄せ直す（2026-10）。その間にユーザーが地図を動かした・ピンを選んだ場合は寄せ直さない。
 
 ### 責務とデータフロー
 
@@ -277,3 +278,44 @@ MapKitはポリゴン1枚ごとに描画を持つため、枚数がそのまま�
 - モードは`UserDefaults`の`newMunicipalityAlert.mode`、判定の履歴は市区町村が`newMunicipalityAlert.history`、都道府県が`newMunicipalityAlert.prefectureHistory`（JSON）。永続モデル（SwiftData）は変更しない。
 - 裏で起動し直された場合も位置を受け取れるよう、`WAGhackApp`の初期化で`startIfEnabled()`を呼ぶ（画面が作られるのを待たない）。
 - 判定のロジック・文言・モードの引き継ぎ・お知らせのゲートは`NewMunicipalityAlertPolicyTests`で検証する。実機での電池消費・通知の遅れは未検証。
+
+## 有料機能: 自動で記録（2026-10-21）
+
+ブランチ: `feature/auto-record-premium`。初訪問の通知を出すときに、その場所の市区町村を記録まで済ませる。月額200円のサブスクリプションと買い切り1,200円のどちらかで解放する。
+
+- 「旅の記録」画面の通知の設定の下にある「自動で記録」から購入画面を開く。購入済みならスイッチになる。購入・復元するとスイッチは自動でオンになる。
+- 通知がオフの間は動かない。アプリを閉じている間に通知が届く場面だけで記録する（前面にある間は従来どおり地図画面の誘いシートに任せる）。
+- 都道府県モードでは、初めての都道府県で通知するときに、そのとき居る市区町村を記録する。
+- 位置の精度が500mより粗いときは記録せず、従来の「記録しませんか？」の通知にする（`AutoRecordPolicy.maximumHorizontalAccuracy`）。
+- 飛行機に乗っているらしいときは、通知も記録もせず、通知の判定の履歴も進めない（`FlightDetector`）。この判定は無料の通知にも効く。根拠は次のいずれかで、どれも仮の値。
+  - 端末が測った速度が時速360km以上（新幹線の時速320kmは地上扱い）
+  - 標高4,000m以上（富士山頂3,776mは地上扱い）
+  - 1〜30分の間隔で届いた直前の位置からの速さが時速360km以上
+  - 上の根拠を最後に見てから20分以内（降下中）
+- 位置情報の「常に」許可を求める前の説明（お知らせ・設定の脚注・購入画面・Info.plist）に、電池への負担が小さいことと、位置情報を開発者に送らず記録は端末内にだけ保存することを書く（`LocationUsageAssurance`）。住所の確認でAppleの地図サービスに座標を渡すため、「iPhone内で完結」とは書かない。
+
+### 商品（App Store Connectに登録する）
+
+| 種類 | 商品ID | 価格 | 備考 |
+|---|---|---|---|
+| 自動更新サブスクリプション | `com.wakasugi.yorimichi.premium.monthly` | 月額200円 | グループ「よりみち プレミアム」、期間1か月 |
+| 非消耗型 | `com.wakasugi.yorimichi.premium.lifetime` | 1,200円 | |
+
+ローカルでは`WAGhack/Yorimichi.storekit`を、スキームの Run > Options > StoreKit Configuration に指定すると購入を試せる。
+
+### 責務とデータフロー
+
+`Transaction.currentEntitlements → PremiumStore → (表示) AutoRecordSettingsSection / (判定) NewMunicipalityAlertMonitor → AutoRecordPolicy → MapVisitRecorder`
+
+| ファイル | 責務 |
+|---|---|
+| `Premium/PremiumProduct.swift` | 商品IDと、購入記録から解放するかの判定（値型） |
+| `Premium/PremiumStore.swift` | StoreKit 2の購入記録の読み取り・購入の更新の受け取り・復元。`WAGhackApp`が所有する |
+| `Premium/PremiumPurchaseScreen.swift` | 購入画面（`ProductView`）と購入の復元 |
+| `Premium/AutoRecordSettingsSection.swift` | 「自動で記録」の入口とスイッチ |
+| `NewMunicipalityAlert/AutoRecordPolicy.swift` | 自動記録するかの判定（値型） |
+| `NewMunicipalityAlert/FlightDetector.swift` | 飛行中かの判定（値型） |
+
+- 購入状態の正はStoreKit。`PremiumStore.isUnlocked`は画面用で、記録する直前は`refreshEntitlements()`で確かめ直す。
+- スイッチは`UserDefaults`の`autoRecord.isEnabled`、飛行判定の履歴は`newMunicipalityAlert.flightState`（JSON）。永続モデル（SwiftData）は変更しない。
+- 判定のロジックは`AutoRecordTests`で検証する。購入の流れ・実機での飛行判定は未検証。

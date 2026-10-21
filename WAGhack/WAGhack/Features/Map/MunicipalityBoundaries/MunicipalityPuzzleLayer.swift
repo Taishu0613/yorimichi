@@ -9,7 +9,7 @@ import SwiftUI
 /// 重なりの階層(`mapOverlayLevel`):
 /// - 下(`.aboveRoads`、地名ラベルより下): 市区町村のピースの塗りと細い線、または都道府県の制覇率の塗り。塗っても地名が読める。
 ///   県境・海岸線の線(`MapPolyline`)もこの階層に置く(上の階層に置くと描かれないため。理由は描画箇所のコメント参照)。
-/// - 上(`.aboveLabels`): 現在地の縁取り。線だけなので地名はほぼ隠れない。
+/// - 上(`.aboveLabels`): 訪れた政令指定都市の外周と、現在地の縁取り。線だけなので地名はほぼ隠れない。
 ///
 /// 記録・脈打ちの演出(`emphasis`)は、該当する区域のスタイルを差し替えるだけで描く。ポリゴンを足したり
 /// 消したりしないのは、MapKitがポリゴン1枚ごとに描画を持ち、追加・削除のたびに作り直しが走って重くなるため。
@@ -21,6 +21,10 @@ struct MunicipalityPuzzleLayer: MapContent {
     /// falseのときは、未訪問の市区町村を描かない(広域表示で枚数を抑えるため)。
     let showsUnvisitedMunicipalities: Bool
     let visitedCodes: Set<String>
+    /// 政令指定都市の外周(`MunicipalityPuzzleStore.designatedCityOutlines`)。
+    let designatedCityOutlines: [BoundaryPiece]
+    /// 政令指定都市の訪問状況。訪れた市は外周を縁取る。
+    let designatedCities: DesignatedCityMapState
     /// 現在地の市区町村。「次にはめるピース」として縁取りで目立たせる。
     let currentCode: String?
     /// 都道府県コードごとの塗りの段階。nilでなければ都道府県の制覇率で塗る表示になり、市区町村のピースは描かない。
@@ -44,7 +48,9 @@ struct MunicipalityPuzzleLayer: MapContent {
         }
         ForEach(visibleMunicipalityPieces) { piece in
             let style = MunicipalityPieceStyle(
-                isVisited: visitedCodes.contains(piece.code), lineWidths: lineWidths, emphasis: municipalityLook(for: piece.code)
+                isVisited: visitedCodes.contains(piece.code),
+                lineWidths: lineWidths,
+                emphasis: municipalityLook(for: piece.code)
             )
             BoundaryPieceContent(
                 piece: piece, fill: style.fill, stroke: style.stroke, strokeStyle: style.strokeStyle, level: .aboveRoads
@@ -67,6 +73,16 @@ struct MunicipalityPuzzleLayer: MapContent {
                 stroke: emphasizedOutline?.paint.color ?? PrefectureConquestStyle.outlineStroke,
                 strokeStyle: emphasizedOutline?.strokeStyle(scaledBy: lineWidths.outlineScale)
                     ?? PrefectureConquestStyle.outlineStrokeStyle(lineWidths),
+                level: .aboveLabels
+            )
+        }
+        // 区の線より太い別の色で市の外周を囲み、区の集まりが1つの市であることを示す。現在地の縁取りより先(下)に置く。
+        ForEach(visitedDesignatedCityOutlines) { outline in
+            BoundaryPieceContent(
+                piece: outline,
+                fill: nil,
+                stroke: DesignatedCityStyle.outlineStroke,
+                strokeStyle: DesignatedCityStyle.outlineStrokeStyle(lineWidths),
                 level: .aboveLabels
             )
         }
@@ -121,6 +137,11 @@ struct MunicipalityPuzzleLayer: MapContent {
             let level = prefectureConquestLevels[area.code] ?? .unvisited
             return level != .unvisited
         }
+    }
+
+    private var visitedDesignatedCityOutlines: [BoundaryPiece] {
+        guard prefectureConquestLevels == nil else { return [] }
+        return designatedCityOutlines.filter { designatedCities.visitedKeys.contains($0.code) }
     }
 
     private var currentPieces: [BoundaryPiece] {
@@ -214,6 +235,33 @@ enum PrefectureConquestStyle {
     /// 塗られた都道府県の縁の色。段階によらず一定にし、訪問済み市区町村の線(`MunicipalityPieceStyle`)と揃える。
     static let outlineStroke = Color.teal.opacity(0.9)
     /// 太さは灰色の県境(`PrefectureBorderStyle`)と同じにして、下の灰色がはみ出して見えないようにする。
+    static func outlineStrokeStyle(_ lineWidths: BoundaryLineWidths) -> StrokeStyle {
+        StrokeStyle(lineWidth: lineWidths.prefectureBorder, lineCap: .round, lineJoin: .round)
+    }
+}
+
+/// 政令指定都市の地図上の訪問状況。`MunicipalityPuzzleLayer`が描き分けに使う。
+struct DesignatedCityMapState {
+    /// 区を1つでも訪れた市の`DesignatedCity.key`。
+    let visitedKeys: Set<String>
+
+    static let empty = DesignatedCityMapState(visitedKeys: [])
+
+    init(visitedKeys: Set<String>) {
+        self.visitedKeys = visitedKeys
+    }
+
+    init(_ cities: [DesignatedCityExploration]) {
+        visitedKeys = Set(cities.filter(\.isVisited).map(\.key))
+    }
+}
+
+/// 政令指定都市の見た目。市は外周を水色(.cyan)の線で縁取るだけで、中は塗らない。
+/// 区の塗り(teal)と色相が近いので、市の色で塗ると区と見分けにくい。線だけなら区の塗りの上でも判別できる。
+/// 色だけに頼らないよう、外周は区の線より太い線にしている。
+enum DesignatedCityStyle {
+    static let outlineStroke = Color.cyan
+    /// 県境と同じ太さ。区の線(`municipalityLine`)より太く、現在地の縁取りより細い。
     static func outlineStrokeStyle(_ lineWidths: BoundaryLineWidths) -> StrokeStyle {
         StrokeStyle(lineWidth: lineWidths.prefectureBorder, lineCap: .round, lineJoin: .round)
     }

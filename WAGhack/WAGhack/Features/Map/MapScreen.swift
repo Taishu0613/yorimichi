@@ -78,6 +78,8 @@ struct MapScreen: View {
     /// municipalities/savedPlacesが実際に変わった時だけ計算し直す。ピン選択などのUI操作のたびに
     /// 全市区町村(1,898件)を集計し直すと体感できるラグになるため、bodyでは計算しない。
     @State private var summary = ExplorationSummary(prefectures: [], eligibleCodes: [])
+    /// 地図に描く政令指定都市の訪問状況。summaryと同じ時だけ計算し直す。
+    @State private var designatedCityMapState = DesignatedCityMapState.empty
 
     /// 折りたたみ時のシート高さ。「旅の記録」の1行(MapRecordsSummaryRow)の高さで、現在地の取得中・
     /// 取得失敗の行(MapLocationStatusRow)も同じ1行の形にそろえてあるため、状態によらず1つの値にしている。
@@ -371,6 +373,7 @@ struct MapScreen: View {
                 }
                 // idが変わって走り直す場合は、新しい方の実行に儀式の提示を任せる。
                 guard !Task.isCancelled else { return }
+                focusLaunchMapOnCurrentMunicipality()
                 if !hasFocusedOnLocation {
                     // 許可されなかった・取得に失敗した場合も、儀式を出さないと常駐シートが出ないまま残るため提示する。
                     presentJapanIntroIfNeeded()
@@ -402,6 +405,8 @@ struct MapScreen: View {
                 prefectureAreas: puzzleStore.prefectureAreas,
                 showsUnvisitedMunicipalities: puzzleStore.showsUnvisitedMunicipalities,
                 visitedCodes: visitedMunicipalityCodes,
+                designatedCityOutlines: puzzleStore.designatedCityOutlines,
+                designatedCities: designatedCityMapState,
                 currentCode: viewModel.currentVisit?.municipality.code,
                 prefectureConquestLevels: prefectureConquestLevels,
                 emphasis: areaEffect.emphasis,
@@ -551,26 +556,41 @@ struct MapScreen: View {
         requestCurrentAreaFocus(municipality)
     }
 
+    /// 起動直後の現在地は、ヘッダーのページによらず市区町村ページで寄せる縮尺(市区町村全体が収まる範囲)で見せる。
+    /// 座標が分かった時点の`focusMap(on:)`は住所の確認を待たないための仮の寄せ方で、市区町村が分かったらここで寄せ直す。
+    /// 待つ間にユーザーが地図を動かした・ピンを選んだ場合は、その操作を優先して寄せ直さない。
+    private func focusLaunchMapOnCurrentMunicipality() {
+        guard !cameraPosition.positionedByUser, selectedPlaceID == nil,
+              let municipality = viewModel.currentVisit?.municipality,
+              let location = viewModel.currentLocation
+        else { return }
+        requestAreaFocus(on: municipality, at: location.coordinate, zoomingTo: .municipalities)
+    }
+
     private func requestCurrentAreaFocus(_ municipality: Municipality) {
         guard let location = viewModel.currentLocation else { return }
         requestAreaFocus(on: municipality, at: location.coordinate)
     }
 
     /// 区域全体の範囲を(まだ無ければ)読み込んでから、その区域へ地図を寄せる。
+    /// `zoomPage`は寄せる単位。省略時は表示中のページに合わせる(起動直後だけ市区町村を指定する)。
     /// 読み込みを待つ間に表示の切り替えやピンの選択が変わったら、古い依頼なので寄せない。
-    private func requestAreaFocus(on municipality: Municipality, at coordinate: CLLocationCoordinate2D) {
+    private func requestAreaFocus(
+        on municipality: Municipality, at coordinate: CLLocationCoordinate2D, zoomingTo zoomPage: MapProgressPage? = nil
+    ) {
         focusTask?.cancel()
         let requestedPage = progressPage
+        let focusPage = zoomPage ?? requestedPage
         let requestedSelection = selectedPlaceID
         focusTask = Task {
-            switch requestedPage {
+            switch focusPage {
             case .municipalities:
                 await puzzleStore.prepareFocusRect(forMunicipality: municipality.code, prefectureCode: municipality.prefectureCode)
             case .prefectures:
                 await puzzleStore.prepareFocusRect(forPrefecture: municipality.prefectureCode)
             }
             guard !Task.isCancelled, requestedPage == progressPage, requestedSelection == selectedPlaceID else { return }
-            focusMap(onAreaOf: municipality, at: coordinate)
+            focusMap(onAreaOf: municipality, at: coordinate, page: focusPage)
         }
     }
 
@@ -719,7 +739,13 @@ struct MapScreen: View {
             Group {
                 if let result = viewModel.result {
                     MunicipalityFirstVisitSheet(
-                        mode: .celebration(result: result, municipality: viewModel.currentVisit?.municipality),
+                        mode: .celebration(
+                            result: result,
+                            municipality: viewModel.currentVisit?.municipality,
+                            designatedCity: result.firstDesignatedCityCode.flatMap { code in
+                                municipalities.first { $0.code == code }
+                            }
+                        ),
                         dismiss: { isMunicipalityCelebrationPresented = false },
                         showDetail: {
                             isMunicipalityCelebrationPresented = false
@@ -745,6 +771,7 @@ struct MapScreen: View {
         summary = ExplorationProgressCalculator().summarize(
             models: municipalities, savedPlaces: savedPlaces, visitedPrefectures: visitedPrefectures
         )
+        designatedCityMapState = DesignatedCityMapState(summary.designatedCities)
     }
 
     private func expandedRoutes(for place: SavedPlace) -> [MapSheetRoute] {
@@ -1120,13 +1147,14 @@ struct MapScreen: View {
     }
 
     /// 区域全体(都道府県の表示なら都道府県全体)へ地図を寄せ、移動が終わる予定の時刻を返す。
-    /// 記録する時・現在地ボタン・ピンの選択・表示の切り替えで使う。
+    /// 記録する時・現在地ボタン・ピンの選択・表示の切り替え・起動直後の現在地で使う。
+    /// `page`は寄せる単位。省略時は表示中のページに合わせる。
     /// 区域の形がまだ読み込まれていなければ(今の表示範囲から遠い等)、従来どおり現在地を中心に寄せる。
     @discardableResult
     private func focusMap(
-        onAreaOf municipality: Municipality, at coordinate: CLLocationCoordinate2D
+        onAreaOf municipality: Municipality, at coordinate: CLLocationCoordinate2D, page: MapProgressPage? = nil
     ) -> ContinuousClock.Instant {
-        let areaRect = switch progressPage {
+        let areaRect = switch page ?? progressPage {
         case .municipalities: puzzleStore.focusRect(forMunicipality: municipality.code, containing: coordinate)
         case .prefectures: puzzleStore.focusRect(forPrefecture: municipality.prefectureCode, containing: coordinate)
         }

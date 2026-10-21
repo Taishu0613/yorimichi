@@ -35,6 +35,26 @@ struct PrefectureExplorationScreen: View {
                         .animation(.easeOut(duration: 0.25), value: silhouetteStore?.prefectureMaps[prefectureCode] != nil)
                     }
                 }
+                let cities = prefecture.designatedCities.filter(\.isVisited)
+                if !cities.isEmpty {
+                    Section {
+                        ForEach(cities) { city in
+                            NavigationLink {
+                                MunicipalityDetailScreen(
+                                    municipality: municipalities.first { $0.code == city.code },
+                                    fallbackName: city.name,
+                                    designatedCity: city
+                                )
+                            } label: {
+                                DesignatedCityExplorationRow(city: city)
+                            }
+                        }
+                    } header: {
+                        Text("政令指定都市")
+                    } footer: {
+                        Text("区を1つ訪れると市も訪問済みになり、地図で市の外周が水色の線で囲まれます。")
+                    }
+                }
                 Section {
                     let entries = prefecture.visitedMunicipalities
                     if entries.isEmpty {
@@ -74,6 +94,34 @@ struct PrefectureExplorationScreen: View {
         } message: {
             Text(store.deletionErrorMessage ?? "不明なエラーが発生しました。")
         }
+    }
+}
+
+/// 政令指定都市の1行。色は地図の市の外周(`DesignatedCityStyle`)と同じ水色にそろえる。
+private struct DesignatedCityExplorationRow: View {
+    let city: DesignatedCityExploration
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: city.isComplete ? "crown.fill" : "building.columns.fill")
+                .foregroundStyle(.cyan)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(city.name).font(.headline)
+                    Spacer()
+                    Text("\(city.progress.visited) / \(city.progress.total) 区")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                ProgressView(value: city.progress.fraction)
+                    .tint(.cyan)
+                    .accessibilityLabel("区の踏破率")
+                    .accessibilityValue(city.progress.percentageText)
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
 

@@ -43,8 +43,12 @@ struct SavedPlacesScreen: View {
                     "\(summary.progress.visited) / \(summary.progress.total) 市区町村を訪問",
                     systemImage: "building.2"
                 )
+                Label(
+                    "\(summary.designatedCityProgress.visited) / \(summary.designatedCityProgress.total) 政令指定都市を訪問",
+                    systemImage: "building.columns"
+                )
             } footer: {
-                Text("都道府県を記録するか、1つでも市区町村を訪れると制覇としてカウントします。政令指定都市は区単位で数えます。")
+                Text("都道府県を記録するか、1つでも市区町村を訪れると制覇としてカウントします。政令指定都市は区単位で数え、区を1つ訪れると市も訪問済みになります。")
             }
 
             if summary.visitedPrefectures.isEmpty {
@@ -84,6 +88,7 @@ struct SavedPlacesScreen: View {
             }
 
             NewMunicipalityAlertSettingsSection()
+            AutoRecordSettingsSection()
 
             // マップの市区町村ポリゴンの出典(CC BY 4.0の表示義務)。地図の上は操作部品で埋まっているため、ここに置く。
             Section {
