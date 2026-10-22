@@ -200,7 +200,7 @@ struct MapPinVisibilityButton: View {
     }
 }
 
-/// 折りたたみシートの「現在地」カード。初めての場所を記録する入口は`MunicipalityFirstVisitSheet`
+/// 地図の下に浮かせるフッター。初めての場所を記録する入口は`MunicipalityFirstVisitSheet`
 /// (誘いシート)だけに一本化しているため、ここでは常に旅の記録そのものの見出しを主役にする。
 /// 未訪問時にこのカード自身から記録する手段は持たない(誘いシートが唯一の入口)。
 /// みどころはここでは出さない(図鑑・詳細で見る)。
@@ -217,11 +217,26 @@ struct MapCurrentPlaceCard: View {
     let showRecords: () -> Void
     let showSettings: () -> Void
 
+    /// バーと設定ボタンの高さ。iOS 26のタブバーと同じくらいの高さにする(未計測の目安)。
+    /// 文字を大きくした時はバーだけが伸び、設定ボタンは円のまま保つ。
+    static let barHeight: CGFloat = 64
+    /// バーと設定ボタンの間隔。これより近づくとガラス同士が溶け合って1つの塊に見えるため、離して置く。
+    private static let spacing: CGFloat = 12
+
     var body: some View {
-        // Apple Musicのタブバー(主役のタブ+右端に離して置いた検索ボタン)にならい、
-        // 主役の「旅の記録」の行と、右端の設定ボタンを分けて並べる。設定ボタンは現在地の状態によらず常に出す。
-        HStack(spacing: 12) {
-            Group {
+        // Apple Musicのタブバー(主役のタブのバー+右端に離して置いた丸い検索ボタン)にならい、
+        // 主役の「旅の記録」のバーと、右端の設定ボタンを別々のガラスにする。設定ボタンは現在地の状態によらず常に出す。
+        // GlassEffectContainerで包むのは、近接したガラスを1回でまとめて描かせ、互いの映り込みを自然にするため。
+        GlassEffectContainer(spacing: Self.spacing) {
+            HStack(spacing: Self.spacing) {
+                recordsBar
+                MapSettingsButton(action: showSettings)
+            }
+        }
+    }
+
+    private var recordsBar: some View {
+        Group {
                 if let statusText {
                     MapLocationStatusRow(status: .locating(statusText), retry: refresh)
                 } else if let errorMessage {
@@ -235,30 +250,31 @@ struct MapCurrentPlaceCard: View {
                         onExpand: showRecords
                     )
                 }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            MapSettingsButton(action: showSettings)
         }
+        .padding(.leading, 18)
+        .padding(.trailing, 10)
+        .frame(maxWidth: .infinity, minHeight: Self.barHeight, alignment: .leading)
+        .glassEffect(.regular.interactive(), in: .capsule)
     }
 }
 
-/// 常駐シート右端の、設定画面を開く丸いボタン。
+/// フッター右端の、設定画面を開く丸いボタン。旅の記録のバーとは別のガラスにする。
 private struct MapSettingsButton: View {
     let action: () -> Void
 
     var body: some View {
         Button("設定", systemImage: "gearshape.fill", action: action)
             .labelStyle(.iconOnly)
-            // 隣の再記録ボタン(MapRerecordButton)と同じ文字の大きさにして、ボタンの高さをそろえる。
-            .font(.subheadline.weight(.semibold))
-            .buttonStyle(.glass)
-            .buttonBorderShape(.circle)
+            .font(.title2)
+            .foregroundStyle(.primary)
+            .frame(width: MapCurrentPlaceCard.barHeight, height: MapCurrentPlaceCard.barHeight)
+            .contentShape(Circle())
+            .glassEffect(.regular.interactive(), in: .circle)
     }
 }
 
 /// 現在地の取得中・取得失敗を、「旅の記録」の1行(`MapRecordsSummaryRow`)と同じ形(アイコン+見出し+1行の補足
-/// +右端のボタン)で見せる。折りたたみシートの高さを状態によらず一定に保ち、切り替わりで地図が揺れないようにするため、
+/// +右端のボタン)で見せる。フッターの高さを状態によらず一定に保ち、切り替わりで地図が揺れないようにするため、
 /// 行を増やす表示はしない。1行に収まらないエラー文は、補足の部分をタップするとポップオーバーで全文を読める。
 private struct MapLocationStatusRow: View {
     enum Status {
@@ -306,8 +322,10 @@ private struct MapLocationStatusRow: View {
 
                 // 見た目は再記録ボタン(MapRerecordButton)とそろえる。
                 Button("再確認", systemImage: "arrow.clockwise", action: retry)
-                    .font(.subheadline.weight(.semibold))
-                    .buttonStyle(.glass)
+                    .font(.footnote.weight(.semibold))
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.small)
                     .accessibilityLabel("現在地を再確認")
             }
         }
@@ -341,11 +359,11 @@ private struct MapLocationStatusRow: View {
     }
 }
 
-/// 折りたたまれた旅の記録そのものを、ミニプレイヤーのような1行で見せる。タップでシートを旅の記録まで引き上げる。
+/// 折りたたまれた旅の記録そのものを、ミニプレイヤーのような1行で見せる。タップで旅の記録のシートを開く。
 ///
 /// 踏破数・踏破率は地図上の`MapProgressHeader`が常に出しているため、ここでは繰り返さず、
-/// ヘッダーに無い「最後にどこを記録したか」だけを添える。iOS 26のシートはそれ自体がガラスの面なので、
-/// 内側に背景付きのカードを重ねず、シートの面に直接置く(開ける合図もシートのつまみに任せる)。
+/// ヘッダーに無い「最後にどこを記録したか」だけを添える。ガラスのバー(`MapCurrentPlaceCard`)の面に直接置き、
+/// 内側に背景付きのカードを重ねない。
 /// 訪問済みの場所でだけ「再記録」を右端に添える(未訪問時の記録は誘いシートの専任なので、ここには出さない)。
 private struct MapRecordsSummaryRow: View {
     let latestPlace: SavedPlace?
@@ -364,6 +382,8 @@ private struct MapRecordsSummaryRow: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("旅の記録")
                             .font(.headline)
+                            // 隣の再記録ボタンに押されても見出しは折り返さない(省略するのは下の「最近:」の行)。
+                            .fixedSize()
                         latestPlaceText
                             .font(.footnote)
                             .foregroundStyle(.secondary)
@@ -384,7 +404,7 @@ private struct MapRecordsSummaryRow: View {
     }
 
     /// 相対日時(「昨日」「3日前」など)は時間の経過では自動更新されず、画面が再描画された時点の値になる。
-    /// 常駐シートは記録・現在地更新のたびに再描画されるため、この粒度(日単位)なら実用上ずれは目立たない。
+    /// フッターは記録・現在地更新のたびに再描画されるため、この粒度(日単位)なら実用上ずれは目立たない。
     @ViewBuilder
     private var latestPlaceText: some View {
         if let latestPlace {
@@ -417,7 +437,7 @@ enum MapRerecordButtonPhase: CaseIterable {
     }
 }
 
-/// 常駐シートの「再記録」ボタン。保存中・完了後をこのボタン自身の状態遷移(再記録→記録中→更新済み→再記録)で
+/// フッターの「再記録」ボタン。保存中・完了後をこのボタン自身の状態遷移(再記録→記録中→更新済み→再記録)で
 /// 見せることで、行を足してシートの高さを変えずに済ませる。
 private struct MapRerecordButton: View {
     let phase: MapRerecordButtonPhase
@@ -462,8 +482,13 @@ private struct MapRerecordButton: View {
                 }
             }
         }
-        .font(.subheadline.weight(.semibold))
-        .buttonStyle(.glass)
+        .font(.footnote.weight(.semibold))
+        // フッターのバー自体がガラスなので、ガラスの上にガラスを重ねず、塗りのボタンにする。
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
+        .controlSize(.small)
+        // フッターのバーは設定ボタンの分だけ幅が狭いため、文言を折り返さず、左の「最近:」の方を省略させる。
+        .fixedSize()
         // 記録中は保存が重複しないよう、更新済みの間は結果を読み取れるよう、押せなくする。
         .disabled(phase != .idle)
         // phaseは親の様々な状態変化(ViewModelの保存完了など)から計算されるため、変化の出どころに
