@@ -1,6 +1,6 @@
 import Foundation
 
-/// 何が「初めて」になったときに知らせるか。ユーザーが「旅の記録」画面で選ぶ。
+/// 何が「初めて」になったときに知らせるか。ユーザーが「設定」画面で選ぶ。
 /// `UserDefaults`に保存するためString型のrawValueを持つ。rawValueを変えると保存済みの選択が失われるので変えないこと。
 enum NewMunicipalityAlertMode: String, CaseIterable, Identifiable {
     case off

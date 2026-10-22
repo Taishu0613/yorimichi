@@ -59,6 +59,8 @@ struct MapScreen: View {
     @State private var isPrefectureIntroPresented = false
     @State private var isMunicipalityInvitationPresented = false
     @State private var isMunicipalityCelebrationPresented = false
+    /// フッター右端の歯車から開く設定画面。開いている間は儀式・誘いのシートを出さず、閉じた時に回収する。
+    @State private var isSettingsPresented = false
     /// 都道府県・市区町村どちらの初訪問儀式よりも先に実行したい処理を一時的に預かる。
     /// 日本の儀式を確定した直後に、元々起ころうとしていた処理(儀式の提示)をやり直すために使う。
     @State private var pendingAfterJapanIntro: (() -> Void)?
@@ -695,13 +697,22 @@ struct MapScreen: View {
             showRecords: {
                 sheetPath = []
                 sheetDetent = .large
-            }
+            },
+            showSettings: { isSettingsPresented = true }
         )
         .padding(.horizontal, 20)
         .padding(.top, 8)
         .padding(.bottom, 2)
         // 既にシートを表示中なので、同じ画面(mapLayer側)に付けると2枚目の提示が無視される。
         // 表示中のシートの中身側に付けて、その上に重ねて出す。
+        .sheet(isPresented: $isSettingsPresented, onDismiss: {
+            // 設定を開いている間は儀式・誘いのシートの表示を見送っているため、閉じた直後に改めて提示し直す
+            // (シートを折りたたんだ時の`handleExpansionChange`と同じ回収)。
+            handlePrefectureVisitChange()
+            handleMunicipalityVisitChange()
+        }) {
+            SettingsScreen()
+        }
         .sheet(isPresented: $isPrefectureIntroPresented) {
             PrefectureFirstVisitSheet(
                 prefectureName: viewModel.currentVisit?.municipality.prefectureName ?? "",
@@ -827,9 +838,9 @@ struct MapScreen: View {
     }
 
     /// 現在地が初めての都道府県に変わったら、記録ボタンを待たずに真っ先にこのシートを見せる。
-    /// ピン選択中や旅の記録を広げている最中は、そちらの表示を優先して割り込まない。
+    /// ピン選択中や旅の記録を広げている最中、設定を開いている最中は、そちらの表示を優先して割り込まない。
     private func handlePrefectureVisitChange() {
-        guard !isSheetExpanded, selectedPlace == nil, isFirstPrefectureVisit else { return }
+        guard !isSheetExpanded, !isSettingsPresented, selectedPlace == nil, isFirstPrefectureVisit else { return }
         performAfterJapanIntro { presentPrefectureIntro() }
     }
 
@@ -844,7 +855,8 @@ struct MapScreen: View {
     ///   先に地図の縁取りの脈打ちで見せ、終わってから誘う。脈打ちを見送った場合はすぐに戻るので、従来どおりすぐに誘う。
     ///   シートを折りたたんだ時の回収(handleExpansionChange)では脈打たず、すぐに誘う。
     private func handleMunicipalityVisitChange(pulsesFirst: Bool = false) {
-        guard !isSheetExpanded, selectedPlace == nil, let code = viewModel.currentVisit?.municipality.code,
+        guard !isSheetExpanded, !isSettingsPresented, selectedPlace == nil,
+              let code = viewModel.currentVisit?.municipality.code,
               !isCurrentPlaceVisited, !isFirstPrefectureVisit
         else { return }
         guard pulsesFirst else {

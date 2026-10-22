@@ -215,24 +215,45 @@ struct MapCurrentPlaceCard: View {
     let save: () -> Void
     let refresh: () -> Void
     let showRecords: () -> Void
+    let showSettings: () -> Void
 
     var body: some View {
-        Group {
-            if let statusText {
-                MapLocationStatusRow(status: .locating(statusText), retry: refresh)
-            } else if let errorMessage {
-                MapLocationStatusRow(status: .failed(errorMessage), retry: refresh)
-            } else {
-                MapRecordsSummaryRow(
-                    latestPlace: latestPlace,
-                    isVisited: isVisited,
-                    recordButtonPhase: recordButtonPhase,
-                    onRecord: save,
-                    onExpand: showRecords
-                )
+        // Apple Musicのタブバー(主役のタブ+右端に離して置いた検索ボタン)にならい、
+        // 主役の「旅の記録」の行と、右端の設定ボタンを分けて並べる。設定ボタンは現在地の状態によらず常に出す。
+        HStack(spacing: 12) {
+            Group {
+                if let statusText {
+                    MapLocationStatusRow(status: .locating(statusText), retry: refresh)
+                } else if let errorMessage {
+                    MapLocationStatusRow(status: .failed(errorMessage), retry: refresh)
+                } else {
+                    MapRecordsSummaryRow(
+                        latestPlace: latestPlace,
+                        isVisited: isVisited,
+                        recordButtonPhase: recordButtonPhase,
+                        onRecord: save,
+                        onExpand: showRecords
+                    )
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            MapSettingsButton(action: showSettings)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// 常駐シート右端の、設定画面を開く丸いボタン。
+private struct MapSettingsButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button("設定", systemImage: "gearshape.fill", action: action)
+            .labelStyle(.iconOnly)
+            // 隣の再記録ボタン(MapRerecordButton)と同じ文字の大きさにして、ボタンの高さをそろえる。
+            .font(.subheadline.weight(.semibold))
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
     }
 }
 
