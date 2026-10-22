@@ -7,12 +7,13 @@ import SwiftUI
 /// 埋もれていたため、Apple Musicのタブバーの右端の検索ボタンのように、主役(旅の記録)と分けて置く。
 struct SettingsScreen: View {
     @Environment(\.dismiss) private var dismiss
+    @State private var isAutoRecordPurchasePresented = false
 
     var body: some View {
         NavigationStack {
             List {
                 NewMunicipalityAlertSettingsSection()
-                AutoRecordSettingsSection()
+                AutoRecordSettingsSection(isPurchasePresented: $isAutoRecordPurchasePresented)
 
                 // マップの市区町村ポリゴンの出典(CC BY 4.0の表示義務)。地図の上は操作部品で埋まっているため、ここに置く。
                 Section {
@@ -21,6 +22,7 @@ struct SettingsScreen: View {
                     Text("地図の境界データ")
                 }
             }
+            .autoRecordPurchaseSheet(isPresented: $isAutoRecordPurchasePresented)
             .navigationTitle("設定")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
