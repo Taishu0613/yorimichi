@@ -50,10 +50,13 @@ struct MapScreen: View {
     /// ヘッダー(進捗カード+現在地バッジ/戻るボタンの行)の実測高さ。MapKit標準のコンパス/スケール表示が
     /// ここに被らないよう、Mapのセーフエリアをこの分だけ広げる。
     @State private var headerOverlayHeight: CGFloat = 0
-    @State private var isSheetPresented = false
-    @State private var sheetDetent: PresentationDetent = .height(Self.compactSheetHeight)
-    /// シートが中段以上に広がっているか。折りたたみ中は現在地カード、広げると旅の記録のスタックに切り替わる。
+    @State private var sheetDetent: PresentationDetent = .large
+    /// 旅の記録のシートを開いているか。閉じている間は地図の下にフッター(旅の記録のバー+設定ボタン)だけを浮かせる。
+    /// 以前はシートを常に出したまま1行の高さに折りたたんでいたが、シートは1枚のガラスの面にしかならず、
+    /// Apple Musicのタブバーのように旅の記録と設定を別々のガラスに分けられないため、閉じたときはフッターに任せる。
     @State private var isSheetExpanded = false
+    /// フッターの実測高さ。地図のセーフエリアをこの分だけ空け、法的表示とカメラの中心をフッターの上に収める。
+    @State private var footerHeight: CGFloat = MapCurrentPlaceCard.barHeight
     @State private var sheetPath: [MapSheetRoute] = []
     @State private var isJapanIntroPresented = false
     @State private var isPrefectureIntroPresented = false
@@ -86,12 +89,12 @@ struct MapScreen: View {
     /// 地図に描く政令指定都市の訪問状況。summaryと同じ時だけ計算し直す。
     @State private var designatedCityMapState = DesignatedCityMapState.empty
 
-    /// 折りたたみ時のシート高さ。「旅の記録」の1行(MapRecordsSummaryRow)の高さで、現在地の取得中・
-    /// 取得失敗の行(MapLocationStatusRow)も同じ1行の形にそろえてあるため、状態によらず1つの値にしている。
-    /// 状態が切り替わるたびにシートが伸び縮みして地図が揺れないようにするため、行数を増やす表示はここに置かない。
+    /// フッターと画面下端(セーフエリア)の間の余白。
+    /// フッターは「旅の記録」の1行(MapRecordsSummaryRow)の高さで、現在地の取得中・取得失敗の行
+    /// (MapLocationStatusRow)も同じ1行の形にそろえてある。状態が切り替わるたびにフッターが伸び縮みして
+    /// 地図が揺れないようにするため、行数を増やす表示はここに置かない。
     /// 再記録の保存中・完了後もボタンの見た目が変わるだけで行は増やさない(`MapViewModel.Operation.statusText`参照)。
-    /// 地図を最大限見せる最小の状態も兼ねるため、これより小さく畳む段階は持たない。
-    private static let compactSheetHeight: CGFloat = 76
+    private static let footerBottomPadding: CGFloat = 4
 
     /// 地図を目的地へ寄せるカメラアニメーションの長さ。再記録の吹き出しは、この移動が終わってから出す。
     private static let focusAnimationDuration: TimeInterval = 0.35
@@ -229,23 +232,27 @@ struct MapScreen: View {
         selectedPlace != nil || !sheetPath.isEmpty
     }
 
-    /// 詳細表示中だけ中段を持つ。未選択時は、折りたたみ(旅の記録の1行)と全画面の2段だけにする。
+    /// 詳細表示中だけ中段を持つ。旅の記録だけを開いたときは全画面の1段にする。
     private var sheetDetents: Set<PresentationDetent> {
-        isShowingDetailRoute
-            ? [.height(Self.compactSheetHeight), .medium, .large]
-            : [.height(Self.compactSheetHeight), .large]
+        isShowingDetailRoute ? [.medium, .large] : [.large]
     }
 
-    private var backgroundInteractionDetent: PresentationDetent {
-        isShowingDetailRoute ? .medium : .height(Self.compactSheetHeight)
+    /// 詳細を中段で見ている間は、シートの上に見えている地図も触れるようにする。
+    private var backgroundInteraction: PresentationBackgroundInteraction {
+        isShowingDetailRoute ? .enabled(upThrough: .medium) : .disabled
     }
 
-    /// シートに隠れる分。詳細表示中は中段まで上がるので地図の半分を空ける。
-    /// 常駐シートを出していない間(「日本」の儀式が済むまで)は地図を全面に使う。
+    /// フッターを出してよいか。「日本」の儀式が済むまでは出さない(記録の入口は儀式に任せる)。
+    private var isFooterVisible: Bool {
+        isActive && hasRecordedJapan
+    }
+
+    /// シート・フッターに隠れる分。詳細表示中は中段まで上がるので地図の半分を空ける。
+    /// フッターを出していない間(「日本」の儀式が済むまで)は地図を全面に使う。
     private var mapBottomInset: CGFloat {
-        guard isSheetPresented else { return 0 }
+        guard isFooterVisible else { return 0 }
         if isShowingDetailRoute { return mapHeight / 2 }
-        return Self.compactSheetHeight
+        return footerHeight + Self.footerBottomPadding
     }
 
     /// 現在地の区域の脈打ちを止めるべき状態か。変わるたびに演出側へ伝え、脈打ちの途中なら止めさせる。
@@ -299,12 +306,17 @@ struct MapScreen: View {
             .sensoryFeedback(.error, trigger: viewModel.errorFeedback)
             .sensoryFeedback(.selection, trigger: selectedPlaceID) { _, newValue in newValue != nil }
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: viewModel.successFeedback)
-            .sheet(isPresented: $isSheetPresented) {
+            .overlay(alignment: .bottom) {
+                if isFooterVisible {
+                    footer
+                        .transition(.opacity)
+                }
+            }
+            .animation(.easeOut(duration: 0.25), value: isFooterVisible)
+            .sheet(isPresented: $isSheetExpanded) {
                 sheetContent()
             }
-            // 「日本」の儀式だけは常駐シートより先に出るため、常駐シートの内側ではなくここに付ける。
-            // 内側に付けると、儀式を見せるためだけに中身のない常駐シートを先に出す必要が生まれ、
-            // それが「何も書かれていない空のシート」として見えてしまう。
+            // 「日本」の儀式だけはフッターより先に出るため、フッターではなくここに付ける。
             .sheet(isPresented: $isJapanIntroPresented) {
                 JapanFirstVisitSheet(confirm: confirmJapanIntro)
                     // 実測して追従させると、表示アニメーション中の高さ補正と画像到着時の伸長でシートが
@@ -315,12 +327,6 @@ struct MapScreen: View {
                     .interactiveDismissDisabled()
             }
             .onChange(of: selectedPlaceID) { _, _ in handleSelectionChange() }
-            .onChange(of: isActive, initial: true) { _, isActive in
-                // 「日本」の儀式が済むまでは常駐シート自体を出さない。儀式より先に出すと、
-                // 中身が空のままのシートだけが画面下に残ってしまう。
-                isSheetPresented = isActive && hasRecordedJapan
-            }
-            .onChange(of: sheetDetent) { _, detent in handleDetentChange(detent) }
             .onChange(of: isSheetExpanded) { _, isExpanded in handleExpansionChange(isExpanded) }
             .onChange(of: summaryInputCounts, initial: true) { _, _ in refreshSummary() }
             .onChange(of: viewModel.currentVisit?.municipality.prefectureCode) { _, _ in
@@ -380,7 +386,7 @@ struct MapScreen: View {
                 guard !Task.isCancelled else { return }
                 focusLaunchMapOnCurrentMunicipality()
                 if !hasFocusedOnLocation {
-                    // 許可されなかった・取得に失敗した場合も、儀式を出さないと常駐シートが出ないまま残るため提示する。
+                    // 許可されなかった・取得に失敗した場合も、儀式を出さないとフッターが出ないまま残るため提示する。
                     presentJapanIntroIfNeeded()
                 }
             }
@@ -547,10 +553,10 @@ struct MapScreen: View {
             }
             // 展開済みかどうかに関わらず、ここでpathを確定させる(展開側では計算し直さない)。
             sheetPath = expandedRoutes(for: selectedPlace)
-            sheetDetent = .medium
+            presentSheet(at: .medium)
         } else if isSheetExpanded {
-            // ピン以外の場所をタップして選択が外れたら、折りたたんで現在地カードへ戻す。
-            sheetDetent = .height(Self.compactSheetHeight)
+            // ピン以外の場所をタップして選択が外れたら、シートを閉じてフッターへ戻す。
+            isSheetExpanded = false
         }
     }
 
@@ -608,14 +614,14 @@ struct MapScreen: View {
     /// 選択はシートを折りたたんだ時に`handleExpansionChange`で解除される。
     private func showPrefectureProgress(_ prefecture: PrefectureExploration) {
         sheetPath = [.prefecture(code: prefecture.code, name: prefecture.name)]
-        sheetDetent = .large
+        presentSheet(at: .large)
     }
 
     /// ヘッダーの全国ページをタップしたら、旅の記録(都道府県の踏破率)そのものを開く。
     /// ピンの選択を解除しない理由は`showPrefectureProgress`と同じ。
     private func showNationwideProgress() {
         sheetPath = []
-        sheetDetent = .large
+        presentSheet(at: .large)
     }
 
     /// 市区町村詳細を、都道府県一覧(旅の記録)のナビゲーション階層に乗せて開く。現在地バッジ・
@@ -623,16 +629,34 @@ struct MapScreen: View {
     /// 旅の記録)に合流させ、その階層をそのまま遡って戻れるようにする(孤立した画面にしない)。
     private func showMunicipalityDetail(_ municipality: Municipality, detent: PresentationDetent) {
         selectedPlaceID = nil
-        sheetPath = [
+        sheetPath = municipalityDetailRoutes(municipality)
+        presentSheet(at: detent)
+    }
+
+    /// 儀式・誘いのシートの「みどころを見る」。そのシートを閉じるアニメーションの最中に旅の記録のシートを
+    /// 出すと提示が重なって無視されるため、一呼吸置いてから開く。pathは先に積む。お祝いシートの
+    /// onDismissが「みどころへ進んだか」をpathで判定するため、閉じる前に確定させておく必要がある。
+    private func showMunicipalityDetailAfterCeremony(_ municipality: Municipality) {
+        selectedPlaceID = nil
+        sheetPath = municipalityDetailRoutes(municipality)
+        Task {
+            try? await Task.sleep(for: .milliseconds(350))
+            presentSheet(at: .large)
+        }
+    }
+
+    private func municipalityDetailRoutes(_ municipality: Municipality) -> [MapSheetRoute] {
+        [
             .prefecture(code: municipality.prefectureCode, name: municipality.prefectureName),
             .currentMunicipalityDetail(municipality),
         ]
-        sheetDetent = detent
     }
 
-    private func handleDetentChange(_ detent: PresentationDetent) {
-        let expandedDetents: [PresentationDetent] = [.medium, .large]
-        isSheetExpanded = expandedDetents.contains(detent)
+    /// 旅の記録のシートを指定の高さで開く。既に開いていれば高さだけ変える。
+    /// pathは呼び出し側が先に確定させること(高さの候補`sheetDetents`がpathで決まるため)。
+    private func presentSheet(at detent: PresentationDetent) {
+        sheetDetent = detent
+        isSheetExpanded = true
     }
 
     /// pathは常に呼び出し側(ピン選択・現在地バッジ・旅の記録リンク)が展開前に確定させるので、
@@ -646,24 +670,18 @@ struct MapScreen: View {
         sheetPath = []
         selectedPlaceID = nil
         // ピン選択中・旅の記録展開中(「みどころを見る」からの遷移含む)は儀式シートの表示を
-        // 見送っているため、現在地カードに戻った直後に改めて提示し直す。誘いシートを記録の
+        // 見送っているため、フッターに戻った直後に改めて提示し直す。誘いシートを記録の
         // 唯一の入口にするには、見送った分をここで必ず回収する必要がある。
         handlePrefectureVisitChange()
         handleMunicipalityVisitChange()
     }
 
+    /// 下へスワイプして閉じると`isSheetExpanded`がfalseになり、`handleExpansionChange`で後片付けする。
     private func sheetContent() -> some View {
-        Group {
-            if isSheetExpanded {
-                expandedSheetContent
-            } else {
-                compactSheetContent
-            }
-        }
-        .presentationDetents(sheetDetents, selection: $sheetDetent)
-        .presentationBackgroundInteraction(.enabled(upThrough: backgroundInteractionDetent))
-        .presentationDragIndicator(.visible)
-        .interactiveDismissDisabled()
+        expandedSheetContent
+            .presentationDetents(sheetDetents, selection: $sheetDetent)
+            .presentationBackgroundInteraction(backgroundInteraction)
+            .presentationDragIndicator(.visible)
     }
 
     private var expandedSheetContent: some View {
@@ -683,7 +701,7 @@ struct MapScreen: View {
         .environment(silhouetteStore)
     }
 
-    private var compactSheetContent: some View {
+    private var footer: some View {
         MapCurrentPlaceCard(
             // 記録中・更新済みの間は、currentVisitの差し替えや@Queryへの反映のタイミングに左右されず
             // ボタン自体を残し、押したボタンの状態遷移を最後まで見届けられるようにする。
@@ -696,15 +714,19 @@ struct MapScreen: View {
             refresh: refreshLocation,
             showRecords: {
                 sheetPath = []
-                sheetDetent = .large
+                presentSheet(at: .large)
             },
             showSettings: { isSettingsPresented = true }
         )
-        .padding(.horizontal, 20)
-        .padding(.top, 8)
-        .padding(.bottom, 2)
-        // 既にシートを表示中なので、同じ画面(mapLayer側)に付けると2枚目の提示が無視される。
-        // 表示中のシートの中身側に付けて、その上に重ねて出す。
+        .padding(.horizontal, 16)
+        .padding(.bottom, Self.footerBottomPadding)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.height
+        } action: { height in
+            footerHeight = height
+        }
+        // 儀式・誘い・設定のシートは、フッターを出している間(「日本」の儀式の後)にしか出ないため、フッターに付ける。
+        // 旅の記録のシートを開いている間は出さない(`handlePrefectureVisitChange`などの判定)ので、提示が重ならない。
         .sheet(isPresented: $isSettingsPresented, onDismiss: {
             // 設定を開いている間は儀式・誘いのシートの表示を見送っているため、閉じた直後に改めて提示し直す
             // (シートを折りたたんだ時の`handleExpansionChange`と同じ回収)。
@@ -737,7 +759,7 @@ struct MapScreen: View {
                         dismiss: { isMunicipalityInvitationPresented = false },
                         showDetail: {
                             isMunicipalityInvitationPresented = false
-                            showMunicipalityDetail(municipality, detent: .large)
+                            showMunicipalityDetailAfterCeremony(municipality)
                         }
                     )
                 }
@@ -770,7 +792,7 @@ struct MapScreen: View {
                         showDetail: {
                             isMunicipalityCelebrationPresented = false
                             if let municipality = viewModel.currentVisit?.municipality {
-                                showMunicipalityDetail(municipality, detent: .large)
+                                showMunicipalityDetailAfterCeremony(municipality)
                             }
                         }
                     )
@@ -830,8 +852,8 @@ struct MapScreen: View {
         }
     }
 
-    /// 常駐シートの「再記録」。`handleSaveTap`の前処理は再記録では常に素通りになるため挟まない。
-    /// 常駐シートは「日本」の儀式を済ませた後にしか出ない(performAfterJapanIntroは即実行になる)うえ、
+    /// フッターの「再記録」。`handleSaveTap`の前処理は再記録では常に素通りになるため挟まない。
+    /// フッターは「日本」の儀式を済ませた後にしか出ない(performAfterJapanIntroは即実行になる)うえ、
     /// このボタンは訪問済みの場所でしか出ず、その都道府県も必ず記録済み(isFirstPrefectureVisitがfalse)なため。
     private func handleRerecordTap() {
         saveVisit(trigger: .rerecordButton)
@@ -965,7 +987,7 @@ struct MapScreen: View {
         pendingAfterJapanIntro = action
     }
 
-    /// 日本の儀式を確定したら、フラグを立てて常駐シートを開き、割り込む前に本来起ころうとしていた処理を続行する。
+    /// 日本の儀式を確定したら、フラグを立ててフッターを出し、割り込む前に本来起ころうとしていた処理を続行する。
     /// 割り込んだ処理が無く、現在地もまだ解決できていなければ(取得の失敗など)、ここで取り直す。
     private func confirmJapanIntro() {
         hasRecordedJapan = true
@@ -973,11 +995,8 @@ struct MapScreen: View {
         let action = pendingAfterJapanIntro
         pendingAfterJapanIntro = nil
         Task {
-            // 直前のシートのdismissアニメーションと重ならないよう、一呼吸置いてから常駐シートを出す。
-            try? await Task.sleep(for: .milliseconds(350))
-            isSheetPresented = true
-            // 次の儀式シートは常駐シートの内側に付いているため、その提示が終わってから出す。
-            // 現在地の解決も、始めると常駐シートの高さが変わるため同じく提示を待つ。
+            // フッターはフラグを立てた時点で現れる(isFooterVisible)。次の儀式シートは、直前の「日本」の
+            // シートのdismissアニメーションと重ならないよう、一呼吸置いてから出す。
             try? await Task.sleep(for: .milliseconds(350))
             if let action {
                 action()
