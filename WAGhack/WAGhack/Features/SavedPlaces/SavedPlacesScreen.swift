@@ -19,76 +19,89 @@ struct SavedPlacesScreen: View {
         let excludedPlaces = store.excludedPlaces(savedPlaces, summary: summary)
 
         // マップのシート内NavigationStackにpushされる前提なので、自前のNavigationStackは持たない。
-        List {
-            Section {
-                HStack(alignment: .top, spacing: 12) {
-                    ExplorationProgressCard(
-                        title: "日本の訪れた都道府県",
-                        progress: summary.prefectureProgress,
-                        unit: "都道府県",
-                        emphasizesCount: true
-                    )
-                    // 読み込み前も枠は確保し、地図が現れたときに文字の折り返しが変わって揺れないようにする。
-                    Group {
-                        if let japanMap = silhouetteStore?.japanMap {
-                            SilhouetteMapView(map: japanMap, visitedCodes: Set(summary.visitedPrefectures.map(\.code)))
-                                .transition(.opacity)
+        // 市区町村詳細と同じPOPなカードを並べるため、ListではなくScrollViewにする。
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(alignment: .top, spacing: 12) {
+                        ExplorationProgressCard(
+                            title: "日本の訪れた都道府県",
+                            progress: summary.prefectureProgress,
+                            unit: "都道府県",
+                            emphasizesCount: true
+                        )
+                        // 読み込み前も枠は確保し、地図が現れたときに文字の折り返しが変わって揺れないようにする。
+                        Group {
+                            if let japanMap = silhouetteStore?.japanMap {
+                                SilhouetteMapView(map: japanMap, visitedCodes: Set(summary.visitedPrefectures.map(\.code)))
+                                    .transition(.opacity)
+                            }
                         }
+                        .frame(width: SilhouetteMapStore.progressMapSize, height: SilhouetteMapStore.progressMapSize)
+                        .padding(.top, 8)
+                        .animation(.easeOut(duration: 0.25), value: silhouetteStore?.japanMap != nil)
                     }
-                    .frame(width: SilhouetteMapStore.progressMapSize, height: SilhouetteMapStore.progressMapSize)
-                    .padding(.top, 8)
-                    .animation(.easeOut(duration: 0.25), value: silhouetteStore?.japanMap != nil)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label(
+                            "\(summary.progress.visited) / \(summary.progress.total) 市区町村を訪問",
+                            systemImage: "building.2"
+                        )
+                        Label(
+                            "\(summary.designatedCityProgress.visited) / \(summary.designatedCityProgress.total) 政令指定都市を訪問",
+                            systemImage: "building.columns"
+                        )
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Pop.ink)
                 }
-                Label(
-                    "\(summary.progress.visited) / \(summary.progress.total) 市区町村を訪問",
-                    systemImage: "building.2"
-                )
-                Label(
-                    "\(summary.designatedCityProgress.visited) / \(summary.designatedCityProgress.total) 政令指定都市を訪問",
-                    systemImage: "building.columns"
-                )
-            } footer: {
-                Text("都道府県を記録するか、1つでも市区町村を訪れると制覇としてカウントします。政令指定都市は区単位で数え、区を1つ訪れると市も訪問済みになります。")
-            }
+                .padding(16)
+                .popCard(shadow: Pop.yellow.opacity(0.7))
 
-            if summary.visitedPrefectures.isEmpty {
-                Section {
+                PopFootnote("都道府県を記録するか、1つでも市区町村を訪れると制覇としてカウントします。政令指定都市は区単位で数え、区を1つ訪れると市も訪問済みになります。")
+
+                PopSectionHeader(title: "記録した都道府県")
+
+                if summary.visitedPrefectures.isEmpty {
                     Label("マップの「この場所を記録する」から旅をはじめよう", systemImage: "location.circle")
-                        .foregroundStyle(.secondary)
+                        .font(.subheadline)
+                        .foregroundStyle(Pop.muted)
                 }
-            }
 
-            Section("記録した都道府県") {
                 ForEach(summary.visitedPrefectures) { prefecture in
-                    NavigationLink {
+                    PopNavigationCard {
                         PrefectureExplorationScreen(prefectureCode: prefecture.code, name: prefecture.name)
                     } label: {
                         PrefectureExplorationRow(prefecture: prefecture)
                     }
                 }
-            }
 
-            if !excludedPlaces.isEmpty {
-                Section {
+                if !excludedPlaces.isEmpty {
+                    PopSectionHeader(title: "踏破率に含まれない記録", marker: Pop.themeSoft)
                     ForEach(excludedPlaces) { place in
-                        NavigationLink {
+                        PopNavigationCard {
                             MunicipalityDetailScreen(municipality: place.municipality, fallbackName: place.address)
                         } label: {
                             Text(place.displayName)
+                                .font(.headline)
+                                .foregroundStyle(Pop.ink)
+                        }
+                        // カードはListのスワイプ削除が使えないため、長押しのメニューから削除する。
+                        .contextMenu {
+                            Button("記録を削除", systemImage: "trash", role: .destructive) {
+                                store.delete([place], from: modelContext)
+                            }
                         }
                     }
-                    .onDelete { offsets in
-                        store.delete(offsets.map { excludedPlaces[$0] }, from: modelContext)
-                    }
-                } header: {
-                    Text("踏破率に含まれない記録")
-                } footer: {
-                    Text("区を特定できない市の記録や、市区町村が未確定の記録です。訪問記録は引き続き確認・削除できます。")
+                    PopFootnote("区を特定できない市の記録や、市区町村が未確定の記録です。長押しで削除できます。")
                 }
-            }
 
-            // 通知・有料機能・地図の出典は、フッターの歯車から開く設定画面(SettingsScreen)に置く。
+                // 通知・有料機能・地図の出典は、フッターの歯車から開く設定画面(SettingsScreen)に置く。
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
         }
+        // ナビゲーションバーの裏と下端まで白く塗り、シートのガラスが透けて灰色っぽく見えないようにする。
+        .background(Pop.paper.ignoresSafeArea())
         .task { await silhouetteStore?.loadJapanMapIfNeeded() }
         .navigationTitle("旅の記録")
         .navigationBarTitleDisplayMode(.inline)

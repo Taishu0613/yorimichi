@@ -5,6 +5,7 @@ import SwiftUI
 ///
 /// 以前はこれらを「旅の記録」の一覧の末尾に並べていたが、記録を見返す画面に設定が混ざって
 /// 埋もれていたため、Apple Musicのタブバーの右端の検索ボタンのように、主役(旅の記録)と分けて置く。
+/// 操作の部品(ピッカー・スイッチ)はiOS標準のままにし、見出しだけをほかの画面と同じ蛍光ペンの見出しにそろえる。
 struct SettingsScreen: View {
     @Environment(\.dismiss) private var dismiss
     @State private var isAutoRecordPurchasePresented = false
@@ -19,10 +20,12 @@ struct SettingsScreen: View {
                 Section {
                     BoundaryAttributionView()
                 } header: {
-                    Text("地図の境界データ")
+                    PopSectionHeader(title: "地図の境界データ", marker: Pop.themeSoft)
                 }
             }
             .autoRecordPurchaseSheet(isPresented: $isAutoRecordPurchasePresented)
+            // 行のボタンや閉じるボタンの色を、地図のポリゴンと同じテーマ色にそろえる(既定の青にしない)。
+            .tint(Pop.theme)
             .navigationTitle("設定")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
