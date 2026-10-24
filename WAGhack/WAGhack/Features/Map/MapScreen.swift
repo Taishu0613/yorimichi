@@ -681,6 +681,8 @@ struct MapScreen: View {
     private func sheetContent() -> some View {
         expandedSheetContent
             .presentationDetents(sheetDetents, selection: $sheetDetent)
+            // iOS 26のシートは途中の高さだとガラスになり、白いカードの後ろが透けて灰色っぽく見えるため、白で塗る。
+            .presentationBackground(Pop.paper)
             .presentationBackgroundInteraction(backgroundInteraction)
             .presentationDragIndicator(.visible)
     }

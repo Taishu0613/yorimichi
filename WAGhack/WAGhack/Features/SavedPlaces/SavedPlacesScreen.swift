@@ -100,7 +100,8 @@ struct SavedPlacesScreen: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
         }
-        .background(Pop.paper)
+        // ナビゲーションバーの裏と下端まで白く塗り、シートのガラスが透けて灰色っぽく見えないようにする。
+        .background(Pop.paper.ignoresSafeArea())
         .task { await silhouetteStore?.loadJapanMapIfNeeded() }
         .navigationTitle("旅の記録")
         .navigationBarTitleDisplayMode(.inline)

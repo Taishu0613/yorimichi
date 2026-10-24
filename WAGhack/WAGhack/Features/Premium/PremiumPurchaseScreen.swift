@@ -71,7 +71,7 @@ struct PremiumPurchaseScreen: View {
                 .frame(maxWidth: 520)
                 .frame(maxWidth: .infinity)
             }
-            .background(Pop.paper)
+            .background(Pop.paper.ignoresSafeArea())
             .tint(.teal)
             .task { await loadProducts() }
             .toolbar {

@@ -132,12 +132,25 @@ private struct TriviaCard: View {
             }
         }
 
-        /// カードはどちらも白にし、影・アイコン・蛍光ペンの色だけで雰囲気を分ける
-        /// (みどころはアクセントの黄色、怪奇・都市伝説は藍色)。
+        /// みどころは白いカード、怪奇・都市伝説は夜色のカードにして、読む前から雰囲気を分ける。
+        var cardFill: Color {
+            switch self {
+            case .highlights: Pop.card
+            case .legend: Pop.night
+            }
+        }
+
         var shadow: Color {
             switch self {
             case .highlights: Pop.yellow.opacity(0.7)
-            case .legend: Pop.legend.opacity(0.25)
+            case .legend: Pop.legend.opacity(0.6)
+            }
+        }
+
+        var text: Color {
+            switch self {
+            case .highlights: Pop.ink
+            case .legend: Pop.onNight
             }
         }
 
@@ -151,7 +164,7 @@ private struct TriviaCard: View {
         var marker: Color {
             switch self {
             case .highlights: Pop.yellow
-            case .legend: Pop.legend.opacity(0.3)
+            case .legend: Pop.legend
             }
         }
 
@@ -171,18 +184,18 @@ private struct TriviaCard: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
                 PopIconBadge(systemImage: style.systemImage, fill: style.iconFill, foreground: style.iconForeground)
-                MarkerHeading(style.title, marker: style.marker)
+                MarkerHeading(style.title, marker: style.marker, foreground: style.text)
             }
             // マスタが空欄の場合も「情報なし」へ置き換えず、空欄のまま表示する。
             Text(content)
                 .font(.body)
                 .lineSpacing(6)
-                .foregroundStyle(Pop.ink)
+                .foregroundStyle(style.text)
                 .frame(maxWidth: .infinity, minHeight: 24, alignment: .topLeading)
                 .textSelection(.enabled)
         }
         .padding(18)
-        .popCard(shadow: style.shadow)
+        .popCard(fill: style.cardFill, shadow: style.shadow)
         .accessibilityElement(children: .contain)
     }
 }
