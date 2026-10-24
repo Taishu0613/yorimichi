@@ -42,6 +42,8 @@ struct AutoRecordSettingsSection: View {
                         }
                     }
                 }
+            } header: {
+                PopSectionHeader(title: "有料機能", marker: Pop.mint)
             } footer: {
                 Text(Self.footerText(isUnlocked: premiumStore.isUnlocked, isAlertEnabled: monitor.isEnabled))
             }

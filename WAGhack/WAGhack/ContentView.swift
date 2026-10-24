@@ -174,17 +174,14 @@ struct ContentView: View {
     }
 }
 
-/// 読み込み画面の背景。完了後に続くチュートリアルの詩のページ(TutorialStoryPage)と同じ黒→ティールにそろえ、
+/// 読み込み画面の背景。完了後に続くチュートリアルの詩のページ(TutorialStoryPage)と同じ夜色にそろえ、
 /// 読み込み画面から詩へ切り替わる時に、別の画面へ飛んだように見せない。
 private struct MasterLoadBackdrop<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
         ZStack {
-            // TutorialScreenと同じく、黒を敷いた上に薄いティールのグラデーションを重ねる。
-            Color.black
-                .ignoresSafeArea()
-            LinearGradient(colors: [.black, Color.teal.opacity(0.22)], startPoint: .top, endPoint: .bottom)
+            Pop.night
                 .ignoresSafeArea()
 
             content

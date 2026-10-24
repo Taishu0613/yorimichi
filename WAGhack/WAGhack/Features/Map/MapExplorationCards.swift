@@ -124,10 +124,8 @@ struct MapProgressHeader: View {
                         // 右に形を置いた分だけ横幅が狭いので、長い県名でも2行にならず縮めて収める(カードの高さは固定のため)。
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
-                    ProgressView(value: progress.fraction)
-                        .tint(.teal)
+                    PopProgressBar(fraction: progress.fraction)
                         .accessibilityLabel("\(unit)踏破率")
-                        .accessibilityValue(progress.percentageText)
                     Text("\(progress.percentageText) · \(progress.nextGoalText(unit: unit))")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -165,12 +163,12 @@ struct MapCurrentLocationBadge: View {
     var body: some View {
         Button(action: onTap) {
             Label(name, systemImage: "location.fill")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.primary)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(Pop.ink)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                // ヘッダーより控えめな存在にしたいので、regularより透過するultraThinMaterialにする。
-                .background(.ultraThinMaterial, in: Capsule())
+                // 地図の上でも読めるよう、白いピルにインクの枠とずらした影を付ける(POPの見た目)。
+                .popCard(cornerRadius: 100, shadowOffset: 2)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("現在地：\(name)")
@@ -534,11 +532,11 @@ struct MapRerecordCallout: View {
             Label("\(placeName)を記録しました", systemImage: "arrow.clockwise")
                 .font(.footnote.weight(.semibold))
                 .lineLimit(1)
-                .foregroundStyle(.primary)
+                .foregroundStyle(Pop.ink)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                // 現在地バッジ(MapCurrentLocationBadge)と同じ控えめな素材にそろえる。
-                .background(.ultraThinMaterial, in: Capsule())
+                // 現在地バッジ(MapCurrentLocationBadge)と同じPOPなピルにそろえる。
+                .popCard(cornerRadius: 100, shadowOffset: 2)
                 .scaleEffect(hasAppeared || reduceMotion ? 1 : 0.85, anchor: .bottom)
                 .opacity(hasAppeared ? 1 : 0)
             Color.clear

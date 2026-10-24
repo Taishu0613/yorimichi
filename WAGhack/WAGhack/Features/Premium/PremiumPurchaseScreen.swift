@@ -51,6 +51,8 @@ struct PremiumPurchaseScreen: View {
                             Text("購入を復元")
                         }
                     }
+                    // 主役は商品の購入なので、復元は白い二番手のボタンにする。
+                    .buttonStyle(.popSecondary)
                     .disabled(isRestoring)
 
                     VStack(spacing: 8) {
@@ -61,13 +63,14 @@ struct PremiumPurchaseScreen: View {
                         }
                     }
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Pop.muted)
                     .multilineTextAlignment(.center)
                 }
                 .padding(24)
                 .frame(maxWidth: 520)
                 .frame(maxWidth: .infinity)
             }
+            .background(Pop.paper)
             .tint(.teal)
             .task { await loadProducts() }
             .toolbar {
@@ -97,23 +100,17 @@ struct PremiumPurchaseScreen: View {
 
     private var header: some View {
         VStack(spacing: 12) {
-            Image(systemName: "checkmark.seal.fill")
-                .font(.system(size: 36))
-                .foregroundStyle(.white)
-                .frame(width: 72, height: 72)
-                .background(Circle().fill(.teal))
-                .accessibilityHidden(true)
-            Text("自動で記録")
-                .font(.title2.weight(.bold))
+            PopIconBadge(systemImage: "checkmark.seal.fill", fill: Pop.mint, size: 72)
+            MarkerHeading("自動で記録", size: 26, marker: Pop.yellow)
             Text("初訪問の通知と一緒に、その場所をよりみちに自動で記録します。アプリを開かなくても、旅の記録が残ります。飛行機に乗っている間は記録しません。")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Pop.muted)
                 .multilineTextAlignment(.center)
             VStack(alignment: .leading, spacing: 8) {
                 Label(LocationUsageAssurance.battery, systemImage: "leaf")
                 Label(LocationUsageAssurance.privacy, systemImage: "lock.iphone")
             }
             .font(.subheadline)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Pop.muted)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -129,25 +126,26 @@ struct PremiumPurchaseScreen: View {
                 ForEach(products) { product in
                     ProductView(product)
                         .padding()
-                        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .popCard(shadow: Pop.yellow)
                 }
             }
         case .unavailable:
             VStack(spacing: 12) {
                 Text("商品情報を読み込めませんでした")
-                    .font(.headline)
+                    .font(.headline.weight(.heavy))
+                    .foregroundStyle(Pop.ink)
                 Text("通信状況を確認して、もう一度お試しください。")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Pop.muted)
                 Button("再試行") {
                     Task { await loadProducts() }
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.pop)
             }
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
             .padding()
-            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .popCard()
         }
     }
 

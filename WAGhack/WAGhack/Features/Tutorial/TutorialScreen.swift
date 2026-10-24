@@ -19,9 +19,11 @@ struct TutorialScreen: View {
     var body: some View {
         ZStack {
             // TabView自体は下端だけ無視して(footerまで塗るため)ノッチ側は避けるが、
-            // それだけだとTabViewが避けた上端の帯が黒く塗られず背景が透けるため、
-            // 別レイヤーで画面全体を黒く敷いておく。
-            Color.black.ignoresSafeArea()
+            // それだけだとTabViewが避けた上端の帯が塗られず背景が透けるため、
+            // 別レイヤーで画面全体を、今のページと同じ色(詩は夜色、機能の説明は紙の色)で敷いておく。
+            (isStoryPage ? Pop.night : Pop.paper)
+                .ignoresSafeArea()
+                .animation(.easeOut(duration: 0.25), value: isStoryPage)
 
             ZStack(alignment: .topTrailing) {
                 TabView(selection: $pageIndex) {
@@ -36,16 +38,23 @@ struct TutorialScreen: View {
                 // このZStack自体は安全領域を無視していないので、「スキップ」は
                 // ノッチ/ステータスバーと衝突せず自然な位置に収まる。
                 if pageIndex < pages.count - 1 {
-                    Button("スキップ", action: finish)
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.8))
-                        .padding()
+                    // 詩のページ(夜色)と機能のページ(白)のどちらでも読めるよう、白いピルにする。
+                    Button(action: finish) {
+                        PopPill(text: "スキップ", fill: .white)
+                    }
+                    .buttonStyle(.plain)
+                    .padding()
                 }
             }
         }
         .safeAreaInset(edge: .bottom) {
             footer
         }
+    }
+
+    private var isStoryPage: Bool {
+        guard pages.indices.contains(pageIndex), case .story = pages[pageIndex] else { return false }
+        return true
     }
 
     private var footer: some View {
@@ -59,24 +68,22 @@ struct TutorialScreen: View {
                     withAnimation { pageIndex += 1 }
                 }
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.teal)
-            .controlSize(.large)
-            .frame(maxWidth: .infinity)
+            .buttonStyle(.pop)
             .padding(.horizontal, 32)
         }
         .padding(.top, 12)
         .padding(.bottom, 16)
         .background {
-            // glassEffect(Rectangle)は帯の上端に縁取り(ハイライト)が出てページとの境目が
-            // 目立つため、縁のないultraThinMaterialに変更(MapCurrentLocationBadgeと同じ考え方)。
+            // 詩のページ(夜色)と機能のページ(白)のどちらの上でもドットとボタンが読めるよう、
+            // 紙の色の帯を敷き、上端にインクの線を引いてページとの境目をPOPに見せる。
             // .backgroundだけをignoresSafeAreaすることで、ボタン/ドットの位置は安全領域内の
             // ままホームインジケーター側まで帯を塗り切り、下端に隙間を残さない。
-            // ultraThinMaterialは標準素材の中で最も透過するが、それでもページの色を
-            // はっきり隠してしまうため、opacityをさらに落としてページ背景を強く透かす。
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .opacity(0.55)
+            Pop.paper
+                .overlay(alignment: .top) {
+                    Rectangle()
+                        .fill(Pop.ink)
+                        .frame(height: Pop.borderWidth)
+                }
                 .ignoresSafeArea(edges: .bottom)
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { footerHeight = $0 }
@@ -95,8 +102,8 @@ private struct TutorialPageDots: View {
         HStack(spacing: 8) {
             ForEach(0..<count, id: \.self) { index in
                 Circle()
-                    .fill(index == current ? Color.white : Color.white.opacity(0.3))
-                    .frame(width: 6, height: 6)
+                    .fill(index == current ? Pop.ink : Pop.muted.opacity(0.4))
+                    .frame(width: 7, height: 7)
             }
         }
     }
@@ -157,11 +164,8 @@ private struct TutorialStoryPage: View {
             .animation(.easeOut(duration: 1.1), value: revealedCount)
         }
         .scrollIndicators(.hidden)
-        .background(
-            // アプリ全体のアクセントカラー(.teal)を基調にし、他画面の儀式演出と同じ
-            // Glassの薄い色付け(opacity 0.22)に合わせて浮かないようにする。
-            LinearGradient(colors: [.black, Color.teal.opacity(0.22)], startPoint: .top, endPoint: .bottom)
-        )
+        // 怪奇・都市伝説のカードと同じ夜色にして、映画の導入のような雰囲気を残す。
+        .background(Pop.night)
         .opacity(hasAppeared ? 1 : 0)
         .onTapGesture {
             revealedCount = stanzas.count
@@ -192,17 +196,13 @@ private struct TutorialFeaturePage: View {
     var body: some View {
         VStack(spacing: 20) {
             Spacer()
-            Image(systemName: icon)
-                .font(.system(size: 60))
-                .foregroundStyle(tint)
-            Text(title)
-                .font(.title.bold())
-                .foregroundStyle(.white)
+            PopIconBadge(systemImage: icon, fill: tint, foreground: .white, size: 110)
+            MarkerHeading(title, size: 26, marker: Pop.yellow)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
             Text(text)
                 .font(.body)
-                .foregroundStyle(.white.opacity(0.85))
+                .foregroundStyle(Pop.ink)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
             // Spacerを2つ重ねて下側の余白を上側より大きくし、内容を中央よりやや上に寄せる。
@@ -212,9 +212,7 @@ private struct TutorialFeaturePage: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            LinearGradient(colors: [.black, tint.opacity(0.35)], startPoint: .top, endPoint: .bottom)
-        )
+        .background(Pop.paper)
     }
 }
 

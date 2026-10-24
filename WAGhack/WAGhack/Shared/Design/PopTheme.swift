@@ -177,9 +177,16 @@ struct PopPill: View {
 /// 見出しの横に置く丸いアイコン。カードの種類をひと目で分ける。
 struct PopIconBadge: View {
     let systemImage: String
-    var fill: Color = Pop.yellow
-    var foreground: Color = Pop.inkOnAccent
-    @ScaledMetric(relativeTo: .title2) private var size: CGFloat = 36
+    let fill: Color
+    let foreground: Color
+    @ScaledMetric private var size: CGFloat
+
+    init(systemImage: String, fill: Color = Pop.yellow, foreground: Color = Pop.inkOnAccent, size: CGFloat = 36) {
+        self.systemImage = systemImage
+        self.fill = fill
+        self.foreground = foreground
+        _size = ScaledMetric(wrappedValue: size, relativeTo: .title2)
+    }
 
     var body: some View {
         Image(systemName: systemImage)
