@@ -162,13 +162,18 @@ struct MapCurrentLocationBadge: View {
 
     var body: some View {
         Button(action: onTap) {
-            Label(name, systemImage: "location.fill")
+            Label {
+                Text(name)
+            } icon: {
+                Image(systemName: "location.fill")
+                    .foregroundStyle(Pop.theme)
+            }
                 .font(.subheadline.weight(.bold))
-                .foregroundStyle(Pop.ink)
+                .foregroundStyle(.primary)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                // 地図の上でも読めるよう、白いピルにインクの枠とずらした影を付ける(POPの見た目)。
-                .popCard(cornerRadius: 100, shadowOffset: 2)
+                // 地図に浮かぶ操作はガラスにそろえる(ヘッダー・フッターと同じ)。アイコンだけテーマ色にする。
+                .glassEffect(.regular, in: Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("現在地：\(name)")
@@ -532,11 +537,11 @@ struct MapRerecordCallout: View {
             Label("\(placeName)を記録しました", systemImage: "arrow.clockwise")
                 .font(.footnote.weight(.semibold))
                 .lineLimit(1)
-                .foregroundStyle(Pop.ink)
+                .foregroundStyle(.primary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                // 現在地バッジ(MapCurrentLocationBadge)と同じPOPなピルにそろえる。
-                .popCard(cornerRadius: 100, shadowOffset: 2)
+                // 現在地バッジ(MapCurrentLocationBadge)と同じガラスのピルにそろえる。
+                .glassEffect(.regular, in: Capsule())
                 .scaleEffect(hasAppeared || reduceMotion ? 1 : 0.85, anchor: .bottom)
                 .opacity(hasAppeared ? 1 : 0)
             Color.clear
@@ -716,7 +721,7 @@ private struct DesignatedCityFirstVisitCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .popCard(shadow: .cyan)
+        .popCard(shadow: .cyan.opacity(0.3))
         .accessibilityElement(children: .combine)
     }
 }
@@ -775,7 +780,7 @@ struct PrefectureFirstVisitSheet: View {
                 Label("\(prefectureName)を記録する", systemImage: "checkmark.seal.fill")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.pop)
+            .popPrimaryButton()
             .opacity(showsButton ? 1 : 0)
             .offset(y: showsButton ? 0 : 12)
         }
@@ -890,7 +895,7 @@ struct JapanFirstVisitSheet: View {
                 Label("日本を記録する", systemImage: "checkmark.seal.fill")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.pop)
+            .popPrimaryButton()
             .opacity(showsButton ? 1 : 0)
             .offset(y: showsButton ? 0 : 12)
         }
@@ -1069,7 +1074,7 @@ struct MunicipalityFirstVisitSheet: View {
                         Label("閉じる", systemImage: "checkmark")
                             .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.popSecondary)
+                    .popSecondaryButton()
                 }
             }
             .opacity(showsButtons ? 1 : 0)
@@ -1108,7 +1113,7 @@ struct MunicipalityFirstVisitSheet: View {
                 Label("\(municipality.municipalityName)を記録する", systemImage: "plus.circle.fill")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.pop)
+            .popPrimaryButton()
         case .celebration:
             if showsDetailLink {
                 // 記録した直後はその街への関心が最も高いため、図鑑への入口を主役(上・塗りつぶし)にする。
@@ -1116,14 +1121,14 @@ struct MunicipalityFirstVisitSheet: View {
                     Label("みどころを見る", systemImage: "book.pages")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.pop)
+                .popPrimaryButton()
             } else {
                 // 市区町村が特定できず図鑑を開けない場合は、閉じるだけが唯一の操作なので主役に据える。
                 Button(action: dismiss) {
                     Label("閉じる", systemImage: "checkmark")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.pop)
+                .popPrimaryButton()
             }
         }
     }

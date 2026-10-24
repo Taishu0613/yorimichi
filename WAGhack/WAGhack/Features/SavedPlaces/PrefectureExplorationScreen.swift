@@ -36,11 +36,11 @@ struct PrefectureExplorationScreen: View {
                         .animation(.easeOut(duration: 0.25), value: silhouetteStore?.prefectureMaps[prefectureCode] != nil)
                     }
                     .padding(16)
-                    .popCard(shadow: Pop.yellow)
+                    .popCard(shadow: Pop.yellow.opacity(0.7))
 
                     let cities = prefecture.designatedCities.filter(\.isVisited)
                     if !cities.isEmpty {
-                        PopSectionHeader(title: "政令指定都市", marker: Pop.mint)
+                        PopSectionHeader(title: "政令指定都市", marker: Pop.themeSoft)
                         ForEach(cities) { city in
                             PopNavigationCard {
                                 MunicipalityDetailScreen(

@@ -75,7 +75,7 @@ struct MunicipalityDetailScreen: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
             if let prefectureName = municipality?.prefectureName, !prefectureName.isEmpty {
-                PopPill(text: prefectureName, systemImage: "mappin", fill: Pop.mint)
+                PopPill(text: prefectureName, systemImage: "mappin", fill: Pop.themeSoft)
             }
             MarkerHeading(displayName, size: 32)
         }
@@ -85,7 +85,7 @@ struct MunicipalityDetailScreen: View {
 
 extension MunicipalityDetailScreen {
     /// スクロールの後ろに固定する紙と市区町村の形。スクロールしても動かず、カードが上を流れていく。
-    /// 形はステッカーのように、ミントの塗り・インクの縁取り・ずらした影で描く。
+    /// 形は地図の訪問済みの市区町村と同じテーマ色の塗りと縁取りで描き、ずらした影でステッカーのように浮かせる。
     private var shapeBackground: some View {
         ZStack(alignment: .top) {
             Pop.paper
@@ -93,10 +93,11 @@ extension MunicipalityDetailScreen {
             if showsShape, let code = municipality?.code, let map = silhouetteStore?.municipalityMaps[code] {
                 let shape = SilhouetteShape(rings: map.areas.flatMap(\.rings), aspectRatio: map.aspectRatio)
                 ZStack {
-                    shape.fill(Pop.ink, style: FillStyle(eoFill: true))
+                    shape.fill(Pop.shadow, style: FillStyle(eoFill: true))
                         .offset(x: 4, y: 4)
-                    shape.fill(Pop.mint, style: FillStyle(eoFill: true))
-                    shape.stroke(Pop.ink, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                    // 白い紙の上で地図と同じ見え方になるよう、塗りは不透明な薄い色にしてから縁取る。
+                    shape.fill(Pop.themeSoft, style: FillStyle(eoFill: true))
+                    shape.stroke(Pop.theme, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
                 }
                 // 太い線と影が枠の端で切れないよう、内側に収める。
                 .padding(6)
@@ -131,40 +132,34 @@ private struct TriviaCard: View {
             }
         }
 
-        /// みどころは明るい紙のカード、怪奇・都市伝説は夜色のカードにして、読む前から雰囲気を分ける。
-        var cardFill: Color {
+        /// カードはどちらも白にし、影・アイコン・蛍光ペンの色だけで雰囲気を分ける
+        /// (みどころはアクセントの黄色、怪奇・都市伝説は藍色)。
+        var shadow: Color {
             switch self {
-            case .highlights: Pop.card
-            case .legend: Pop.night
+            case .highlights: Pop.yellow.opacity(0.7)
+            case .legend: Pop.legend.opacity(0.25)
             }
         }
 
-        var shadow: Color {
+        var iconFill: Color {
             switch self {
             case .highlights: Pop.yellow
-            case .legend: Pop.purple
+            case .legend: Pop.legend
             }
         }
 
         var marker: Color {
             switch self {
             case .highlights: Pop.yellow
-            case .legend: Pop.purple
+            case .legend: Pop.legend.opacity(0.3)
             }
         }
 
-        /// 紫の丸の上では濃い字が読みにくいので、怪奇・都市伝説だけアイコンを明るい色にする。
+        /// 藍色の丸の上では濃い字が読みにくいので、怪奇・都市伝説だけアイコンを白にする。
         var iconForeground: Color {
             switch self {
             case .highlights: Pop.inkOnAccent
-            case .legend: Pop.onNight
-            }
-        }
-
-        var text: Color {
-            switch self {
-            case .highlights: Pop.ink
-            case .legend: Pop.onNight
+            case .legend: .white
             }
         }
     }
@@ -175,19 +170,19 @@ private struct TriviaCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
-                PopIconBadge(systemImage: style.systemImage, fill: style.shadow, foreground: style.iconForeground)
-                MarkerHeading(style.title, marker: style.marker, foreground: style.text)
+                PopIconBadge(systemImage: style.systemImage, fill: style.iconFill, foreground: style.iconForeground)
+                MarkerHeading(style.title, marker: style.marker)
             }
             // マスタが空欄の場合も「情報なし」へ置き換えず、空欄のまま表示する。
             Text(content)
                 .font(.body)
                 .lineSpacing(6)
-                .foregroundStyle(style.text)
+                .foregroundStyle(Pop.ink)
                 .frame(maxWidth: .infinity, minHeight: 24, alignment: .topLeading)
                 .textSelection(.enabled)
         }
         .padding(18)
-        .popCard(fill: style.cardFill, shadow: style.shadow)
+        .popCard(shadow: style.shadow)
         .accessibilityElement(children: .contain)
     }
 }
@@ -201,8 +196,8 @@ private struct WardsCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
-                PopIconBadge(systemImage: city.isComplete ? "crown.fill" : "building.columns.fill", fill: Pop.mint)
-                MarkerHeading("区めぐり", marker: Pop.mint)
+                PopIconBadge(systemImage: city.isComplete ? "crown.fill" : "building.columns.fill", fill: Pop.themeSoft)
+                MarkerHeading("区めぐり", marker: Pop.themeSoft)
                 Spacer(minLength: 8)
                 PopPill(text: "\(city.progress.visited) / \(city.progress.total) 区", fill: Pop.yellow)
                     .monospacedDigit()
@@ -214,7 +209,7 @@ private struct WardsCard: View {
             }
         }
         .padding(18)
-        .popCard(shadow: Pop.mint)
+        .popCard()
         .accessibilityElement(children: .contain)
     }
 }
@@ -238,10 +233,10 @@ private struct WardChip: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
         .padding(.horizontal, 6)
-        .background(isVisited ? Pop.mint : Color.clear, in: shape)
+        .background(isVisited ? Pop.themeSoft : Color.clear, in: shape)
         .overlay {
             if isVisited {
-                shape.stroke(Pop.ink, lineWidth: Pop.borderWidth)
+                shape.stroke(Pop.border, lineWidth: Pop.borderWidth)
             } else {
                 shape.stroke(Pop.muted, style: StrokeStyle(lineWidth: 1.2, dash: [4, 3]))
             }

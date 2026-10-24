@@ -38,12 +38,11 @@ struct TutorialScreen: View {
                 // このZStack自体は安全領域を無視していないので、「スキップ」は
                 // ノッチ/ステータスバーと衝突せず自然な位置に収まる。
                 if pageIndex < pages.count - 1 {
-                    // 詩のページ(夜色)と機能のページ(白)のどちらでも読めるよう、白いピルにする。
-                    Button(action: finish) {
-                        PopPill(text: "スキップ", fill: .white)
-                    }
-                    .buttonStyle(.plain)
-                    .padding()
+                    // 詩のページ(夜色)と機能のページ(白)のどちらの上でも読めるよう、ガラスのボタンにする。
+                    Button("スキップ", action: finish)
+                        .font(.subheadline.weight(.semibold))
+                        .buttonStyle(.glass)
+                        .padding()
                 }
             }
         }
@@ -61,28 +60,31 @@ struct TutorialScreen: View {
         VStack(spacing: 14) {
             TutorialPageDots(count: pages.count, current: pageIndex)
 
-            Button(pageIndex == pages.count - 1 ? "はじめる" : "次へ") {
+            Button {
                 if pageIndex == pages.count - 1 {
                     finish()
                 } else {
                     withAnimation { pageIndex += 1 }
                 }
+            } label: {
+                Text(pageIndex == pages.count - 1 ? "はじめる" : "次へ")
+                    .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.pop)
+            .popPrimaryButton()
             .padding(.horizontal, 32)
         }
         .padding(.top, 12)
         .padding(.bottom, 16)
         .background {
             // 詩のページ(夜色)と機能のページ(白)のどちらの上でもドットとボタンが読めるよう、
-            // 紙の色の帯を敷き、上端にインクの線を引いてページとの境目をPOPに見せる。
+            // 紙の色の帯を敷き、上端にテーマ色の細い線を引いてページとの境目を示す。
             // .backgroundだけをignoresSafeAreaすることで、ボタン/ドットの位置は安全領域内の
             // ままホームインジケーター側まで帯を塗り切り、下端に隙間を残さない。
             Pop.paper
                 .overlay(alignment: .top) {
                     Rectangle()
-                        .fill(Pop.ink)
-                        .frame(height: Pop.borderWidth)
+                        .fill(Pop.border)
+                        .frame(height: 1)
                 }
                 .ignoresSafeArea(edges: .bottom)
         }

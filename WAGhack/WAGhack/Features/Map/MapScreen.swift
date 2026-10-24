@@ -322,7 +322,8 @@ struct MapScreen: View {
                     // 実測して追従させると、表示アニメーション中の高さ補正と画像到着時の伸長でシートが
                     // 2回動き、そのたびに地図を含むMapScreen全体が再評価されて表示が重くなるため固定にする。
                     .presentationDetents([.height(JapanFirstVisitSheet.presentationHeight)])
-                    .presentationBackground(Color.red.opacity(0.12))
+                    // 儀式シートの背景は白にそろえる(以前は儀式ごとに薄い色を付けていた)。色はアイコンとボタンで出す。
+                    .presentationBackground(Pop.paper)
                     // ボタン(confirm)以外では閉じられないようにする。
                     .interactiveDismissDisabled()
             }
@@ -741,7 +742,7 @@ struct MapScreen: View {
                 confirm: confirmPrefectureVisit
             )
             .measuredSheetHeight($prefectureIntroHeight)
-            .presentationBackground(.cyan.opacity(0.15))
+            .presentationBackground(Pop.paper)
             // ボタン(confirm)以外では閉じられないようにする。ドラッグで動かせる見た目も紛らわしいので消す。
             .interactiveDismissDisabled()
         }
@@ -765,7 +766,7 @@ struct MapScreen: View {
                 }
             }
             .measuredSheetHeight($municipalityInvitationHeight)
-            .presentationBackground(Color.teal.opacity(0.15))
+            .presentationBackground(Pop.paper)
             // 記録する/みどころを見る、以外では閉じられないようにする。この誘いシートが
             // 未訪問の場所を記録する唯一の入口なので、スワイプで取りこぼせないようにする。
             .interactiveDismissDisabled()
@@ -799,7 +800,7 @@ struct MapScreen: View {
                 }
             }
             .measuredSheetHeight($municipalityCelebrationHeight)
-            .presentationBackground((viewModel.result?.milestone != nil ? Color.yellow : Color.teal).opacity(0.15))
+            .presentationBackground(Pop.paper)
         }
     }
 

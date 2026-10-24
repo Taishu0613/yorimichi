@@ -43,7 +43,7 @@ struct AutoRecordSettingsSection: View {
                     }
                 }
             } header: {
-                PopSectionHeader(title: "有料機能", marker: Pop.mint)
+                PopSectionHeader(title: "有料機能", marker: Pop.themeSoft)
             } footer: {
                 Text(Self.footerText(isUnlocked: premiumStore.isUnlocked, isAlertEnabled: monitor.isEnabled))
             }

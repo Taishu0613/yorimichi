@@ -49,10 +49,11 @@ struct PremiumPurchaseScreen: View {
                             ProgressView()
                         } else {
                             Text("購入を復元")
+                                .frame(maxWidth: .infinity)
                         }
                     }
                     // 主役は商品の購入なので、復元は白い二番手のボタンにする。
-                    .buttonStyle(.popSecondary)
+                    .popSecondaryButton()
                     .disabled(isRestoring)
 
                     VStack(spacing: 8) {
@@ -100,7 +101,7 @@ struct PremiumPurchaseScreen: View {
 
     private var header: some View {
         VStack(spacing: 12) {
-            PopIconBadge(systemImage: "checkmark.seal.fill", fill: Pop.mint, size: 72)
+            PopIconBadge(systemImage: "checkmark.seal.fill", fill: Pop.theme, foreground: .white, size: 72)
             MarkerHeading("自動で記録", size: 26, marker: Pop.yellow)
             Text("初訪問の通知と一緒に、その場所をよりみちに自動で記録します。アプリを開かなくても、旅の記録が残ります。飛行機に乗っている間は記録しません。")
                 .foregroundStyle(Pop.muted)
@@ -126,7 +127,7 @@ struct PremiumPurchaseScreen: View {
                 ForEach(products) { product in
                     ProductView(product)
                         .padding()
-                        .popCard(shadow: Pop.yellow)
+                        .popCard()
                 }
             }
         case .unavailable:
@@ -137,10 +138,13 @@ struct PremiumPurchaseScreen: View {
                 Text("通信状況を確認して、もう一度お試しください。")
                     .font(.subheadline)
                     .foregroundStyle(Pop.muted)
-                Button("再試行") {
+                Button {
                     Task { await loadProducts() }
+                } label: {
+                    Text("再試行")
+                        .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.pop)
+                .popPrimaryButton()
             }
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)

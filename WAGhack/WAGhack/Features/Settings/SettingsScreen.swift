@@ -20,7 +20,7 @@ struct SettingsScreen: View {
                 Section {
                     BoundaryAttributionView()
                 } header: {
-                    PopSectionHeader(title: "地図の境界データ", marker: Pop.pink)
+                    PopSectionHeader(title: "地図の境界データ", marker: Pop.themeSoft)
                 }
             }
             .autoRecordPurchaseSheet(isPresented: $isAutoRecordPurchasePresented)

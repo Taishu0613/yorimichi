@@ -87,7 +87,7 @@ struct NewMunicipalityAlertAnnouncement: View {
 
     private var card: some View {
         VStack(spacing: 20) {
-            PopIconBadge(systemImage: "bell.badge.fill", fill: Pop.yellow, size: 72)
+            PopIconBadge(systemImage: "bell.badge.fill", fill: Pop.theme, foreground: .white, size: 72)
 
             VStack(spacing: 8) {
                 Text(title)
@@ -104,15 +104,17 @@ struct NewMunicipalityAlertAnnouncement: View {
                     choose(.municipality)
                 } label: {
                     Text("市区町村ごとに通知する")
+                        .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.pop)
+                .popPrimaryButton()
 
                 Button {
                     choose(.prefecture)
                 } label: {
                     Text("都道府県のみ通知する")
+                        .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.popSecondary)
+                .popSecondaryButton()
 
                 Button("今はしない") {
                     choose(.off)

@@ -55,7 +55,7 @@ struct SavedPlacesScreen: View {
                     .foregroundStyle(Pop.ink)
                 }
                 .padding(16)
-                .popCard(shadow: Pop.yellow)
+                .popCard(shadow: Pop.yellow.opacity(0.7))
 
                 PopFootnote("都道府県を記録するか、1つでも市区町村を訪れると制覇としてカウントします。政令指定都市は区単位で数え、区を1つ訪れると市も訪問済みになります。")
 
@@ -76,7 +76,7 @@ struct SavedPlacesScreen: View {
                 }
 
                 if !excludedPlaces.isEmpty {
-                    PopSectionHeader(title: "踏破率に含まれない記録", marker: Pop.pink)
+                    PopSectionHeader(title: "踏破率に含まれない記録", marker: Pop.themeSoft)
                     ForEach(excludedPlaces) { place in
                         PopNavigationCard {
                             MunicipalityDetailScreen(municipality: place.municipality, fallbackName: place.address)
