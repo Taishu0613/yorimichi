@@ -24,6 +24,8 @@ struct SettingsScreen: View {
                 }
             }
             .autoRecordPurchaseSheet(isPresented: $isAutoRecordPurchasePresented)
+            // 行のボタンや閉じるボタンの色を、地図のポリゴンと同じテーマ色にそろえる(既定の青にしない)。
+            .tint(Pop.theme)
             .navigationTitle("設定")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

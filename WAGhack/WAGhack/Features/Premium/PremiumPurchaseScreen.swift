@@ -125,8 +125,16 @@ struct PremiumPurchaseScreen: View {
         case .loaded(let products):
             VStack(spacing: 12) {
                 ForEach(products) { product in
-                    ProductView(product)
-                        .padding()
+                    // 商品の画像はApp Store Connectに登録していないため、既定のままだと灰色の空き枠が出る。
+                    // 月額と買い切りを見分けられるアイコンを自前で添える。
+                    ProductView(product) {
+                        PopIconBadge(
+                            systemImage: product.id == PremiumProduct.monthlyID ? "calendar" : "infinity",
+                            fill: Pop.themeSoft,
+                            size: 56
+                        )
+                    }
+                    .padding()
                         .popCard()
                 }
             }
