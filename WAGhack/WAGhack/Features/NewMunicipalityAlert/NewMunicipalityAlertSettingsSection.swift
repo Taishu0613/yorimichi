@@ -27,6 +27,8 @@ struct NewMunicipalityAlertSettingsSection: View {
                         }
                     }
                 }
+            } header: {
+                PopSectionHeader(title: "通知", marker: Pop.yellow)
             } footer: {
                 Text(Self.footerText(for: monitor.status, mode: monitor.mode))
             }

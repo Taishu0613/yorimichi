@@ -42,6 +42,8 @@ struct AutoRecordSettingsSection: View {
                         }
                     }
                 }
+            } header: {
+                PopSectionHeader(title: "有料機能", marker: Pop.themeSoft)
             } footer: {
                 Text(Self.footerText(isUnlocked: premiumStore.isUnlocked, isAlertEnabled: monitor.isEnabled))
             }
@@ -78,6 +80,8 @@ private struct AutoRecordPurchaseSheetModifier: ViewModifier {
                     // 買ったのは使うためなので、そのままオンにする。通知がオフならスイッチだけ入り、通知をオンにすると動く。
                     monitor?.setAutoRecordEnabled(true)
                 })
+                // 旅の記録のシートと同じく、ガラスが透けないよう白で塗る。
+                .presentationBackground(Pop.paper)
             }
             // サブスクリプションの期限切れや返金を、画面を開いたときに表示へ反映する。
             .task { await premiumStore?.refreshEntitlements() }

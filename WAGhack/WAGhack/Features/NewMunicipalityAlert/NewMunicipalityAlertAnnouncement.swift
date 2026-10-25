@@ -87,30 +87,26 @@ struct NewMunicipalityAlertAnnouncement: View {
 
     private var card: some View {
         VStack(spacing: 20) {
-            Image(systemName: "bell.badge.fill")
-                .font(.system(size: 36))
-                .foregroundStyle(.white)
-                .frame(width: 72, height: 72)
-                .background(Circle().fill(.teal))
-                .accessibilityHidden(true)
+            PopIconBadge(systemImage: "bell.badge.fill", fill: Pop.theme, foreground: .white, size: 72)
 
             VStack(spacing: 8) {
                 Text(title)
-                    .font(.title2.weight(.bold))
+                    .font(.system(.title2, weight: .black))
+                    .foregroundStyle(Pop.ink)
                 Text(message)
                     .font(.body)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Pop.muted)
             }
             .multilineTextAlignment(.center)
 
-            VStack(spacing: 10) {
+            VStack(spacing: 14) {
                 Button {
                     choose(.municipality)
                 } label: {
                     Text("市区町村ごとに通知する")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .popPrimaryButton()
 
                 Button {
                     choose(.prefecture)
@@ -118,31 +114,31 @@ struct NewMunicipalityAlertAnnouncement: View {
                     Text("都道府県のみ通知する")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.bordered)
+                .popSecondaryButton()
 
                 Button("今はしない") {
                     choose(.off)
                 }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Pop.muted)
                 .padding(.top, 4)
             }
-            .controlSize(.large)
-            .tint(.teal)
 
             VStack(alignment: .leading, spacing: 8) {
                 Label(LocationUsageAssurance.battery, systemImage: "leaf")
                 Label(LocationUsageAssurance.privacy, systemImage: "lock.iphone")
             }
             .font(.subheadline)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Pop.muted)
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Text("画面右下の歯車の「設定」からいつでも変更できます。オンにすると、通知と位置情報（常に）の許可を確認します。")
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Pop.muted)
                 .multilineTextAlignment(.center)
         }
         .padding(24)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .popCard(cornerRadius: 24, shadowOffset: 6)
     }
 
     private var title: String {

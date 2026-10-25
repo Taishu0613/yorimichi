@@ -124,10 +124,8 @@ struct MapProgressHeader: View {
                         // 右に形を置いた分だけ横幅が狭いので、長い県名でも2行にならず縮めて収める(カードの高さは固定のため)。
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
-                    ProgressView(value: progress.fraction)
-                        .tint(.teal)
+                    PopProgressBar(fraction: progress.fraction)
                         .accessibilityLabel("\(unit)踏破率")
-                        .accessibilityValue(progress.percentageText)
                     Text("\(progress.percentageText) · \(progress.nextGoalText(unit: unit))")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -164,13 +162,18 @@ struct MapCurrentLocationBadge: View {
 
     var body: some View {
         Button(action: onTap) {
-            Label(name, systemImage: "location.fill")
-                .font(.subheadline.weight(.medium))
+            Label {
+                Text(name)
+            } icon: {
+                Image(systemName: "location.fill")
+                    .foregroundStyle(Pop.theme)
+            }
+                .font(.subheadline.weight(.bold))
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                // ヘッダーより控えめな存在にしたいので、regularより透過するultraThinMaterialにする。
-                .background(.ultraThinMaterial, in: Capsule())
+                // 地図に浮かぶ操作はガラスにそろえる(ヘッダー・フッターと同じ)。アイコンだけテーマ色にする。
+                .glassEffect(.regular, in: Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("現在地：\(name)")
@@ -537,8 +540,8 @@ struct MapRerecordCallout: View {
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                // 現在地バッジ(MapCurrentLocationBadge)と同じ控えめな素材にそろえる。
-                .background(.ultraThinMaterial, in: Capsule())
+                // 現在地バッジ(MapCurrentLocationBadge)と同じガラスのピルにそろえる。
+                .glassEffect(.regular, in: Capsule())
                 .scaleEffect(hasAppeared || reduceMotion ? 1 : 0.85, anchor: .bottom)
                 .opacity(hasAppeared ? 1 : 0)
             Color.clear
@@ -708,17 +711,17 @@ private struct DesignatedCityFirstVisitCard: View {
         VStack(alignment: .leading, spacing: 6) {
             Label("\(city.municipalityName) はじめて！", systemImage: "building.columns.fill")
                 .font(.subheadline.weight(.bold))
-                .foregroundStyle(.cyan)
+                .foregroundStyle(Pop.ink)
             if !city.famousThingsTrivia.isEmpty {
                 Text(city.famousThingsTrivia)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Pop.muted)
                     .lineLimit(3)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(.cyan.opacity(0.12), in: .rect(cornerRadius: 12))
+        .popCard(shadow: .cyan.opacity(0.3))
         .accessibilityElement(children: .combine)
     }
 }
@@ -761,7 +764,7 @@ struct PrefectureFirstVisitSheet: View {
             .frame(height: 70)
             VStack(spacing: 6) {
                 Text("初めての都道府県です！")
-                    .font(.title2.weight(.bold))
+                    .font(.system(.title2, weight: .black))
                     .scaleEffect(showsTitle ? 1 : 0.7)
                     .opacity(showsTitle ? 1 : 0)
                 Text("\(prefectureName)を記録して、旅の記録に加えましょう")
@@ -777,9 +780,7 @@ struct PrefectureFirstVisitSheet: View {
                 Label("\(prefectureName)を記録する", systemImage: "checkmark.seal.fill")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.blue)
-            .controlSize(.large)
+            .popPrimaryButton()
             .opacity(showsButton ? 1 : 0)
             .offset(y: showsButton ? 0 : 12)
         }
@@ -871,7 +872,7 @@ struct JapanFirstVisitSheet: View {
             .frame(height: 70)
             VStack(spacing: 6) {
                 Text("日本")
-                    .font(.title2.weight(.bold))
+                    .font(.system(.title2, weight: .black))
                     .scaleEffect(showsTitle ? 1 : 0.7)
                     .opacity(showsTitle ? 1 : 0)
                 Text("ようこそ美しい日本へ。よりみちをはじめましょう")
@@ -894,9 +895,7 @@ struct JapanFirstVisitSheet: View {
                 Label("日本を記録する", systemImage: "checkmark.seal.fill")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.red)
-            .controlSize(.large)
+            .popPrimaryButton()
             .opacity(showsButton ? 1 : 0)
             .offset(y: showsButton ? 0 : 12)
         }
@@ -1051,7 +1050,7 @@ struct MunicipalityFirstVisitSheet: View {
             .frame(height: 70)
             VStack(spacing: 6) {
                 Text(title)
-                    .font(.title2.weight(.bold))
+                    .font(.system(.title2, weight: .black))
                     .scaleEffect(showsTitle ? 1 : 0.7)
                     .opacity(showsTitle ? 1 : 0)
                 Text(subtitle)
@@ -1075,9 +1074,7 @@ struct MunicipalityFirstVisitSheet: View {
                         Label("閉じる", systemImage: "checkmark")
                             .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.bordered)
-                    .tint(tint)
-                    .controlSize(.large)
+                    .popSecondaryButton()
                 }
             }
             .opacity(showsButtons ? 1 : 0)
@@ -1116,9 +1113,7 @@ struct MunicipalityFirstVisitSheet: View {
                 Label("\(municipality.municipalityName)を記録する", systemImage: "plus.circle.fill")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.teal)
-            .controlSize(.large)
+            .popPrimaryButton()
         case .celebration:
             if showsDetailLink {
                 // 記録した直後はその街への関心が最も高いため、図鑑への入口を主役(上・塗りつぶし)にする。
@@ -1126,18 +1121,14 @@ struct MunicipalityFirstVisitSheet: View {
                     Label("みどころを見る", systemImage: "book.pages")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(tint)
-                .controlSize(.large)
+                .popPrimaryButton()
             } else {
                 // 市区町村が特定できず図鑑を開けない場合は、閉じるだけが唯一の操作なので主役に据える。
                 Button(action: dismiss) {
                     Label("閉じる", systemImage: "checkmark")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(tint)
-                .controlSize(.large)
+                .popPrimaryButton()
             }
         }
     }

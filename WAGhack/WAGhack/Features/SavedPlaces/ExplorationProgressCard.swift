@@ -1,5 +1,6 @@
 import SwiftUI
 
+/// 踏破率の大きな表示。カードの枠は呼び出し側(旅の記録・都道府県の一覧)が地図と一緒に包む。
 struct ExplorationProgressCard: View {
     let title: String
     let progress: ExplorationCount
@@ -8,27 +9,26 @@ struct ExplorationProgressCard: View {
     var emphasizesCount: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(title)
-                .font(.headline)
+                .font(.headline.weight(.heavy))
+                .foregroundStyle(Pop.ink)
             Text(emphasizesCount ? "\(progress.visited) / \(progress.total)　達成" : progress.percentageText)
-                .font(.system(.largeTitle, design: .rounded, weight: .bold))
-                .foregroundStyle(.teal)
+                .font(.system(.largeTitle, design: .rounded, weight: .black))
+                .foregroundStyle(Pop.ink)
                 .monospacedDigit()
-            ProgressView(value: progress.fraction)
-                .tint(.teal)
+                .minimumScaleFactor(0.7)
+                .lineLimit(1)
+            PopProgressBar(fraction: progress.fraction)
                 .accessibilityLabel("\(unit)踏破率")
-                .accessibilityValue(progress.percentageText)
             Text(emphasizesCount ? "\(progress.percentageText)訪問済み" : "\(progress.visited) / \(progress.total) \(unit)")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Label(progress.achievementText, systemImage: "seal.fill")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.teal)
+                .foregroundStyle(Pop.muted)
+            PopPill(text: progress.achievementText, systemImage: "seal.fill", fill: Pop.yellow)
             Text(progress.nextGoalText(unit: unit))
-                .font(.subheadline)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Pop.ink)
         }
-        .padding(.vertical, 8)
     }
 }
 
@@ -39,23 +39,25 @@ struct PrefectureExplorationRow: View {
         VStack(alignment: .leading, spacing: 8) {
             ViewThatFits(in: .horizontal) {
                 HStack {
-                    Text(prefecture.name).font(.headline)
+                    Text(prefecture.name).font(.headline.weight(.heavy))
                     Spacer()
-                    Text(prefecture.progress.percentageText).monospacedDigit()
+                    Text(prefecture.progress.percentageText)
+                        .font(.subheadline.weight(.bold))
+                        .monospacedDigit()
                 }
                 VStack(alignment: .leading) {
-                    Text(prefecture.name).font(.headline)
-                    Text(prefecture.progress.percentageText).monospacedDigit()
+                    Text(prefecture.name).font(.headline.weight(.heavy))
+                    Text(prefecture.progress.percentageText)
+                        .font(.subheadline.weight(.bold))
+                        .monospacedDigit()
                 }
             }
-            ProgressView(value: prefecture.progress.fraction)
-                .tint(.teal)
+            .foregroundStyle(Pop.ink)
+            PopProgressBar(fraction: prefecture.progress.fraction)
                 .accessibilityLabel("市区町村踏破率")
-                .accessibilityValue(prefecture.progress.percentageText)
             Text("\(prefecture.progress.visited) / \(prefecture.progress.total) 市区町村 · \(prefecture.progress.achievementText)")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Pop.muted)
         }
-        .padding(.vertical, 6)
     }
 }
