@@ -6,8 +6,7 @@ import SwiftUI
 /// 行政区域コードのような事務的な情報は末尾に小さく置く。
 ///
 /// 未訪問でも写真・スポット・豆知識を見られる。訪問の記録や地図の塗りは、ここからは変えない
-/// (スポットを押したときも地図を動かすだけ)。どこから開いても同じ画面になるよう、地図へ移す操作は
-/// 開いた側がenvironment(`showSpotOnMap`)で渡す。
+/// (スポットを押したときはAppleマップ・Googleマップを開くだけ)。地図画面に依存しないので、どこから開いても同じ画面になる。
 struct MunicipalityDetailScreen: View {
     let municipality: Municipality?
     let fallbackName: String

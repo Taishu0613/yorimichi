@@ -38,9 +38,6 @@ struct MapScreen: View {
     /// 実際に表示するページは`progressPage`を参照すること。
     @AppStorage("map.progressPage") private var preferredProgressPage: MapProgressPage = .prefectures
     @State private var selectedPlaceID: PersistentIdentifier?
-    /// 市区町村の詳細の「この街でできること」から地図で見せているスポット。地図に一時的な印を立てるだけで、
-    /// 記録・選択(selectedPlaceID)・塗りには関わらない。シートを開き直す・ピンを選ぶ・現在地へ戻ると消す。
-    @State private var highlightedSpot: YorimichiSpot?
     @State private var actionTask: Task<Void, Never>?
     @State private var focusTask: Task<Void, Never>?
     /// 最後にカメラが止まった時の表示範囲。区域へ寄せるアニメーションの長さを、そこからの変化量で決めるために使う。
@@ -332,11 +329,6 @@ struct MapScreen: View {
             }
             .onChange(of: selectedPlaceID) { _, _ in handleSelectionChange() }
             .onChange(of: isSheetExpanded) { _, isExpanded in handleExpansionChange(isExpanded) }
-            .onChange(of: highlightedSpot) { _, spot in
-                guard spot == nil, !isSheetExpanded else { return }
-                handlePrefectureVisitChange()
-                handleMunicipalityVisitChange()
-            }
             .onChange(of: summaryInputCounts, initial: true) { _, _ in refreshSummary() }
             .onChange(of: viewModel.currentVisit?.municipality.prefectureCode) { _, _ in
                 handlePrefectureVisitChange()
@@ -440,12 +432,6 @@ struct MapScreen: View {
                         .tag(place.persistentModelID)
                 }
             }
-            // 詳細から選んだスポット。記録した場所のピン(オレンジ・選択中は水色)と見分けられるよう、
-            // 怪奇・都市伝説と同じ藍色にしてカテゴリのアイコンを付ける。tagを付けないので選択には関わらない。
-            if let highlightedSpot {
-                Marker(highlightedSpot.name, systemImage: highlightedSpot.experience.systemImage, coordinate: highlightedSpot.coordinate)
-                    .tint(Pop.legend)
-            }
             // Markerとは別に、再記録した場所の上に吹き出しを重ねる。Marker自体の見た目は変えない。
             // 選択用のtagを付けないので、地図の選択(selectedPlaceID)には関わらない。
             // 記録した直後の手応えなので、ピンを隠していても出す。
@@ -539,7 +525,6 @@ struct MapScreen: View {
             VStack(spacing: 12) {
                 Button("現在地へ戻る", systemImage: "location.fill") {
                     selectedPlaceID = nil
-                    highlightedSpot = nil
                     refreshLocation()
                 }
                 .labelStyle(.iconOnly)
@@ -560,7 +545,6 @@ struct MapScreen: View {
         if let selectedPlace {
             // ピンを選ぶと地図がそのピンへ動いて再記録の場所から離れるため、吹き出しは待たずに消す。
             rerecordConfirmation = nil
-            highlightedSpot = nil
             // ピンの地点だけでなく、その区域(都道府県の表示なら都道府県)全体が収まる縮尺で見せる。
             if let municipality = selectedPlace.municipality {
                 requestAreaFocus(on: municipality, at: selectedPlace.coordinate)
@@ -682,14 +666,10 @@ struct MapScreen: View {
         guard !isExpanded else {
             // 広げると再記録ボタンが隠れ、「更新済み」の続きを見届けられないため、吹き出しごと待たずに消す。
             rerecordConfirmation = nil
-            highlightedSpot = nil
             return
         }
         sheetPath = []
         selectedPlaceID = nil
-        // スポットを地図で見るために閉じたときは、儀式・誘いのシートで地図を覆わない。
-        // 見送った分は、スポットの印を消したとき(現在地へ戻る等)に`onChange(of: highlightedSpot)`で回収する。
-        guard highlightedSpot == nil else { return }
         // ピン選択中・旅の記録展開中(「みどころを見る」からの遷移含む)は儀式シートの表示を
         // 見送っているため、フッターに戻った直後に改めて提示し直す。誘いシートを記録の
         // 唯一の入口にするには、見送った分をここで必ず回収する必要がある。
@@ -722,16 +702,6 @@ struct MapScreen: View {
                 }
         }
         .environment(silhouetteStore)
-        .environment(\.showSpotOnMap, ShowSpotOnMapAction(action: showSpotOnMap))
-    }
-
-    /// 市区町村の詳細でスポットを押したら、旅の記録のシートを閉じてその地点へ地図を寄せ、一時的な印を立てる。
-    /// 現在地・訪問の記録・塗りは変えない(閉じた後の後片付けは`handleExpansionChange`がいつもどおり行う)。
-    private func showSpotOnMap(_ spot: YorimichiSpot) {
-        focusTask?.cancel()
-        isSheetExpanded = false
-        highlightedSpot = spot
-        focusMap(on: spot.coordinate)
     }
 
     private var footer: some View {

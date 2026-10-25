@@ -11,6 +11,8 @@ nonisolated struct YorimichiSpot: Identifiable, Hashable, Sendable {
     /// 区域内であることを確かめた市区町村の行政区域コード(政令指定都市の詳細では市のコード)。
     let municipalityCode: String
     let experience: SpotExperience
+    /// Appleマップの地点のid(`MKMapItem.Identifier`の文字列)。Appleマップで開くとき、座標ではなく施設そのものを開くために使う。
+    var mapItemIdentifier: String? = nil
 
     /// 同じ名前の別の地点(チェーンの店舗など)を区別できるよう、座標も含める。
     var id: String { "\(name)@\(String(format: "%.4f,%.4f", latitude, longitude))" }
@@ -121,6 +123,7 @@ nonisolated struct SpotCandidate: Sendable {
     let category: MKPointOfInterestCategory?
     let coordinate: CLLocationCoordinate2D
     let address: String?
+    var mapItemIdentifier: String? = nil
 }
 
 /// 検索結果からスポットを最大3件選ぶ規則。名前とカテゴリだけを使う決定的な規則で、
@@ -236,7 +239,8 @@ nonisolated enum YorimichiSpotRanking {
                 longitude: candidate.coordinate.longitude,
                 address: candidate.address,
                 municipalityCode: municipalityCode,
-                experience: experience
+                experience: experience,
+                mapItemIdentifier: candidate.mapItemIdentifier
             ))
         }
         return selected

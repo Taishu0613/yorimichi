@@ -110,7 +110,8 @@ final class MunicipalitySpotSearchService {
                 name: name,
                 category: item.pointOfInterestCategory,
                 coordinate: item.location.coordinate,
-                address: item.address?.shortAddress
+                address: item.address?.shortAddress,
+                mapItemIdentifier: item.identifier?.rawValue
             )
         }
     }
