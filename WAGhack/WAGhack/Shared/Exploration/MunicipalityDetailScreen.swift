@@ -1,7 +1,12 @@
+import SwiftData
 import SwiftUI
 
-/// 市区町村の図鑑の1ページ。RakugakiSNSと同じPOPな見た目(`Pop`)で、読みものの「みどころ」と
-/// 「怪奇・都市伝説」を主役にする。行政区域コードのような事務的な情報は末尾に小さく置く。
+/// 市区町村の図鑑の1ページ。「その街の小さな旅行ガイド」として、街の写真→この街でできること→
+/// 読みものの「みどころ」「怪奇・都市伝説」の順に並べる。見た目はRakugakiSNSと同じPOPな見た目(`Pop`)。
+/// 行政区域コードのような事務的な情報は末尾に小さく置く。
+///
+/// 未訪問でも写真・スポット・豆知識を見られる。訪問の記録や地図の塗りは、ここからは変えない
+/// (スポットを押したときはAppleマップ・Googleマップを開くだけ)。地図画面に依存しないので、どこから開いても同じ画面になる。
 struct MunicipalityDetailScreen: View {
     let municipality: Municipality?
     let fallbackName: String
@@ -10,105 +15,111 @@ struct MunicipalityDetailScreen: View {
 
     /// マップのシート内でだけ渡される。プレビューなど渡されない場所では形を出さない。
     @Environment(SilhouetteMapStore.self) private var silhouetteStore: SilhouetteMapStore?
+    @Query private var savedPlaces: [SavedPlace]
+    @State private var viewModel = MunicipalityDetailViewModel()
 
-    /// 形を描く枠の高さ。
-    private static let shapeHeight: CGFloat = 200
-    /// 形の上下の余白。先頭の透明な領域もこの分を含めた高さにして、最初は形とカードが重ならないようにする。
-    private static let shapeVerticalPadding: CGFloat = 16
     /// 画面の左右の余白。カードのずらした影が端で切れないよう、影の分も含めて広めに取る。
     private static let horizontalPadding: CGFloat = 20
-
-    /// 背景に形を敷くか。Storeが渡されない場所(プレビューなど)や市区町村が不明なときは敷かない。
-    /// 政令指定都市は境界データに市そのものの形が無い(区の形だけ)ので敷かない。
-    private var showsShape: Bool {
-        municipality?.code != nil && silhouetteStore != nil && designatedCity == nil
-    }
 
     private var displayName: String {
         municipality?.municipalityName ?? fallbackName
     }
 
+    /// 形を描く市区町村のコード。政令指定都市は境界データに市そのものの形が無い(区の形だけ)ので描かない。
+    private var silhouetteCode: String? {
+        guard designatedCity == nil, silhouetteStore != nil else { return nil }
+        return municipality?.code
+    }
+
+    /// 写真・スポットを探す対象。市区町村が分からない(住所だけの記録)ときは探さない。
+    private var target: MunicipalityDetailTarget? {
+        guard let municipality else { return nil }
+        return MunicipalityDetailTarget(
+            code: municipality.code,
+            areaCodes: designatedCity.map { $0.wards.map(\.code) } ?? [municipality.code],
+            prefectureName: municipality.prefectureName,
+            municipalityName: municipality.municipalityName
+        )
+    }
+
+    private var isVisited: Bool {
+        if let designatedCity { return designatedCity.isVisited }
+        guard let code = municipality?.code else { return false }
+        return savedPlaces.contains { $0.municipality?.code == code }
+    }
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                if let code = municipality?.code, showsShape {
-                    // 形そのものは背景に固定して描き、ここには同じ高さの透明な領域だけを置く。
-                    // スクロールするとこの領域が上へ抜け、下のカードが形の上に覆い被さっていく。
-                    Color.clear
-                        .frame(height: Self.shapeHeight + Self.shapeVerticalPadding * 2)
-                        // 読み込みはこの領域に付ける(ScrollViewの外側に付けるより、表示される市区町村と対応が明確なため)。
-                        .task { await silhouetteStore?.loadMunicipalityMapIfNeeded(code: code) }
-                        .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 24) {
+                if target != nil {
+                    MunicipalityHeroView(
+                        photo: viewModel.heroPhoto,
+                        silhouette: silhouetteCode.flatMap { silhouetteStore?.municipalityMaps[$0] }
+                    )
+                    .animation(.spring(duration: 0.35, bounce: 0.3), value: silhouetteCode.flatMap { silhouetteStore?.municipalityMaps[$0] } != nil)
                 }
 
-                VStack(alignment: .leading, spacing: 24) {
-                    header
+                header
 
-                    if let designatedCity {
-                        WardsCard(city: designatedCity)
-                    }
+                if target != nil {
+                    YorimichiSpotSection(state: viewModel.spotState, photos: viewModel.spotPhotos)
+                }
 
-                    TriviaCard(style: .highlights, content: municipality?.famousThingsTrivia ?? "")
-                    TriviaCard(style: .legend, content: municipality?.historyTrivia ?? "")
+                TriviaCard(style: .highlights, content: municipality?.famousThingsTrivia ?? "")
+                TriviaCard(style: .legend, content: municipality?.historyTrivia ?? "")
 
-                    if let code = municipality?.code, !code.isEmpty {
-                        Text("行政区域コード \(code)")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(Pop.muted)
-                            .frame(maxWidth: .infinity)
-                            .textSelection(.enabled)
-                    }
+                if let designatedCity {
+                    WardsCard(city: designatedCity)
+                }
+
+                let photos = viewModel.displayedPhotos
+                if !photos.isEmpty {
+                    PhotoCreditsCard(photos: photos)
+                }
+
+                if let code = municipality?.code, !code.isEmpty {
+                    Text("行政区域コード \(code)")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(Pop.muted)
+                        .frame(maxWidth: .infinity)
+                        .textSelection(.enabled)
                 }
             }
             .padding(.horizontal, Self.horizontalPadding)
-            .padding(.top, showsShape ? 0 : 16)
+            .padding(.top, 16)
             .padding(.bottom, 32)
         }
-        .background(alignment: .top) {
-            shapeBackground
-        }
+        .background(Pop.paper.ignoresSafeArea())
         .navigationTitle(displayName)
         .navigationBarTitleDisplayMode(.inline)
+        .task(id: silhouetteCode) {
+            guard let silhouetteCode else { return }
+            await silhouetteStore?.loadMunicipalityMapIfNeeded(code: silhouetteCode)
+        }
+        .task(id: target) {
+            guard let target else { return }
+            await viewModel.load(target)
+        }
     }
 
-    /// 都道府県のピルと、蛍光ペンを引いた市区町村名。
+    /// 都道府県のピル、蛍光ペンを引いた市区町村名、訪問の状態。
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if let prefectureName = municipality?.prefectureName, !prefectureName.isEmpty {
-                PopPill(text: prefectureName, systemImage: "mappin", fill: Pop.themeSoft)
+            HStack(spacing: 8) {
+                if let prefectureName = municipality?.prefectureName, !prefectureName.isEmpty {
+                    PopPill(text: prefectureName, systemImage: "mappin", fill: Pop.themeSoft)
+                }
+                // 地図が主役なので、状態は押せない小さなピルで示すだけにする。
+                if isVisited {
+                    PopPill(text: "訪問済み", systemImage: "checkmark", fill: Pop.yellow)
+                } else {
+                    // ピルの文字は常に濃い色なので、ダークモードでも明るいままの色で塗る。
+                    PopPill(text: "まだ訪れていない", systemImage: "circle.dashed", fill: Pop.onNight)
+                }
             }
             MarkerHeading(displayName, size: 32)
         }
         .accessibilityElement(children: .combine)
-    }
-}
-
-extension MunicipalityDetailScreen {
-    /// スクロールの後ろに固定する紙と市区町村の形。スクロールしても動かず、カードが上を流れていく。
-    /// 形は地図の訪問済みの市区町村と同じテーマ色の塗りと縁取りで描き、ずらした影でステッカーのように浮かせる。
-    private var shapeBackground: some View {
-        ZStack(alignment: .top) {
-            Pop.paper
-                .ignoresSafeArea()
-            if showsShape, let code = municipality?.code, let map = silhouetteStore?.municipalityMaps[code] {
-                let shape = SilhouetteShape(rings: map.areas.flatMap(\.rings), aspectRatio: map.aspectRatio)
-                ZStack {
-                    shape.fill(Pop.shadow, style: FillStyle(eoFill: true))
-                        .offset(x: 4, y: 4)
-                    // 白い紙の上で地図と同じ見え方になるよう、塗りは不透明な薄い色にしてから縁取る。
-                    shape.fill(Pop.themeSoft, style: FillStyle(eoFill: true))
-                    shape.stroke(Pop.theme, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-                }
-                // 太い線と影が枠の端で切れないよう、内側に収める。
-                .padding(6)
-                .frame(height: Self.shapeHeight)
-                .padding(.horizontal, 32)
-                .padding(.vertical, Self.shapeVerticalPadding)
-                .accessibilityHidden(true)
-                .transition(.scale(scale: 0.9).combined(with: .opacity))
-            }
-        }
-        .animation(.spring(duration: 0.35, bounce: 0.3), value: municipality.flatMap { silhouetteStore?.municipalityMaps[$0.code] } != nil)
     }
 }
 
@@ -180,19 +191,42 @@ private struct TriviaCard: View {
     let style: Style
     let content: String
 
+    @State private var isExpanded = false
+
+    /// 閉じているときに見せる行数。スポットより下に読みものが続くので、最初は短く見せて全文は開いて読む。
+    private static let collapsedLineLimit = 5
+    /// これより短い文章は、閉じても数行に収まるので「続きを読む」を出さない。
+    /// 実際に行が切れるかを測るほどの精度は要らないため、文字数で決める。
+    private static let collapsibleLength = 110
+
+    private var isCollapsible: Bool {
+        content.count > Self.collapsibleLength
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
                 PopIconBadge(systemImage: style.systemImage, fill: style.iconFill, foreground: style.iconForeground)
                 MarkerHeading(style.title, marker: style.marker, foreground: style.text)
             }
-            // マスタが空欄の場合も「情報なし」へ置き換えず、空欄のまま表示する。
+            // マスタが空欄の場合も「情報なし」へ置き換えず、空欄のまま表示する。元の文章は書き換えず、行数だけを絞る。
             Text(content)
                 .font(.body)
                 .lineSpacing(6)
                 .foregroundStyle(style.text)
+                .lineLimit(isCollapsible && !isExpanded ? Self.collapsedLineLimit : nil)
                 .frame(maxWidth: .infinity, minHeight: 24, alignment: .topLeading)
                 .textSelection(.enabled)
+            if isCollapsible {
+                Button {
+                    isExpanded.toggle()
+                } label: {
+                    Label(isExpanded ? "閉じる" : "続きを読む", systemImage: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(style.text)
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(18)
         .popCard(fill: style.cardFill, shadow: style.shadow)
