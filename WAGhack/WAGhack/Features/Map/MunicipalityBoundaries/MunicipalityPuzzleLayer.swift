@@ -7,7 +7,8 @@ import SwiftUI
 /// ここで組み合わせて塗り分けるだけにする(状態は持たない)。
 ///
 /// 重なりの階層(`mapOverlayLevel`):
-/// - 下(`.aboveRoads`、地名ラベルより下): 市区町村のピースの塗りと細い線、または都道府県の制覇率の塗り。塗っても地名が読める。
+/// - 下(`.aboveRoads`、地名ラベルより下): 市区町村のピースの塗りと細い線、訪れた政令指定都市の薄い塗り、
+///   または都道府県の制覇率の塗り。塗っても地名が読める。
 ///   県境・海岸線の線(`MapPolyline`)もこの階層に置く(上の階層に置くと描かれないため。理由は描画箇所のコメント参照)。
 /// - 上(`.aboveLabels`): 訪れた政令指定都市の外周と、現在地の縁取り。線だけなので地名はほぼ隠れない。
 ///
@@ -55,6 +56,13 @@ struct MunicipalityPuzzleLayer: MapContent {
             BoundaryPieceContent(
                 piece: piece, fill: style.fill, stroke: style.stroke, strokeStyle: style.strokeStyle, level: .aboveRoads
             )
+        }
+        // 訪れた政令指定都市の中を薄く塗り、区の集まりが1つの市であることを面でも示す。
+        // 区のピースより後(上)に置き、地名が隠れないよう塗りは下の階層にする(外周の線は上の階層で別に描く)。
+        ForEach(visitedDesignatedCityOutlines) { outline in
+            MapPolygon(outline.polygon)
+                .foregroundStyle(DesignatedCityStyle.fill)
+                .mapOverlayLevel(level: .aboveRoads)
         }
         ForEach(prefectureBorders) { border in
             // 線には`mapOverlayLevel(.aboveLabels)`を付けないこと。付けると線が描かれなくなる
@@ -256,11 +264,14 @@ struct DesignatedCityMapState {
     }
 }
 
-/// 政令指定都市の見た目。市は外周を水色(.cyan)の線で縁取るだけで、中は塗らない。
-/// 区の塗り(teal)と色相が近いので、市の色で塗ると区と見分けにくい。線だけなら区の塗りの上でも判別できる。
-/// 色だけに頼らないよう、外周は区の線より太い線にしている。
+/// 政令指定都市の見た目。市は外周を青(.blue)の線で縁取り、中を薄い青で塗る。
+/// 区の塗り(teal)と見分けやすいよう、水色ではなくはっきりした青にしている。
+/// 塗りは区の塗りや地図が透けて見える薄さに留め、色だけに頼らないよう外周は区の線より太い線にしている。
 enum DesignatedCityStyle {
-    static let outlineStroke = Color.cyan
+    /// 地図の線と、図鑑・祝福シートなど市を表すUIの色。
+    static let color = Color.blue
+    static let outlineStroke = color
+    static let fill = color.opacity(0.15)
     /// 県境と同じ太さ。区の線(`municipalityLine`)より太く、現在地の縁取りより細い。
     static func outlineStrokeStyle(_ lineWidths: BoundaryLineWidths) -> StrokeStyle {
         StrokeStyle(lineWidth: lineWidths.prefectureBorder, lineCap: .round, lineJoin: .round)
