@@ -703,7 +703,7 @@ private struct WikipediaImageStrip: View {
 
 /// 区の記録で政令指定都市も初めて訪問済みになったことを、祝福シートの中で伝えるカード。
 /// 区の豆知識とは別に、市そのものの「みどころ」(例: 名古屋市の名古屋城・ひつまぶし)を見せる。
-/// 色は地図の市の外周(`DesignatedCityStyle`)と同じ水色にして、地図の線と結びつける。
+/// 色は地図の市の外周(`DesignatedCityStyle`)と同じ青にして、地図の線と結びつける。
 private struct DesignatedCityFirstVisitCard: View {
     let city: Municipality
 
@@ -721,7 +721,7 @@ private struct DesignatedCityFirstVisitCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .popCard(shadow: .cyan.opacity(0.3))
+        .popCard(shadow: DesignatedCityStyle.color.opacity(0.3))
         .accessibilityElement(children: .combine)
     }
 }
