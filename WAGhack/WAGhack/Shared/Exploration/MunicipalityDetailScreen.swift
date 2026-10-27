@@ -112,8 +112,8 @@ extension MunicipalityDetailScreen {
     }
 }
 
-/// みどころ・怪奇・都市伝説の読みものカード。
-private struct TriviaCard: View {
+/// みどころ・怪奇・都市伝説の読みものカード。図鑑のほか、未訪問の街の誘いシート(`InvitationTriviaPager`)でも使う。
+struct TriviaCard: View {
     enum Style {
         case highlights
         case legend
@@ -179,22 +179,25 @@ private struct TriviaCard: View {
 
     let style: Style
     let content: String
+    /// シートの中に置くときの小さめの見た目。シート全体が画面に収まるよう、文字と余白を詰める。
+    var isCompact = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: isCompact ? 10 : 14) {
             HStack(spacing: 10) {
-                PopIconBadge(systemImage: style.systemImage, fill: style.iconFill, foreground: style.iconForeground)
-                MarkerHeading(style.title, marker: style.marker, foreground: style.text)
+                PopIconBadge(systemImage: style.systemImage, fill: style.iconFill, foreground: style.iconForeground, size: isCompact ? 30 : 36)
+                MarkerHeading(style.title, size: isCompact ? 18 : 21, marker: style.marker, foreground: style.text)
             }
             // マスタが空欄の場合も「情報なし」へ置き換えず、空欄のまま表示する。
             Text(content)
-                .font(.body)
-                .lineSpacing(6)
+                .font(isCompact ? .subheadline : .body)
+                .lineSpacing(isCompact ? 4 : 6)
                 .foregroundStyle(style.text)
-                .frame(maxWidth: .infinity, minHeight: 24, alignment: .topLeading)
+                // 横に並べたとき(誘いシート)は、短い方のカードも長い方と同じ高さまで伸ばしてそろえる。
+                .frame(maxWidth: .infinity, minHeight: 24, maxHeight: isCompact ? .infinity : nil, alignment: .topLeading)
                 .textSelection(.enabled)
         }
-        .padding(18)
+        .padding(isCompact ? 14 : 18)
         .popCard(fill: style.cardFill, shadow: style.shadow)
         .accessibilityElement(children: .contain)
     }
