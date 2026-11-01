@@ -5,10 +5,10 @@ import SwiftUI
 nonisolated struct MunicipalityDetailTarget: Hashable, Sendable {
     /// 表示している市区町村の行政区域コード(政令指定都市なら市のコード)。
     let code: String
-    /// 政令指定都市の区のコード。普通の市区町村では空。
-    let wardCodes: [String]
     let prefectureName: String
     let municipalityName: String
+    /// 市区町村マスタの「みどころ」の列の値。
+    let spotsJSON: String
 
     /// マップアプリで検索するときに名前へ添える地名。同名の施設・同名の市区町村を区別するため、都道府県から書く。
     var areaName: String { prefectureName + municipalityName }
@@ -16,7 +16,7 @@ nonisolated struct MunicipalityDetailTarget: Hashable, Sendable {
 
 /// 市区町村の詳細画面の、代表写真・みどころ・みどころの写真の状態。
 ///
-/// みどころは同梱のマスタ(`MunicipalitySpotMaster`)から読むだけなので通信を待たない。写真だけを通信で取る。
+/// みどころは市区町村マスタから読むだけなので通信を待たない。写真だけを通信で取る。
 /// 画面1つにつき1つ持ち(`@State`)、同じ画面の表示中は結果を使い回す。bodyの再評価やスクロールでは取り直さない。
 /// 画面を開き直したときはサービス側のメモリキャッシュが効くので、同じ市区町村なら通信しない。
 @Observable
@@ -69,9 +69,7 @@ final class MunicipalityDetailViewModel {
         guard loadedTarget != target else { return }
         loadedTarget = nil
         currentTarget = target
-        let spots = await MunicipalitySpotMaster.shared.spots(code: target.code, wardCodes: target.wardCodes)
-        guard !Task.isCancelled else { return }
-        spotState = .loaded(spots)
+        spotState = .loaded(YorimichiSpot.spots(fromJSON: target.spotsJSON))
 
         let hero = await WikipediaImageService.shared.heroPhoto(
             prefectureName: target.prefectureName, municipalityName: target.municipalityName

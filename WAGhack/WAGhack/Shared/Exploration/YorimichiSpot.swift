@@ -1,12 +1,11 @@
 import Foundation
 
-/// 市区町村の詳細画面に出す「よりみちスポット」1件。同梱のマスタ(`MunicipalitySpots.csv`)から読む値で、保存も更新もしない。
+/// 市区町村の詳細画面に出す「よりみちスポット」1件。市区町村マスタの「みどころ」の列から読む値で、保存も更新もしない。
 ///
 /// 座標は持たない。スポットはマップアプリで開くだけなので、名前と市区町村名で検索できれば足りるため。
 /// 検索はマップアプリ側に任せ、Appleの検索結果やGoogleの情報をマスタに保存しないようにしている。
 nonisolated struct YorimichiSpot: Identifiable, Hashable, Sendable {
-    let municipalityCode: String
-    /// 市区町村の中での順位(1が一番のおすすめ)。
+    /// マスタでの並び順(1が一番のおすすめ)。
     let rank: Int
     let name: String
     let experience: SpotExperience
@@ -15,15 +14,41 @@ nonisolated struct YorimichiSpot: Identifiable, Hashable, Sendable {
     /// おすすめの理由の短い一文。
     let reason: String?
 
-    var id: String { "\(municipalityCode)-\(rank)" }
+    var id: Int { rank }
 
     /// 主に表示する行動の言葉。区分からも決められないときはnilで、画面では施設名を主にする。
     var displayAction: String? {
         action ?? experience.actionPhrase
     }
+
+    /// マスタのJSONの1件。形式は`SpotMaster/README.md`。
+    private struct MasterEntry: Decodable {
+        let name: String
+        let category: String
+        let action: String?
+        let reason: String?
+    }
+
+    /// マスタの列からスポットの一覧を作る。空欄は0件。壊れたJSONも0件にする(画面は「見つけられませんでした」の案内になる。
+    /// 中身の正しさはマスタを作るときに`SpotMaster/scripts`で確かめる)。
+    static func spots(fromJSON json: String) -> [YorimichiSpot] {
+        guard !json.isEmpty, let entries = try? JSONDecoder().decode([MasterEntry].self, from: Data(json.utf8)) else {
+            return []
+        }
+        return entries.enumerated().map { index, entry in
+            YorimichiSpot(
+                rank: index + 1,
+                name: entry.name,
+                // 新しい区分がマスタに増えても古いアプリで落ちないよう、知らない値は`other`にする。
+                experience: SpotExperience(rawValue: entry.category) ?? .other,
+                action: entry.action.flatMap { $0.isEmpty ? nil : $0 },
+                reason: entry.reason.flatMap { $0.isEmpty ? nil : $0 }
+            )
+        }
+    }
 }
 
-/// スポットで「何ができるか」の区分。マスタの`category`列の値と一致させる(`rawValue`)。行動の言葉とアイコンを持つ。
+/// スポットで「何ができるか」の区分。マスタの`category`の値と一致させる(`rawValue`)。行動の言葉とアイコンを持つ。
 ///
 /// 営業時間・料金・混雑のような不確かなことは言わない。マスタに行動の言葉が無く区分も`other`のものは、
 /// 無理に体験を言い切らず施設名を主に出す。

@@ -36,9 +36,9 @@ struct MunicipalityDetailScreen: View {
         guard let municipality else { return nil }
         return MunicipalityDetailTarget(
             code: municipality.code,
-            wardCodes: designatedCity?.wards.map(\.code) ?? [],
             prefectureName: municipality.prefectureName,
-            municipalityName: municipality.municipalityName
+            municipalityName: municipality.municipalityName,
+            spotsJSON: municipality.spotsJSON
         )
     }
 

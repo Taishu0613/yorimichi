@@ -16,6 +16,9 @@ final class Municipality {
     var prefectureCode: String
     var historyTrivia: String
     var famousThingsTrivia: String
+    /// みどころ(「この街でできること」)の一覧のJSON。順番が順位。中身は`YorimichiSpot.spots(fromJSON:)`で読む。
+    /// 既定値はマイグレーションのため。既存の端末では、この列が空の行に次のマスタ同期で値が入る。
+    var spotsJSON: String = ""
 
     init(
         code: String,
@@ -26,7 +29,8 @@ final class Municipality {
         isPrefecture: Bool,
         prefectureCode: String,
         historyTrivia: String,
-        famousThingsTrivia: String
+        famousThingsTrivia: String,
+        spotsJSON: String = ""
     ) {
         self.code = code
         self.prefectureName = prefectureName
@@ -37,6 +41,7 @@ final class Municipality {
         self.prefectureCode = prefectureCode
         self.historyTrivia = historyTrivia
         self.famousThingsTrivia = famousThingsTrivia
+        self.spotsJSON = spotsJSON
     }
 
     @discardableResult
@@ -48,7 +53,8 @@ final class Municipality {
                 || isPrefecture != record.isPrefecture
                 || prefectureCode != record.prefectureCode
                 || historyTrivia != record.historyTrivia
-                || famousThingsTrivia != record.famousThingsTrivia else {
+                || famousThingsTrivia != record.famousThingsTrivia
+                || spotsJSON != record.spotsJSON else {
             return false
         }
 
@@ -60,6 +66,7 @@ final class Municipality {
         prefectureCode = record.prefectureCode
         historyTrivia = record.historyTrivia
         famousThingsTrivia = record.famousThingsTrivia
+        spotsJSON = record.spotsJSON
         return true
     }
 }

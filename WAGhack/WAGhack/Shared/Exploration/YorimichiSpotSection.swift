@@ -53,7 +53,7 @@ struct YorimichiSpotSection: View {
     }
 
     private static let placeholderSpot = YorimichiSpot(
-        municipalityCode: "", rank: 0, name: "みどころを読み込んでいます", experience: .landmark, action: nil, reason: "みどころを読み込んでいます"
+        rank: 0, name: "みどころを読み込んでいます", experience: .landmark, action: nil, reason: "みどころを読み込んでいます"
     )
 }
 
