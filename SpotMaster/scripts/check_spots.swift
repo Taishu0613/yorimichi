@@ -1,19 +1,23 @@
-// みどころマスタ(MunicipalitySpots.csv)の検査。形式の間違いと、実在しない場所(AIの書き間違い)を見つける。
+// 市区町村マスタの「みどころ(JSON)」の列の検査。形式の間違いと、実在しない場所(AIの書き間違い)を見つける。
 //
 // 使い方(リポジトリ直下で):
 //   swiftc -O SpotMaster/scripts/check_spots.swift -o /tmp/check_spots
-//   /tmp/check_spots WAGhack/WAGhack/Resources/MunicipalitySpots.csv LocalGovernmentCodeJapan_Knowledge.csv \
-//     BoundaryData/generated/BoundaryData/municipalities/lod2_100m [--format-only] [--code 12101]
+//   /tmp/check_spots LocalGovernmentCodeJapan_Knowledge.csv BoundaryData/generated/BoundaryData/municipalities/lod2_100m \
+//     [--format-only] [--code 12101] [--results SpotMaster/work/check_results.tsv] [--evidence SpotMaster/work/evidence]
 //
 // 実在の確認はMapKitの検索で、名前で見つかる場所がその市区町村の境界の中にあるかを見る。
 // 結果(場所の有無)を人が読むだけで、検索結果そのものはマスタに書き込まない(Appleの規約で地図データは保存できないため)。
-// 検索には回数の制限があるので、1件ごとに間を置く。全国分は数時間かかる。
+// 検索には回数の制限があるので、1件ごとに間を置く。
+// --evidence を渡すと、Wikidataで境界の中にあると分かっている名前は検索を省く。
+// --results を渡すと結果を追記し、次に実行したときは確認済みの行を飛ばす(途中で止まっても続きから進む)。
 import Foundation
 import MapKit
 
-struct Row {
-    let line: Int
-    let code: String, rank: Int?, name: String, category: String, action: String, reason: String
+struct Row: Decodable {
+    let name: String
+    let category: String
+    let action: String?
+    let reason: String?
 }
 
 let categories: Set<String> = [
@@ -50,53 +54,60 @@ func read(_ path: String) -> String {
 }
 
 let arguments = CommandLine.arguments
-guard arguments.count >= 4 else { fatalError("使い方はファイルの先頭を参照") }
+guard arguments.count >= 3 else { fatalError("使い方はファイルの先頭を参照") }
 let formatOnly = arguments.contains("--format-only")
-let onlyCode = arguments.firstIndex(of: "--code").map { arguments[$0 + 1] }
-
-// 市区町村の一覧
-var areaNames: [String: (prefecture: String, municipality: String)] = [:]
-for row in parseCSV(read(arguments[2])).dropFirst() where row.count == 9 && row[5] != "TRUE" {
-    areaNames[row[0]] = (row[1], row[2])
-}
+func option(_ name: String) -> String? { arguments.firstIndex(of: name).map { arguments[$0 + 1] } }
+let onlyCode = option("--code")
+let boundaryFolder = arguments[2]
 
 // 形式の検査
 var problems = 0
 func problem(_ text: String) { problems += 1; print("NG \(text)") }
-let table = parseCSV(read(arguments[1]))
-if table.first != ["code", "rank", "name", "category", "action", "reason"] { problem("1行目の見出しが違います") }
+var areaNames: [String: (prefecture: String, municipality: String)] = [:]
 var rowsByCode: [String: [Row]] = [:]
-for (index, cells) in table.dropFirst().enumerated() {
-    let line = index + 2
-    guard cells.count == 6 else { problem("\(line)行目: 列の数が\(cells.count)です"); continue }
-    let row = Row(line: line, code: cells[0], rank: Int(cells[1]), name: cells[2], category: cells[3], action: cells[4], reason: cells[5])
-    if areaNames[row.code] == nil { problem("\(line)行目: 知らない行政区域コード \(row.code)") }
-    if row.rank == nil { problem("\(line)行目: 順位が数字ではありません") }
-    if row.name.isEmpty { problem("\(line)行目: 名前が空です") }
-    if !categories.contains(row.category) { problem("\(line)行目: 知らない区分 \(row.category)") }
-    if row.action.count > maximumActionLength { problem("\(line)行目: 行動の言葉が長すぎます(\(row.action.count)字)") }
-    if row.reason.count > maximumReasonLength { problem("\(line)行目: 理由が長すぎます(\(row.reason.count)字)") }
-    rowsByCode[row.code, default: []].append(row)
+for cells in parseCSV(read(arguments[1])).dropFirst() {
+    guard cells.count == 10 else { problem("\(cells.first ?? "") の列の数が\(cells.count)です"); continue }
+    guard cells[5] != "TRUE" else { continue }
+    let code = cells[0]
+    areaNames[code] = (cells[1], cells[2])
+    guard !cells[9].isEmpty else { continue }
+    guard let rows = try? JSONDecoder().decode([Row].self, from: Data(cells[9].utf8)) else {
+        problem("\(code) \(cells[2]): JSONを読めません")
+        continue
+    }
+    rowsByCode[code] = rows
+    if rows.count > maximumSpotCount { problem("\(code) \(cells[2]): \(rows.count)件あります(上限\(maximumSpotCount)件)") }
+    if Set(rows.map(\.name)).count != rows.count { problem("\(code) \(cells[2]): 同じ名前が重複しています") }
+    for row in rows {
+        if row.name.isEmpty { problem("\(code): 名前が空です") }
+        if !categories.contains(row.category) { problem("\(code) \(row.name): 知らない区分 \(row.category)") }
+        if (row.action ?? "").count > maximumActionLength { problem("\(code) \(row.name): 行動の言葉が長すぎます") }
+        if (row.reason ?? "").count > maximumReasonLength { problem("\(code) \(row.name): 理由が長すぎます") }
+    }
 }
-for (code, rows) in rowsByCode {
-    let label = "\(code) \(areaNames[code]?.municipality ?? "")"
-    if rows.count > maximumSpotCount { problem("\(label): \(rows.count)件あります(上限\(maximumSpotCount)件)") }
-    if rows.compactMap(\.rank).sorted() != Array(1...rows.count) { problem("\(label): 順位が1からの連番ではありません") }
-    if Set(rows.map(\.name)).count != rows.count { problem("\(label): 同じ名前が重複しています") }
-}
-print("形式: \(rowsByCode.count)市区町村 \(table.count - 1)件 問題\(problems)件")
+let emptyCount = areaNames.count - rowsByCode.count
+print("形式: \(rowsByCode.count)市区町村 \(rowsByCode.values.map(\.count).reduce(0, +))件 空\(emptyCount)市区町村 問題\(problems)件")
 if formatOnly { exit(problems == 0 ? 0 : 1) }
 
 // 実在の確認
 struct Ring { let points: [MKMapPoint] }
 struct Polygon { let exterior: Ring, holes: [Ring] }
 
+var featuresByPrefecture: [String: [[String: Any]]] = [:]
+
+func features(prefecture: String) -> [[String: Any]] {
+    if let cached = featuresByPrefecture[prefecture] { return cached }
+    let path = "\(boundaryFolder)/municipality_\(prefecture)_lod2.geojson"
+    let json = FileManager.default.contents(atPath: path)
+        .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+    let features = json?["features"] as? [[String: Any]] ?? []
+    featuresByPrefecture = [prefecture: features]
+    return features
+}
+
 func polygons(code: String) -> [Polygon] {
-    let path = "\(arguments[3])/municipality_\(code.prefix(2))_lod2.geojson"
-    guard let data = FileManager.default.contents(atPath: path),
-          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-          let features = json["features"] as? [[String: Any]],
-          let feature = features.first(where: { ($0["properties"] as? [String: Any])?["c"] as? String == code }),
+    guard let feature = features(prefecture: String(code.prefix(2)))
+        .first(where: { ($0["properties"] as? [String: Any])?["c"] as? String == code }),
           let geometry = feature["geometry"] as? [String: Any] else { return [] }
     func ring(_ value: Any) -> Ring {
         Ring(points: (value as? [[Double]] ?? []).map { MKMapPoint(CLLocationCoordinate2D(latitude: $0[1], longitude: $0[0])) })
@@ -171,27 +182,64 @@ func search(_ query: String, in region: MKCoordinateRegion) -> [MKMapItem] {
     return result ?? []
 }
 
+/// Wikidataで境界の中にあると分かっている名前(市区町村コードごと)。
+func knownNames() -> [String: Set<String>] {
+    guard let folder = option("--evidence") else { return [:] }
+    var names: [String: Set<String>] = [:]
+    for file in (try? FileManager.default.contentsOfDirectory(atPath: folder)) ?? [] {
+        guard let data = FileManager.default.contents(atPath: "\(folder)/\(file)"),
+              let items = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else { continue }
+        for item in items {
+            guard let code = item["code"] as? String, let candidates = item["wikidata"] as? [[Any]] else { continue }
+            names[code] = Set(candidates.compactMap { ($0.first as? String).map(normalize) })
+        }
+    }
+    return names
+}
+
+let resultsPath = option("--results")
+var checked: Set<String> = []
+if let resultsPath, let text = try? String(contentsOfFile: resultsPath, encoding: .utf8) {
+    for line in text.split(separator: "\n") {
+        let fields = line.split(separator: "\t", omittingEmptySubsequences: false)
+        if fields.count >= 3 { checked.insert("\(fields[0])\t\(fields[1])") }
+    }
+}
+
+func record(_ code: String, _ name: String, _ status: String, _ detail: String) {
+    print("\(status) \(code) \(name) \(detail)")
+    guard let resultsPath, let data = "\(code)\t\(name)\t\(status)\t\(detail)\n".data(using: .utf8) else { return }
+    if !FileManager.default.fileExists(atPath: resultsPath) { FileManager.default.createFile(atPath: resultsPath, contents: nil) }
+    if let handle = FileHandle(forWritingAtPath: resultsPath) {
+        handle.seekToEndOfFile()
+        handle.write(data)
+        handle.closeFile()
+    }
+}
+
+let known = knownNames()
 var failed = 0
 for code in rowsByCode.keys.sorted() where onlyCode == nil || onlyCode == code {
-    guard let area = areaNames[code] else { continue }
     let shapes = polygons(code: code)
-    guard !shapes.isEmpty else { print("?? \(code) \(area.municipality): 境界データがありません"); continue }
+    guard !shapes.isEmpty else { print("?? \(code): 境界データがありません"); continue }
     let searchRegion = region(of: shapes)
-    print("== \(code) \(area.prefecture)\(area.municipality)")
-    for row in rowsByCode[code, default: []].sorted(by: { ($0.rank ?? 0) < ($1.rank ?? 0) }) {
+    for row in rowsByCode[code, default: []] where !checked.contains("\(code)\t\(row.name)") {
+        let name = normalize(row.name)
+        if known[code]?.contains(name) == true {
+            record(code, row.name, "OK", "wikidata")
+            continue
+        }
         let items = search(row.name, in: searchRegion)
         let insideItems = items.filter { isInside($0.location.coordinate, shapes) }
-        let name = normalize(row.name)
         let matching = insideItems.first { item in
             let found = normalize(item.name ?? "")
-            return found.contains(name) || name.contains(found)
+            return !found.isEmpty && (found.contains(name) || name.contains(found))
         }
         if let matching {
-            print("OK \(row.rank ?? 0) \(row.name) → \(matching.name ?? "")")
+            record(code, row.name, "OK", matching.name ?? "")
         } else {
             failed += 1
-            let nearest = (insideItems.first ?? items.first)?.name ?? "見つからない"
-            print("要確認 \(row.rank ?? 0) \(row.name) → 区域内で一致なし(近い結果: \(nearest))")
+            record(code, row.name, "NG", (insideItems.first ?? items.first)?.name ?? "見つからない")
         }
         Thread.sleep(forTimeInterval: 1.3)
     }
