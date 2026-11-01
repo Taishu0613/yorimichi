@@ -5,7 +5,7 @@
 
 import Foundation
 
-struct CSVParser {
+nonisolated struct CSVParser {
     func parse(_ source: String) throws -> [[String]] {
         let characters = Array(source)
         var rows: [[String]] = []
@@ -73,7 +73,7 @@ struct CSVParser {
     }
 }
 
-enum CSVParserError: LocalizedError {
+nonisolated enum CSVParserError: LocalizedError {
     case unclosedQuotedField
 
     var errorDescription: String? {

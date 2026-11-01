@@ -36,7 +36,7 @@ struct MunicipalityDetailScreen: View {
         guard let municipality else { return nil }
         return MunicipalityDetailTarget(
             code: municipality.code,
-            areaCodes: designatedCity.map { $0.wards.map(\.code) } ?? [municipality.code],
+            wardCodes: designatedCity?.wards.map(\.code) ?? [],
             prefectureName: municipality.prefectureName,
             municipalityName: municipality.municipalityName
         )
@@ -61,8 +61,15 @@ struct MunicipalityDetailScreen: View {
 
                 header
 
-                if target != nil {
-                    YorimichiSpotSection(state: viewModel.spotState, photos: viewModel.spotPhotos)
+                if let target {
+                    YorimichiSpotSection(
+                        state: viewModel.spotState,
+                        visibleSpots: viewModel.visibleSpots,
+                        hiddenSpotCount: viewModel.hiddenSpotCount,
+                        photos: viewModel.spotPhotos,
+                        areaName: target.areaName,
+                        isShowingAll: $viewModel.isShowingAllSpots
+                    )
                 }
 
                 TriviaCard(style: .highlights, content: municipality?.famousThingsTrivia ?? "")
@@ -99,6 +106,10 @@ struct MunicipalityDetailScreen: View {
         .task(id: target) {
             guard let target else { return }
             await viewModel.load(target)
+        }
+        // 「もっと見る」で増えた行の写真を取る。閉じたときに走っても、取得済みは飛ばすので問い合わせは増えない。
+        .task(id: viewModel.isShowingAllSpots) {
+            await viewModel.loadVisibleSpotPhotos()
         }
     }
 

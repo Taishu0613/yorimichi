@@ -1,11 +1,15 @@
-import MapKit
-import os
 import SwiftUI
 
-/// 「この街でできること」。よりみちスポットを最大3件、行動の言葉と一緒に並べる。
+/// 「この街でできること」。AIが総合評価したマスタのみどころを、行動の言葉と一緒に順位の順に並べる。
+/// 最初は上位の数件だけを見せ、「もっと見る」で最大10件まで広げる。
 struct YorimichiSpotSection: View {
     let state: MunicipalityDetailViewModel.SpotState
+    let visibleSpots: [YorimichiSpot]
+    let hiddenSpotCount: Int
     let photos: [YorimichiSpot.ID: WikimediaPhoto]
+    /// マップアプリで検索するときに名前へ添える地名。
+    let areaName: String
+    @Binding var isShowingAll: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -15,36 +19,51 @@ struct YorimichiSpotSection: View {
             }
             switch state {
             case .loading:
-                // 検索中は控えめな仮の行を2つだけ出す。名前が届いた時点で本物の行に置き換わる。
-                ForEach(0..<2, id: \.self) { _ in
-                    YorimichiSpotRow(spot: Self.placeholderSpot, photo: nil, isInteractive: false)
-                }
-                .redacted(reason: .placeholder)
-                .accessibilityHidden(true)
-            case .loaded(let spots) where !spots.isEmpty:
-                ForEach(spots) { spot in
-                    YorimichiSpotRow(spot: spot, photo: photos[spot.id])
-                }
-            case .loaded, .unavailable:
+                // マスタを読む一瞬だけ、行の分の場所を確保する。
+                YorimichiSpotRow(spot: Self.placeholderSpot, photo: nil, areaName: "", isInteractive: false)
+                    .redacted(reason: .placeholder)
+                    .accessibilityHidden(true)
+            case .loaded(let spots) where spots.isEmpty:
                 Text("この街のスポットを見つけられませんでした")
                     .font(.subheadline)
                     .foregroundStyle(Pop.muted)
+            case .loaded(let spots):
+                ForEach(visibleSpots) { spot in
+                    YorimichiSpotRow(spot: spot, photo: photos[spot.id], areaName: areaName)
+                }
+                if spots.count > MunicipalityDetailViewModel.collapsedSpotCount {
+                    Button {
+                        isShowingAll.toggle()
+                    } label: {
+                        Label(
+                            isShowingAll ? "閉じる" : "もっと見る(あと\(hiddenSpotCount)件)",
+                            systemImage: isShowingAll ? "chevron.up" : "chevron.down"
+                        )
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(Pop.ink)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
         .accessibilityElement(children: .contain)
     }
 
     private static let placeholderSpot = YorimichiSpot(
-        name: "スポットを探しています", latitude: 0, longitude: 0, address: nil, municipalityCode: "", experience: .landmark
+        municipalityCode: "", rank: 0, name: "みどころを読み込んでいます", experience: .landmark, action: nil, reason: "みどころを読み込んでいます"
     )
 }
 
-/// スポット1件の行。左に写真(無ければカテゴリのアイコン)、中央に行動の言葉・施設名・区分、右に地図の印。
+/// スポット1件の行。左に写真(無ければカテゴリのアイコン)、中央に行動の言葉・施設名・おすすめの理由、右に地図の印。
 /// 行全体が押せて、AppleマップかGoogleマップを選んで開く。黄色・夜色の読みものカードと競合しないよう、白い面に薄い枠だけを付ける。
 struct YorimichiSpotRow: View {
     let spot: YorimichiSpot
     let photo: WikimediaPhoto?
-    /// 検索中の仮の行ではfalseにして、押せないようにする。
+    let areaName: String
+    /// 読み込み中の仮の行ではfalseにして、押せないようにする。
     var isInteractive = true
 
     @ScaledMetric(relativeTo: .body) private var thumbnailSize: CGFloat = 64
@@ -62,10 +81,10 @@ struct YorimichiSpotRow: View {
             .accessibilityHint("マップアプリでこの場所を開きます")
             .confirmationDialog(spot.name, isPresented: $isMapChoicePresented, titleVisibility: .visible) {
                 Button("Appleマップで開く") {
-                    Task { await SpotMapLauncher.openInAppleMaps(spot) }
+                    openURL(SpotMapLauncher.appleMapsURL(for: spot, in: areaName))
                 }
                 Button("Googleマップで開く") {
-                    openURL(SpotMapLauncher.googleMapsURL(for: spot))
+                    openURL(SpotMapLauncher.googleMapsURL(for: spot, in: areaName))
                 }
             }
         } else {
@@ -79,8 +98,8 @@ struct YorimichiSpotRow: View {
             thumbnail
             VStack(alignment: .leading, spacing: 2) {
                 // 行動の言葉を決められない施設は、無理に体験を言い切らず施設名を主にする。
-                if let phrase = spot.experience.actionPhrase {
-                    Text(phrase)
+                if let action = spot.displayAction {
+                    Text(action)
                         .font(.headline.weight(.bold))
                         .foregroundStyle(Pop.ink)
                     Text(spot.name)
@@ -91,9 +110,10 @@ struct YorimichiSpotRow: View {
                         .font(.headline.weight(.bold))
                         .foregroundStyle(Pop.ink)
                 }
-                Text(spot.experience.categoryLabel)
+                Text(spot.reason ?? spot.experience.categoryLabel)
                     .font(.caption)
                     .foregroundStyle(Pop.muted)
+                    .lineLimit(2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             if isInteractive {
@@ -136,38 +156,29 @@ struct YorimichiSpotRow: View {
     }
 }
 
-/// スポットを外部のマップアプリで開く。アプリ内の地図・訪問の記録には触れない。
-enum SpotMapLauncher {
-    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "WAGhack", category: "SpotSearch")
-
-    /// 検索で得たAppleマップの地点idがあれば施設そのもの(営業情報や写真の載った場所カード)を開き、
-    /// 無い・引けないときは座標に施設名を付けたピンを開く。
-    static func openInAppleMaps(_ spot: YorimichiSpot) async {
-        var mapItem: MKMapItem?
-        if let identifier = spot.mapItemIdentifier.flatMap(MKMapItem.Identifier.init(rawValue:)) {
-            do {
-                mapItem = try await MKMapItemRequest(mapItemIdentifier: identifier).mapItem
-            } catch {
-                logger.error("\(spot.name, privacy: .public): 地点を引けないため座標で開きます \(error.localizedDescription, privacy: .public)")
-            }
-        }
-        let item = mapItem ?? {
-            let item = MKMapItem(location: CLLocation(latitude: spot.latitude, longitude: spot.longitude), address: nil)
-            item.name = spot.name
-            return item
-        }()
-        item.openInMaps()
+/// スポットを開くマップアプリのURL。アプリ内の地図・訪問の記録には触れない。
+/// マスタに座標を持たないので、どちらも「名前＋地名」で検索させる。
+nonisolated enum SpotMapLauncher {
+    /// Appleマップのリンク。iPhoneではマップアプリで開く。
+    static func appleMapsURL(for spot: YorimichiSpot, in areaName: String) -> URL {
+        url("https://maps.apple.com/", queryItems: [URLQueryItem(name: "q", value: query(for: spot, in: areaName))])
     }
 
     /// GoogleマップのURL(公式の Maps URLs)。Googleマップのアプリがあればアプリで、無ければブラウザで開く。
-    /// 座標だけでは施設名が出ないため、施設名と住所(取れていれば)で検索させる。
-    static func googleMapsURL(for spot: YorimichiSpot) -> URL {
-        var components = URLComponents(string: "https://www.google.com/maps/search/")!
-        let query = [spot.name, spot.address].compactMap(\.self).joined(separator: " ")
-        components.queryItems = [
+    static func googleMapsURL(for spot: YorimichiSpot, in areaName: String) -> URL {
+        url("https://www.google.com/maps/search/", queryItems: [
             URLQueryItem(name: "api", value: "1"),
-            URLQueryItem(name: "query", value: query),
-        ]
+            URLQueryItem(name: "query", value: query(for: spot, in: areaName)),
+        ])
+    }
+
+    private static func query(for spot: YorimichiSpot, in areaName: String) -> String {
+        "\(spot.name) \(areaName)"
+    }
+
+    private static func url(_ base: String, queryItems: [URLQueryItem]) -> URL {
+        var components = URLComponents(string: base)!
+        components.queryItems = queryItems
         return components.url!
     }
 }
