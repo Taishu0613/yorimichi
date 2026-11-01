@@ -31,6 +31,7 @@ MAXIMUM_WIKIDATA_CANDIDATES = 30
 # 同時に投げる問い合わせの数。Wikidataの検索は1接続あたりの上限が5なので、余裕を見て4にする。
 WIKIDATA_WORKERS = 4
 WIKIPEDIA_WORKERS = 3
+MINIMUM_TILE = 0.06
 # 寄り道の目的になる種類(下位の種類も1段含める)。
 PLACE_TYPES = """Q570116 Q845945 Q5393308 Q160742 Q23413 Q33506 Q22698 Q1107656 Q12518 Q11303 Q4989906 Q2319498 Q24354
 Q153562 Q43501 Q16970 Q839954 Q207694 Q1440300 Q1497364 Q79007 Q16560 Q34038 Q40080 Q23442 Q8502 Q46831 Q23397
@@ -61,9 +62,9 @@ def cached(name, producer):
     return value
 
 
-def sparql(query):
+def sparql(query, attempts=5):
     url = "https://query.wikidata.org/sparql?" + urllib.parse.urlencode({"query": query, "format": "json"})
-    return fetch(url)["results"]["bindings"]
+    return fetch(url, attempts=attempts)["results"]["bindings"]
 
 
 def load_municipalities():
@@ -140,6 +141,19 @@ class Boundaries:
 
 
 def wikidata_tile(west, south, east, north):
+    """升目の中の名所。東京のように項目が多い升目は時間切れになるので、4つに割って取り直す。"""
+    try:
+        return wikidata_query(west, south, east, north, attempts=2 if east - west > MINIMUM_TILE else 5)
+    except RuntimeError:
+        if east - west <= MINIMUM_TILE:
+            raise
+    middle_x, middle_y = (west + east) / 2, (south + north) / 2
+    return [row for box in [(west, south, middle_x, middle_y), (middle_x, south, east, middle_y),
+                            (west, middle_y, middle_x, north), (middle_x, middle_y, east, north)]
+            for row in wikidata_tile(*box)]
+
+
+def wikidata_query(west, south, east, north, attempts):
     values = " ".join(f"wd:{item}" for item in PLACE_TYPES)
     return sparql(f"""SELECT ?item ?label ?links ?coord (SAMPLE(?typeName) AS ?type) WHERE {{
       SERVICE wikibase:box {{ ?item wdt:P625 ?coord .
@@ -151,7 +165,7 @@ def wikidata_tile(west, south, east, north):
       FILTER NOT EXISTS {{ ?item wdt:P576 ?closed }}
       FILTER NOT EXISTS {{ ?item wdt:P3999 ?closed2 }}
       OPTIONAL {{ ?item wdt:P31 ?t . ?t rdfs:label ?typeName . FILTER(LANG(?typeName) = "ja") }}
-    }} GROUP BY ?item ?label ?links ?coord""")
+    }} GROUP BY ?item ?label ?links ?coord""", attempts=attempts)
 
 
 def wikidata_candidates(prefecture_code, boundaries):
