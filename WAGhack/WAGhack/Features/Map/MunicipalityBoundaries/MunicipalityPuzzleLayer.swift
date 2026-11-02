@@ -190,8 +190,8 @@ private struct BoundaryPieceContent: MapContent {
     }
 }
 
-/// 市区町村のピースの見た目。集めたピースはテーマ色で埋め、まだのピースは薄い灰色で覆って
-/// 「灰色が色に置き換わっていく」感覚を出す。
+/// 市区町村のピースの見た目。集めたピースはテーマ色で埋め、まだのピースは塗らずに薄い灰色の線だけで示す。
+/// 未訪問を灰色で塗ると地図全体がくすんで見えるため、塗りは訪問済みだけにしている。
 struct MunicipalityPieceStyle {
     let fill: Color
     let stroke: Color
@@ -206,9 +206,9 @@ struct MunicipalityPieceStyle {
     ///   演出の線の太さは以前の固定値を基準に書かれているため、今の縮尺の太さに合わせて拡大する。
     init(isVisited: Bool, lineWidths: BoundaryLineWidths, emphasis: MapAreaEffectLook? = nil) {
         // 訪問済みの色は、アプリのテーマ色(.teal。進捗カードやタブのtintと同じ)に揃える。
-        // 未開拓は薄い灰色で面を塗る。塗りは地名ラベルより下の階層なので、濃くしすぎなければ地名は読める。
-        let normalFill: Color = isVisited ? .teal.opacity(0.35) : .gray.opacity(0.22)
-        let normalStroke: Color = isVisited ? .teal.opacity(0.9) : .gray.opacity(0.55)
+        // 未開拓は塗らず、線も地図の邪魔にならない薄さにする。
+        let normalFill: Color = isVisited ? .teal.opacity(0.35) : .clear
+        let normalStroke: Color = isVisited ? .teal.opacity(0.9) : .gray.opacity(0.35)
         fill = emphasis?.fill?.color ?? normalFill
         stroke = emphasis?.pieceStroke?.paint.color ?? normalStroke
         // 訪問済みも未訪問と同じ太さ。訪問済みは塗りで分かる。県境より常に細く、県境との区別は太さと色
@@ -217,7 +217,7 @@ struct MunicipalityPieceStyle {
     }
 }
 
-/// 都道府県の制覇率の塗り。市区町村のピースと同じく、未訪問は薄い灰色、訪問済みはテーマ色(.teal)にして
+/// 都道府県の制覇率の塗り。市区町村のピースと同じく、未訪問は塗らず、訪問済みはテーマ色(.teal)にして
 /// 「市区町村パズルを県単位で見たもの」と感じられるようにする。段階が上がるほどtealを濃くする(色相は変えない)。
 /// 色相を段階ごとに変えないのは、色覚の個人差に左右されず「濃い=たくさん回った」と読めるようにするため。
 enum PrefectureConquestStyle {
@@ -229,8 +229,8 @@ enum PrefectureConquestStyle {
     /// 新しい段階の濃さを基準に一時的に濃くするために使う。
     static func fillPaint(for level: PrefectureConquestLevel) -> MapAreaPaint {
         switch level {
-        // 市区町村の未訪問ピース(`MunicipalityPieceStyle`)と同じ灰色。
-        case .unvisited: .gray(0.22)
+        // 市区町村の未訪問ピース(`MunicipalityPieceStyle`)と同じく塗らない。
+        case .unvisited: .clear
         case .started: .teal(0.15)
         case .quarter: .teal(0.27)
         case .half: .teal(0.39)

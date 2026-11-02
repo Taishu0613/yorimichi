@@ -94,8 +94,8 @@ struct MapAreaEffectTimeline: Equatable {
     /// 反映されて先に色が付くと、演出で「はまる」前に答えが見えてしまうため。
     /// 塗りと線は`MunicipalityPieceStyle`の未訪問、強調線は`CurrentMunicipalityOutlineStyle`と同じ値。
     static let recordingMunicipalityLook = MapAreaEffectLook(
-        fill: .gray(0.22),
-        pieceStroke: MapAreaStroke(paint: .gray(0.55), width: 0.7),
+        fill: .clear,
+        pieceStroke: MapAreaStroke(paint: .gray(0.35), width: 0.7),
         outline: MapAreaStroke(paint: .teal(1.0), width: 2.5)
     )
 
@@ -184,7 +184,7 @@ struct MapAreaEffectTimeline: Equatable {
 
     // MARK: - 現在地の脈打ち
 
-    /// 未訪問の区域に入ったときの「ホワンホワン」。強調線だけを変え、塗り(未訪問の灰色)は変えない。
+    /// 未訪問の区域に入ったときの「ホワンホワン」。強調線だけを変え、塗り(未訪問は塗らない)は変えない。
     static let currentAreaPulse: MapAreaEffectTimeline = {
         let period = 800
         let cycleCount = 3

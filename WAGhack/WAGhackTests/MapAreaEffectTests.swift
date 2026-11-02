@@ -98,8 +98,8 @@ struct MapAreaEffectTimelineTests {
 
     @Test func 記録中は未訪問のピースの見た目に保つ() {
         let look = MapAreaEffectTimeline.recordingMunicipalityLook
-        #expect(look.fill == .gray(0.22))
-        #expect(look.pieceStroke == MapAreaStroke(paint: .gray(0.55), width: 0.7))
+        #expect(look.fill == .clear)
+        #expect(look.pieceStroke == MapAreaStroke(paint: .gray(0.35), width: 0.7))
         #expect(look.outline == MapAreaStroke(paint: .teal(1.0), width: 2.5))
     }
 

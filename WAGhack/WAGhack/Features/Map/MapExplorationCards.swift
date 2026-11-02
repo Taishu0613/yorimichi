@@ -385,7 +385,7 @@ private struct MapLocationStatusRow: View {
                         .presentationCompactAdaptation(.popover)
                 }
 
-                // 見た目は再記録ボタン(MapRerecordButton)とそろえる。
+                // 塗りのボタンにする点は再記録ボタン(MapRerecordButton)とそろえる。エラー時は押すと何が起きるかを文字で伝える。
                 Button("再確認", systemImage: "arrow.clockwise", action: retry)
                     .font(.footnote.weight(.semibold))
                     .buttonStyle(.bordered)
@@ -429,7 +429,7 @@ private struct MapLocationStatusRow: View {
 /// 踏破数・踏破率は地図上の`MapProgressHeader`が常に出しているため、ここでは繰り返さず、
 /// ヘッダーに無い「最後にどこを記録したか」だけを添える。ガラスのバー(`MapCurrentPlaceCard`)の面に直接置き、
 /// 内側に背景付きのカードを重ねない。
-/// 訪問済みの場所でだけ「再記録」を右端に添える(未訪問時の記録は誘いシートの専任なので、ここには出さない)。
+/// 訪問済みの場所でだけ「ピンを立て直す」(再記録)の丸いボタンを右端に添える(未訪問時の記録は誘いシートの専任なので、ここには出さない)。
 private struct MapRecordsSummaryRow: View {
     let latestPlace: SavedPlace?
     let isVisited: Bool
@@ -485,14 +485,6 @@ private struct MapRecordsSummaryRow: View {
 enum MapRerecordButtonPhase: CaseIterable {
     case idle, recording, updated
 
-    fileprivate var title: String {
-        switch self {
-        case .idle: "ピンを立て直す"
-        case .recording: "記録中"
-        case .updated: "更新済み"
-        }
-    }
-
     fileprivate var accessibilityValue: String {
         switch self {
         case .idle: ""
@@ -502,13 +494,23 @@ enum MapRerecordButtonPhase: CaseIterable {
     }
 }
 
-/// フッターの「再記録」ボタン。保存中・完了後をこのボタン自身の状態遷移(再記録→記録中→更新済み→再記録)で
-/// 見せることで、行を足してシートの高さを変えずに済ませる。
+/// フッターの「ピンを立て直す」(再記録)ボタン。保存中・完了後をこのボタン自身の状態遷移
+/// (ピン→記録中のくるくる→チェック→ピン)で見せることで、行を足してフッターの高さを変えずに済ませる。
+///
+/// Apple Musicのミニプレイヤーの操作ボタンにならい、文字を出さないアイコンだけの丸いボタンにする。
+/// 文字付き(「ピンを立て直す」)だとiPhoneの幅ではボタンだけで100pt近く取り、隣の「最近:」の行が
+/// 常に「…」で省略されていたため。
+///
+/// アイコンは`mappin.and.ellipse`(地面に立てたピン)。以前の`arrow.clockwise`は「再読み込み」に見え、
+/// 同じフッターの「再確認」(現在地の取り直し)ボタンとも同じ形で区別が付かなかった。
+/// 押すと現在地にピンが立つ、という結果そのものを絵にする。
 private struct MapRerecordButton: View {
     let phase: MapRerecordButtonPhase
     let action: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private static let idleSymbol = "mappin.and.ellipse"
 
     /// Reduce Motion時はシンボルの出現エフェクト(拡大を伴う)を使わず、フェードだけにする。
     private var iconTransition: AnyTransition {
@@ -517,23 +519,14 @@ private struct MapRerecordButton: View {
 
     var body: some View {
         Button(action: action) {
-            Label {
-                // 段階ごとに文言の長さが違い、そのままだとボタンの幅が変わって隣の「旅の記録」の行が揺れる。
-                // 全段階の文言を透明のまま重ねて最長の幅に固定する。数値のminWidthで決め打ちすると、
-                // Dynamic Typeで文字が大きくなった時に収まらなくなるため使わない。
-                ZStack {
-                    ForEach(MapRerecordButtonPhase.allCases, id: \.self) { candidate in
-                        Text(candidate.title).hidden()
-                    }
-                    Text(phase.title)
-                        .contentTransition(.opacity)
-                }
-            } icon: {
-                // 入れ替わるアイコン同士を横に並べず、同じ位置で重ねて切り替えるためにZStackで包む。
-                ZStack {
+            // 段階ごとに中身(ピン・くるくる・チェック)が入れ替わっても丸の大きさが変わらないよう、
+            // 待機中のアイコンを透明に置いて大きさを決め、その上に同じ位置で重ねて切り替える。
+            Image(systemName: Self.idleSymbol)
+                .hidden()
+                .overlay {
                     switch phase {
                     case .idle:
-                        Image(systemName: "arrow.clockwise")
+                        Image(systemName: Self.idleSymbol)
                             .transition(iconTransition)
                     case .recording:
                         ProgressView()
@@ -545,21 +538,20 @@ private struct MapRerecordButton: View {
                             .transition(iconTransition)
                     }
                 }
-            }
         }
-        .font(.footnote.weight(.semibold))
+        .font(.body.weight(.semibold))
         // フッターのバー自体がガラスなので、ガラスの上にガラスを重ねず、塗りのボタンにする。
         .buttonStyle(.bordered)
-        .buttonBorderShape(.capsule)
-        .controlSize(.small)
-        // フッターのバーは設定ボタンの分だけ幅が狭いため、文言を折り返さず、左の「最近:」の方を省略させる。
+        .buttonBorderShape(.circle)
+        // バーの幅が狭くても丸が潰れないよう、縮めるのは左の「最近:」の方にする。
         .fixedSize()
         // 記録中は保存が重複しないよう、更新済みの間は結果を読み取れるよう、押せなくする。
         .disabled(phase != .idle)
         // phaseは親の様々な状態変化(ViewModelの保存完了など)から計算されるため、変化の出どころに
         // アニメーションが付いているとは限らない。ボタン側で段階の切り替えに必ずアニメーションを乗せる。
         .animation(.easeInOut(duration: 0.25), value: phase)
-        .accessibilityLabel("現在地を再度記録")
+        .accessibilityLabel("ピンを立て直す")
+        .accessibilityHint("現在地で記録し直します")
         .accessibilityValue(phase.accessibilityValue)
     }
 }
