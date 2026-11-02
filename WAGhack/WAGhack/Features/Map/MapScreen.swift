@@ -14,6 +14,8 @@ struct MapScreen: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
+    /// 記録ボタンの効果音に使う。プレビューなど渡されない場所では鳴らさない。
+    @Environment(SoundController.self) private var soundController: SoundController?
     @Query(sort: \SavedPlace.savedAt, order: .reverse) private var savedPlaces: [SavedPlace]
     @Query(MapScreen.municipalityDescriptor) private var municipalities: [Municipality]
     @Query private var visitedPrefectures: [VisitedPrefecture]
@@ -305,6 +307,14 @@ struct MapScreen: View {
             .sensoryFeedback(.levelChange, trigger: hasRecordedJapan) { _, newValue in newValue }
             .sensoryFeedback(.error, trigger: viewModel.errorFeedback)
             .sensoryFeedback(.selection, trigger: selectedPlaceID) { _, newValue in newValue != nil }
+            // 効果音は上の触覚と同じ瞬間に鳴らす。onChangeをここに並べると型検査が重くなりすぎるのでまとめる。
+            .modifier(MapSoundFeedback(
+                updateCount: viewModel.result?.kind == .update ? viewModel.successFeedback : 0,
+                areaTrigger: areaEffect.hapticTrigger,
+                hasRecordedJapan: hasRecordedJapan,
+                selectedPlaceID: selectedPlaceID,
+                isInvitationPresented: isMunicipalityInvitationPresented
+            ))
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: viewModel.successFeedback)
             .overlay(alignment: .bottom) {
                 if isFooterVisible {
@@ -848,6 +858,7 @@ struct MapScreen: View {
 
     /// 誘いシート(MunicipalityFirstVisitSheet)の「記録する」。初めての都道府県なら、記録する前に特別感のある確認シートを挟む。
     private func handleSaveTap() {
+        soundController?.play(.tap)
         if isFirstPrefectureVisit {
             performAfterJapanIntro { presentPrefectureIntro() }
         } else {
@@ -859,6 +870,7 @@ struct MapScreen: View {
     /// フッターは「日本」の儀式を済ませた後にしか出ない(performAfterJapanIntroは即実行になる)うえ、
     /// このボタンは訪問済みの場所でしか出ず、その都道府県も必ず記録済み(isFirstPrefectureVisitがfalse)なため。
     private func handleRerecordTap() {
+        soundController?.play(.tap)
         saveVisit(trigger: .rerecordButton)
     }
 
@@ -1249,6 +1261,47 @@ struct MapScreen: View {
 
 /// 初回の現在地取得を始め直すきっかけ。画面が有効になった時(チュートリアルを閉じた等)と、
 /// マスタが読み込まれて市区町村が揃った時のどちらでも走らせる。
+/// 地図画面の状態の変化に合わせて効果音を鳴らす。場面の区別は触覚と同じ(`MapAreaHaptic`)にそろえる。
+private struct MapSoundFeedback: ViewModifier {
+    /// 再訪問の更新が完了するたびに増える値。更新以外の結果では0。
+    let updateCount: Int
+    let areaTrigger: MapAreaHapticTrigger?
+    let hasRecordedJapan: Bool
+    let selectedPlaceID: PersistentIdentifier?
+    let isInvitationPresented: Bool
+
+    @Environment(SoundController.self) private var soundController: SoundController?
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: updateCount) { _, newValue in
+                if newValue > 0 {
+                    soundController?.play(.record)
+                }
+            }
+            .onChange(of: areaTrigger) { _, trigger in
+                if let trigger {
+                    soundController?.play(trigger.haptic.soundEffect)
+                }
+            }
+            .onChange(of: hasRecordedJapan) { _, newValue in
+                if newValue {
+                    soundController?.play(.celebration)
+                }
+            }
+            .onChange(of: selectedPlaceID) { _, newValue in
+                if newValue != nil {
+                    soundController?.play(.tap)
+                }
+            }
+            .onChange(of: isInvitationPresented) { _, isPresented in
+                if isPresented {
+                    soundController?.play(.celebration)
+                }
+            }
+    }
+}
+
 private struct InitialLocationTrigger: Equatable {
     let isActive: Bool
     let municipalityCount: Int

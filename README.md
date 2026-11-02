@@ -15,6 +15,7 @@
 - 市区町村の訪問削除、未訪問も含む豆知識詳細の表示
 - 豆知識の空欄は補完せず空欄のまま表示
 - iOS 26のネイティブタブバーとLiquid Glass表現
+- BGMと記録時の効果音(音量は設定画面でBGM・効果音ごとに調整)
 
 ## 画面構成
 
@@ -36,7 +37,10 @@ WAGhack/WAGhack/
 │   ├── CSVParser.swift               # 引用符・改行・空欄対応のCSV解析
 │   ├── MunicipalityMasterImporter.swift # CSVからマスタレコードへの変換
 │   ├── MunicipalityMasterStore.swift # ModelActor上でSwiftDataへ同期
-│   └── MunicipalityMatcher.swift     # 日本語住所と市区町村マスタの照合
+│   ├── MunicipalityMatcher.swift     # 日本語住所と市区町村マスタの照合
+│   └── SoundController.swift         # BGM・効果音の再生と音量の設定
+├── Resources/
+│   └── Sounds/                       # BGM・効果音(numpyで合成したWAV)
 └── Features/
     ├── Map/
     │   ├── MapScreen.swift           # 地図画面

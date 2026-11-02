@@ -211,4 +211,11 @@ extension MapAreaHaptic {
         case .levelChange: .levelChange
         }
     }
+
+    var soundEffect: SoundEffect {
+        switch self {
+        case .success: .fill
+        case .levelChange: .celebration
+        }
+    }
 }
