@@ -22,7 +22,7 @@ struct BoundaryLineWidthsTests {
         #expect(makeScale(widthMeters: 20_000, points: 0) == nil)
     }
 
-    @Test func 全国表示では以前の細さのままにする() throws {
+    @Test func 全国表示では最も細くする() throws {
         let widths = BoundaryLineWidths(scale: try #require(makeScale(widthMeters: 2_500_000)))
 
         #expect(widths == .widest)

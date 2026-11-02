@@ -16,6 +16,7 @@ struct ContentView: View {
     @State private var alertAnnouncementGate: NewMunicipalityAlertAnnouncementGate
     /// アプリのルートで渡される。プレビューなど渡されない場所では通知のお知らせを出さない。
     @Environment(NewMunicipalityAlertMonitor.self) private var newMunicipalityAlert: NewMunicipalityAlertMonitor?
+    @Environment(SoundController.self) private var soundController: SoundController?
 
     init(modelContainer: ModelContainer? = nil) {
         self.modelContainer = modelContainer
@@ -63,6 +64,8 @@ struct ContentView: View {
                 TutorialScreen(onFinish: { withAnimation { tutorialGate.markSeen() } })
                     // 閉じる時のフェードアウト中も地図より手前に描かれるよう、明示的に前面へ置く。
                     .zIndex(1)
+                    .onAppear { soundController?.setBackgroundMusic(.main) }
+                    .onDisappear { soundController?.setBackgroundMusic(.calm) }
             } else if isAlertAnnouncementPresented, let newMunicipalityAlert {
                 NewMunicipalityAlertAnnouncement(timing: alertAnnouncementGate.timing) { mode in
                     withAnimation { alertAnnouncementGate.markSeen() }
@@ -74,6 +77,7 @@ struct ContentView: View {
                 .zIndex(1)
             }
         }
+        .background(TapSoundObserver { soundController?.play(.tap) })
         .task {
             guard case .idle = masterLoadState else { return }
             await loadMunicipalityMaster()

@@ -15,12 +15,13 @@ struct MunicipalityMasterRecord: Equatable, Sendable {
     let prefectureCode: String
     let historyTrivia: String
     let famousThingsTrivia: String
+    let spotsJSON: String
 }
 
 @MainActor
 struct MunicipalityMasterImporter {
     static let resourceName = "LocalGovernmentCodeJapan_Knowledge"
-    static let expectedColumnCount = 9
+    static let expectedColumnCount = 10
 
     private let parser = CSVParser()
 
@@ -48,7 +49,8 @@ struct MunicipalityMasterImporter {
                 isPrefecture: row[5].uppercased() == "TRUE",
                 prefectureCode: row[6],
                 historyTrivia: row[7],
-                famousThingsTrivia: row[8]
+                famousThingsTrivia: row[8],
+                spotsJSON: row[9]
             )
         }
     }

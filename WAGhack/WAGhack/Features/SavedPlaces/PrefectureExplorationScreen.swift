@@ -100,14 +100,14 @@ struct PrefectureExplorationScreen: View {
     }
 }
 
-/// 政令指定都市の1行。色は地図の市の外周(`DesignatedCityStyle`)と同じ水色にそろえる。
+/// 政令指定都市の1行。色は地図の市の外周(`DesignatedCityStyle`)と同じ青にそろえる。
 private struct DesignatedCityExplorationRow: View {
     let city: DesignatedCityExploration
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: city.isComplete ? "crown.fill" : "building.columns.fill")
-                .foregroundStyle(.cyan)
+                .foregroundStyle(DesignatedCityStyle.color)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
@@ -118,7 +118,7 @@ private struct DesignatedCityExplorationRow: View {
                         .monospacedDigit()
                 }
                 .foregroundStyle(Pop.ink)
-                PopProgressBar(fraction: city.progress.fraction, fill: .cyan)
+                PopProgressBar(fraction: city.progress.fraction, fill: DesignatedCityStyle.color)
                     .accessibilityLabel("区の踏破率")
             }
         }

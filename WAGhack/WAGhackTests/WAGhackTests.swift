@@ -46,6 +46,27 @@ struct WAGhackTests {
         #expect(hokkaido.municipalityName.isEmpty)
         #expect(hokkaido.historyTrivia.isEmpty)
         #expect(hokkaido.famousThingsTrivia.isEmpty)
+        #expect(hokkaido.spotsJSON.isEmpty)
+    }
+
+    @Test func みどころのJSONを順位の順に読み知らない区分はotherにする() {
+        let spots = YorimichiSpot.spots(fromJSON: """
+        [{"name":"千葉ポートタワー","category":"view","action":"港の景色を眺める","reason":"東京湾を一望できる"},
+         {"name":"千葉神社","category":"shrine","action":"","reason":""},
+         {"name":"新しい場所","category":"unknown"}]
+        """)
+
+        #expect(spots.map(\.rank) == [1, 2, 3])
+        #expect(spots[0].displayAction == "港の景色を眺める")
+        #expect(spots[1].displayAction == SpotExperience.shrine.actionPhrase)
+        #expect(spots[1].reason == nil)
+        #expect(spots[2].experience == .other)
+        #expect(spots[2].displayAction == nil)
+    }
+
+    @Test func みどころが空欄や壊れたJSONなら0件にする() {
+        #expect(YorimichiSpot.spots(fromJSON: "").isEmpty)
+        #expect(YorimichiSpot.spots(fromJSON: "{壊れている").isEmpty)
     }
 
     @Test func 市区町村照合では政令指定都市より具体的な区を選ぶ() throws {
@@ -157,7 +178,8 @@ struct WAGhackTests {
             isPrefecture: false,
             prefectureCode: "01",
             historyTrivia: historyTrivia,
-            famousThingsTrivia: ""
+            famousThingsTrivia: "",
+            spotsJSON: ""
         )
     }
 }

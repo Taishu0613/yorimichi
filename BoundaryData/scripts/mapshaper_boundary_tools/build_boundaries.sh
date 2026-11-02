@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the four-LOD resource tree from the official N03 2026 nationwide GeoJSON.
+# Build the five-LOD resource tree from the official N03 2026 nationwide GeoJSON.
 # Layers: municipalities / prefectures / regions (polygons) and prefectureLines (borders + coastlines).
 # Run with bash (including the Bash 3.2 supplied with macOS).
 #
@@ -82,7 +82,7 @@ node "$HELPER" baseline "$WORK/baseline_parts.json" "$REPORTS/source-audit.json"
 # Exploded outer components are individually protected by keep-shapes; islands too small to ever be
 # drawn at a LOD are removed afterwards by prune-and-round.
 # Small holes and rounding artifacts still require review after export.
-for spec in "0:2000" "1:500" "2:100" "3:20"; do
+for spec in "0:2000" "1:500" "2:150" "3:50" "4:20"; do
   lod="${spec%%:*}"
   meters="${spec#*:}"
   mdir="$STAGE/municipalities/lod${lod}_${meters}m"

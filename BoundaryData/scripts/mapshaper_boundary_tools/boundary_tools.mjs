@@ -10,14 +10,18 @@ import crypto from 'node:crypto';
 const LODS = [
   { id: 0, intervalMeters: 2000, minWidthMeters: 800000, maxWidthMeters: null },
   { id: 1, intervalMeters: 500, minWidthMeters: 200000, maxWidthMeters: 800000 },
-  { id: 2, intervalMeters: 100, minWidthMeters: 50000, maxWidthMeters: 200000 },
-  { id: 3, intervalMeters: 20, minWidthMeters: 0, maxWidthMeters: 50000 },
+  { id: 2, intervalMeters: 150, minWidthMeters: 50000, maxWidthMeters: 200000 },
+  { id: 3, intervalMeters: 50, minWidthMeters: 17000, maxWidthMeters: 50000 },
+  { id: 4, intervalMeters: 20, minWidthMeters: 0, maxWidthMeters: 17000 },
 ];
 // Written to manifest.json; the app switches LOD with these (hysteresis between zoom in and out).
+// Each LOD's interval is about 1.2 pt on a 400 pt wide screen at its zoomInBelowMeters, so a finer LOD is
+// loaded only when the coarser one would start to look angular (more vertices than visible only cost time).
 const LOD_TRANSITIONS = [
   { coarseLOD: 0, fineLOD: 1, zoomInBelowMeters: 700000, zoomOutAboveMeters: 900000 },
   { coarseLOD: 1, fineLOD: 2, zoomInBelowMeters: 180000, zoomOutAboveMeters: 230000 },
-  { coarseLOD: 2, fineLOD: 3, zoomInBelowMeters: 45000, zoomOutAboveMeters: 60000 },
+  { coarseLOD: 2, fineLOD: 3, zoomInBelowMeters: 50000, zoomOutAboveMeters: 65000 },
+  { coarseLOD: 3, fineLOD: 4, zoomInBelowMeters: 17000, zoomOutAboveMeters: 22000 },
 ];
 // The app never draws a piece smaller than 1/100 of the screen width (BoundaryPieceFilter.screenResolution
 // in WAGhack). Keep this equal to it: a larger value here would drop pieces the app still wants to draw.
@@ -25,7 +29,7 @@ const APP_SCREEN_RESOLUTION = 100;
 // Output coordinate precision (decimal digits) per LOD. 4 digits is about 11 m and 5 digits about 1 m, far below
 // the simplification interval (2 km / 500 m), so nothing visible changes while the files get smaller.
 // Mapshaper writes 6 digits everywhere; pruneAndRound rounds after the small islands are gone.
-const COORDINATE_DIGITS = { 0: 4, 1: 5, 2: 6, 3: 6 };
+const COORDINATE_DIGITS = { 0: 4, 1: 5, 2: 6, 3: 6, 4: 6 };
 function coordinateDigits(lod) {
   const digits = COORDINATE_DIGITS[lod];
   ensure(digits !== undefined, `Unknown LOD: ${lod}`);
@@ -37,7 +41,7 @@ function minimumPieceMeters(lod) {
   const transition = LOD_TRANSITIONS.find(t => t.coarseLOD === lod);
   return transition ? transition.zoomInBelowMeters / APP_SCREEN_RESOLUTION : 0;
 }
-// Layer directory -> file prefix, property holding the feature key, and split unit for LOD 1-3.
+// Layer directory -> file prefix, property holding the feature key, and split unit for LOD 1-4.
 const LAYERS = {
   municipalities: { prefix: 'municipality', key: 'c', split: 'prefecture' },
   prefectures: { prefix: 'prefecture', key: 'p', split: 'prefecture' },
@@ -224,7 +228,7 @@ function manifest(root, sourceReport, baselineReport, report, versionFile) {
   for (const file of walk(root)) {
     const rel = path.relative(root, file).split(path.sep).join('/');
     try {
-      const m = rel.match(/^(municipalities|prefectures|regions|prefectureLines)\/lod([0-3])_(\d+)m\/(municipality|prefecture|region|prefecture_line)_(jp|\d{2})_lod([0-3])\.geojson$/);
+      const m = rel.match(/^(municipalities|prefectures|regions|prefectureLines)\/lod([0-4])_(\d+)m\/(municipality|prefecture|region|prefecture_line)_(jp|\d{2})_lod([0-4])\.geojson$/);
       ensure(m, `Unexpected output filename: ${rel}`);
       const layer = m[1], lod = Number(m[2]), spec = LAYERS[layer];
       const scope = m[5] === 'jp' ? null : m[5];
@@ -306,7 +310,7 @@ function manifest(root, sourceReport, baselineReport, report, versionFile) {
     remainingChecks: ['Shared boundaries, overlaps and gaps', 'Hole preservation and small islands', 'iPhone rendering and memory', 'Source attribution and distribution requirements'] });
   ensure(errors.length === 0, `Output checks failed. See ${report}.`);
   write(path.join(root, 'manifest.json'), {
-    schemaVersion: 2, dataVersion: '20260101', buildRevision: 4,
+    schemaVersion: 2, dataVersion: '20260101', buildRevision: 5,
     builtAt: new Date().toISOString(),
     generator: { name: 'mapshaper', version: fs.readFileSync(versionFile, 'utf8').trim() },
     releaseStatus: 'needs_spatial_and_device_review',

@@ -34,9 +34,6 @@ final class SilhouetteMapStore {
     /// 都道府県の地図に使うLOD。LOD0(2km間引き)では小さな県の市区町村が潰れるため、1段細かいLOD1(500m)にする。
     /// 1県1ファイルで最大でも約1MB。
     private static let prefectureLOD = 1
-    /// 市区町村の地図に使うLOD。5km四方ほどの区を画面幅で描くと1pt≒15mになるため、最も細かいLOD3(20m)にする。
-    /// 1県1ファイルで最大約3.5MB。詳細画面を開いたときだけ読む。
-    private static let municipalityLOD = 3
 
     /// 日本地図を用意する。読み込み済み・読み込み中なら何もしない。
     func loadJapanMapIfNeeded() async {
@@ -90,9 +87,12 @@ final class SilhouetteMapStore {
         // 行政区域コードの先頭2桁は都道府県コード。
         let prefectureCode = String(code.prefix(2))
         await load(key: "municipality-\(code)") { repository, manifest in
+            // 5km四方ほどの区を画面幅で描くと1pt≒15mになるため、最も細かいLOD(20m)を使う。
+            // 1県1ファイルで最大約3.5MB。詳細画面を開いたときだけ読む。
+            guard let lod = manifest.lods.map(\.id).max() else { return }
             // 県のファイルごと読むが、この市区町村以外はすぐ捨てる。50m未満の岩礁は描かない。
             let municipality = try await repository.boundaries(
-                in: manifest.files(in: .municipalities, lod: Self.municipalityLOD, prefectureCode: prefectureCode),
+                in: manifest.files(in: .municipalities, lod: lod, prefectureCode: prefectureCode),
                 pieceFilter: BoundaryPieceFilter(visibleWidthMeters: 5_000)
             ).first { $0.code == code }
             guard let municipality else {

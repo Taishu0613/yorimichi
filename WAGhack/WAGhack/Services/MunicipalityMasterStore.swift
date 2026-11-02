@@ -66,7 +66,8 @@ private extension Municipality {
             isPrefecture: record.isPrefecture,
             prefectureCode: record.prefectureCode,
             historyTrivia: record.historyTrivia,
-            famousThingsTrivia: record.famousThingsTrivia
+            famousThingsTrivia: record.famousThingsTrivia,
+            spotsJSON: record.spotsJSON
         )
     }
 }
