@@ -726,6 +726,94 @@ private struct DesignatedCityFirstVisitCard: View {
     }
 }
 
+/// 未訪問の街の誘いシートで見せる、みどころと怪奇・都市伝説のカード。最初は必ずみどころを見せ、
+/// 横にスワイプ(または上のピルをタップ)すると怪奇・都市伝説に切り替わる。
+/// シートの高さは中身から測っているため、高さの決まらないTabViewではなく、長い方のカードに合わせて
+/// 高さを取った上に横のページングするScrollViewを重ねる。
+private struct InvitationTriviaPager: View {
+    private enum Page: CaseIterable {
+        case highlights
+        case legend
+
+        var style: TriviaCard.Style {
+            switch self {
+            case .highlights: .highlights
+            case .legend: .legend
+            }
+        }
+    }
+
+    let municipality: Municipality
+
+    @State private var page: Page? = .highlights
+
+    private func content(of page: Page) -> String {
+        switch page {
+        case .highlights: municipality.famousThingsTrivia
+        case .legend: municipality.historyTrivia
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            pagePicker
+            // 高さを決めるだけの見えないカード。2枚を重ねて、長い方の高さを取る。
+            ZStack {
+                ForEach(Page.allCases, id: \.self) { page in
+                    card(page).hidden()
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .accessibilityHidden(true)
+            .overlay {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 0) {
+                        ForEach(Page.allCases, id: \.self) { page in
+                            card(page)
+                                .containerRelativeFrame(.horizontal)
+                                .id(page)
+                        }
+                    }
+                    .scrollTargetLayout()
+                }
+                .scrollTargetBehavior(.paging)
+                .scrollPosition(id: $page)
+                .scrollIndicators(.hidden)
+            }
+        }
+        .sensoryFeedback(.selection, trigger: page)
+    }
+
+    /// 今どちらを見ているかと、もう1枚あることを伝えるピル。タップでもそのページへ切り替えられる。
+    private var pagePicker: some View {
+        HStack(spacing: 8) {
+            ForEach(Page.allCases, id: \.self) { item in
+                let isSelected = page == item
+                Button {
+                    withAnimation(.snappy) { page = item }
+                } label: {
+                    Label(item.style.title, systemImage: item.style.systemImage)
+                        .font(.caption.weight(.heavy))
+                        .foregroundStyle(isSelected ? item.style.iconForeground : Pop.muted)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(isSelected ? item.style.iconFill : Color.clear, in: Capsule())
+                        .overlay(Capsule().stroke(Pop.border, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
+        }
+    }
+
+    private func card(_ page: Page) -> some View {
+        TriviaCard(style: page.style, content: content(of: page), isCompact: true)
+            // ずらした影(4pt)がScrollViewの端で切れないよう、その分だけ内側に収める。
+            .padding(.trailing, 4)
+            .padding(.bottom, 4)
+    }
+}
+
 /// 初めての都道府県に入ったときだけ、市区町村を記録する前に割り込んで見せる特別感のあるシート。
 /// 背景を水色にするのはMapScreen側の`.presentationBackground`で行い、ここは中身だけを持つ。
 /// 要素を1つずつ間を置いて出す「儀式感」のある演出にして、都道府県という単位の大きさを体験としても伝える。
@@ -947,8 +1035,8 @@ struct JapanFirstVisitSheet: View {
 /// どちらでも使う共通シート。`PrefectureFirstVisitSheet`と同じ「儀式感」の演出
 /// (要素を1つずつ間を置いて出す)を踏襲しつつ、モードに応じて主役のボタンと文言だけを変える。
 /// 節目(25/50/75/100%)は都道府県よりさらに大きな達成として、色をトロフィーの金色にして差別化する。
+/// 記録前(invitation)は、みどころ・怪奇・都市伝説のカードを横スワイプで読めるようにして、記録したくなる後押しにする。
 /// 記録後(celebration)だけ「みどころを見る」から図鑑(`MunicipalityDetailScreen`)に直接繋げる。
-/// 記録前(invitation)は「記録して初めて開く」という順番を保つため、あえて出さない。
 struct MunicipalityFirstVisitSheet: View {
     enum Mode {
         /// 記録前。まだ訪問済みではない現在地に出会った瞬間に、記録を後押しする。
@@ -998,8 +1086,8 @@ struct MunicipalityFirstVisitSheet: View {
         return designatedCity
     }
 
-    /// 「みどころを見る」は記録後(celebration)だけで見せる。記録前に見せると、まだ自分の街になって
-    /// いない場所の情報を先に消費してしまい、「記録して初めて開く」という報酬の順番が崩れるため。
+    /// 「みどころを見る」(図鑑への入口)は記録後(celebration)だけで見せる。記録前は図鑑のページがまだ無く、
+    /// みどころ・怪奇・都市伝説はシートの中のカード(`InvitationTriviaPager`)で見せる。
     private var showsDetailLink: Bool {
         guard case .celebration = mode else { return false }
         return municipality != nil
@@ -1061,6 +1149,12 @@ struct MunicipalityFirstVisitSheet: View {
             }
             if let designatedCity {
                 DesignatedCityFirstVisitCard(city: designatedCity)
+                    .opacity(showsSubtitle ? 1 : 0)
+            }
+            if case .invitation(let municipality, _) = mode {
+                InvitationTriviaPager(municipality: municipality)
+                    // 誘いの途中で現在地が別の未訪問の街に変わったら、その街のみどころから見せ直す。
+                    .id(municipality.code)
                     .opacity(showsSubtitle ? 1 : 0)
             }
             if !imageURLs.isEmpty {

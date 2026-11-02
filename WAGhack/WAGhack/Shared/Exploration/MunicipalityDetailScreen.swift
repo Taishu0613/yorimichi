@@ -134,8 +134,8 @@ struct MunicipalityDetailScreen: View {
     }
 }
 
-/// みどころ・怪奇・都市伝説の読みものカード。
-private struct TriviaCard: View {
+/// みどころ・怪奇・都市伝説の読みものカード。図鑑のほか、未訪問の街の誘いシート(`InvitationTriviaPager`)でも使う。
+struct TriviaCard: View {
     enum Style {
         case highlights
         case legend
@@ -201,6 +201,8 @@ private struct TriviaCard: View {
 
     let style: Style
     let content: String
+    /// シートの中に置くときの小さめの見た目。シート全体が画面に収まるよう、文字と余白を詰める。
+    var isCompact = false
 
     @State private var isExpanded = false
 
@@ -210,23 +212,25 @@ private struct TriviaCard: View {
     /// 実際に行が切れるかを測るほどの精度は要らないため、文字数で決める。
     private static let collapsibleLength = 110
 
+    /// 誘いシートはカードの高さから全体の高さを決めるので、開閉させず全文を見せる。
     private var isCollapsible: Bool {
-        content.count > Self.collapsibleLength
+        !isCompact && content.count > Self.collapsibleLength
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: isCompact ? 10 : 14) {
             HStack(spacing: 10) {
-                PopIconBadge(systemImage: style.systemImage, fill: style.iconFill, foreground: style.iconForeground)
-                MarkerHeading(style.title, marker: style.marker, foreground: style.text)
+                PopIconBadge(systemImage: style.systemImage, fill: style.iconFill, foreground: style.iconForeground, size: isCompact ? 30 : 36)
+                MarkerHeading(style.title, size: isCompact ? 18 : 21, marker: style.marker, foreground: style.text)
             }
             // マスタが空欄の場合も「情報なし」へ置き換えず、空欄のまま表示する。元の文章は書き換えず、行数だけを絞る。
             Text(content)
-                .font(.body)
-                .lineSpacing(6)
+                .font(isCompact ? .subheadline : .body)
+                .lineSpacing(isCompact ? 4 : 6)
                 .foregroundStyle(style.text)
                 .lineLimit(isCollapsible && !isExpanded ? Self.collapsedLineLimit : nil)
-                .frame(maxWidth: .infinity, minHeight: 24, alignment: .topLeading)
+                // 横に並べたとき(誘いシート)は、短い方のカードも長い方と同じ高さまで伸ばしてそろえる。
+                .frame(maxWidth: .infinity, minHeight: 24, maxHeight: isCompact ? .infinity : nil, alignment: .topLeading)
                 .textSelection(.enabled)
             if isCollapsible {
                 Button {
@@ -239,7 +243,7 @@ private struct TriviaCard: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(18)
+        .padding(isCompact ? 14 : 18)
         .popCard(fill: style.cardFill, shadow: style.shadow)
         .accessibilityElement(children: .contain)
     }
