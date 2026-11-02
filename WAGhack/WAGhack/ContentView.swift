@@ -77,6 +77,7 @@ struct ContentView: View {
                 .zIndex(1)
             }
         }
+        .background(TapSoundObserver { soundController?.play(.tap) })
         .task {
             guard case .idle = masterLoadState else { return }
             await loadMunicipalityMaster()

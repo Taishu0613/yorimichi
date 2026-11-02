@@ -187,12 +187,10 @@ struct MapCurrentLocationBadge: View {
 /// 選択肢が2つしかないのでメニューにはせず、1タップで切り替える。アイコンは今の状態を表す。
 struct MapPinVisibilityButton: View {
     @Binding var showsPins: Bool
-    @Environment(SoundController.self) private var soundController: SoundController?
 
     var body: some View {
         Button("記録のピン", systemImage: showsPins ? "mappin.and.ellipse" : "mappin.slash") {
             showsPins.toggle()
-            soundController?.play(.tap)
         }
         .labelStyle(.iconOnly)
         .font(.title2)

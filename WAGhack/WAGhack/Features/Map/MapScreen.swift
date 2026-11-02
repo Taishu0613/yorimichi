@@ -14,8 +14,6 @@ struct MapScreen: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
-    /// 記録ボタンの効果音に使う。プレビューなど渡されない場所では鳴らさない。
-    @Environment(SoundController.self) private var soundController: SoundController?
     @Query(sort: \SavedPlace.savedAt, order: .reverse) private var savedPlaces: [SavedPlace]
     @Query(MapScreen.municipalityDescriptor) private var municipalities: [Municipality]
     @Query private var visitedPrefectures: [VisitedPrefecture]
@@ -858,7 +856,6 @@ struct MapScreen: View {
 
     /// 誘いシート(MunicipalityFirstVisitSheet)の「記録する」。初めての都道府県なら、記録する前に特別感のある確認シートを挟む。
     private func handleSaveTap() {
-        soundController?.play(.tap)
         if isFirstPrefectureVisit {
             performAfterJapanIntro { presentPrefectureIntro() }
         } else {
@@ -870,7 +867,6 @@ struct MapScreen: View {
     /// フッターは「日本」の儀式を済ませた後にしか出ない(performAfterJapanIntroは即実行になる)うえ、
     /// このボタンは訪問済みの場所でしか出ず、その都道府県も必ず記録済み(isFirstPrefectureVisitがfalse)なため。
     private func handleRerecordTap() {
-        soundController?.play(.tap)
         saveVisit(trigger: .rerecordButton)
     }
 
