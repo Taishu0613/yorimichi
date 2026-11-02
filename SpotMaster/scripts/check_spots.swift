@@ -2,7 +2,7 @@
 //
 // 使い方(リポジトリ直下で):
 //   swiftc -O SpotMaster/scripts/check_spots.swift -o /tmp/check_spots
-//   /tmp/check_spots LocalGovernmentCodeJapan_Knowledge.csv BoundaryData/generated/BoundaryData/municipalities/lod2_100m \
+//   /tmp/check_spots LocalGovernmentCodeJapan_Knowledge.csv BoundaryData/generated/BoundaryData/municipalities/lod2_150m \
 //     [--format-only] [--code 12101] [--results SpotMaster/work/check_results.tsv] [--evidence SpotMaster/work/evidence]
 //
 // 実在の確認はMapKitの検索で、名前で見つかる場所がその市区町村の境界の中にあるかを見る。
@@ -26,8 +26,8 @@ let categories: Set<String> = [
 ]
 /// 画面の1行に収まる長さの目安。
 let maximumActionLength = 16, maximumReasonLength = 40, maximumSpotCount = 10
-/// 境界データの間引きの誤差。これより境界に近ければ区域の中とみなす(LOD2は100m)。
-let boundaryToleranceMeters = 100.0
+/// 境界データの間引きの誤差。これより境界に近ければ区域の中とみなす(LOD2は150m)。
+let boundaryToleranceMeters = 150.0
 
 func parseCSV(_ source: String) -> [[String]] {
     var rows: [[String]] = [], row: [String] = [], field = "", quoted = false

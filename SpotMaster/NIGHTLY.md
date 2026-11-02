@@ -13,7 +13,7 @@
 5. リポジトリ直下（`cd /Users/wakasugitaishu/project/yorimichi-municipality-guide`）で、**サンドボックスの外で**実行する。境界データは別のフォルダへのリンクなので、サンドボックスの中では読めない。`check.log` に「境界データを読めません」があれば、確認できていないので、完了の記録を付けずに `nightly.log` に書いて終わる。
    ```bash
    python3 SpotMaster/scripts/merge_spots.py SpotMaster/work/spots
-   SpotMaster/work/check_spots LocalGovernmentCodeJapan_Knowledge.csv BoundaryData/generated/BoundaryData/municipalities/lod2_100m --results SpotMaster/work/check_results.tsv --evidence SpotMaster/work/evidence > SpotMaster/work/check.log 2>&1
+   SpotMaster/work/check_spots LocalGovernmentCodeJapan_Knowledge.csv BoundaryData/generated/BoundaryData/municipalities/lod2_150m --results SpotMaster/work/check_results.tsv --evidence SpotMaster/work/evidence > SpotMaster/work/check.log 2>&1
    ```
 6. `check.log` の `NG` の行（列は 状態 コード 名前 近い結果）を、今夜の分について直す。ファイルは今夜の `spots/n*.json`。
    - 近い結果が同じ場所の別表記なら、地図の表記に名前を直す。
