@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 通知・有料機能・地図の出典など、旅の記録そのものではない項目をまとめた画面。
+/// 通知・有料機能・音量・地図の出典など、旅の記録そのものではない項目をまとめた画面。
 /// 常駐シート(フッター)の右端の歯車ボタンから、シートで開く。
 ///
 /// 以前はこれらを「旅の記録」の一覧の末尾に並べていたが、記録を見返す画面に設定が混ざって
@@ -15,6 +15,7 @@ struct SettingsScreen: View {
             List {
                 NewMunicipalityAlertSettingsSection()
                 AutoRecordSettingsSection(isPurchasePresented: $isAutoRecordPurchasePresented)
+                SoundSettingsSection()
 
                 // マップの市区町村ポリゴンの出典(CC BY 4.0の表示義務)。地図の上は操作部品で埋まっているため、ここに置く。
                 Section {

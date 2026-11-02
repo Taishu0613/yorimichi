@@ -292,7 +292,8 @@ final class NewMunicipalityAlertMonitor: NSObject {
         content.title = message.title
         content.subtitle = message.subtitle
         content.body = message.body
-        content.sound = .default
+        // アプリを閉じている間も鳴らす通知音は、OSが鳴らすため`SoundController`の音量は効かない。
+        content.sound = UNNotificationSound(named: UNNotificationSoundName("sfx_first_visit.wav"))
         content.threadIdentifier = "newMunicipality"
         // 同じ区域の通知が残っていれば置き換える。タップするとアプリが開き、地図画面が現在地を確認して誘いシートを出す。
         let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)

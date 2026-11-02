@@ -33,6 +33,9 @@ struct WAGhackApp: App {
     @State private var newMunicipalityAlert: NewMunicipalityAlertMonitor
     /// 有料機能(初訪問の自動記録)の解放状態。購入の更新を取りこぼさないよう、これも起動直後に受け取りを始める。
     @State private var premiumStore: PremiumStore
+    /// BGMと効果音、その音量の設定。
+    @State private var soundController = SoundController()
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         let premiumStore = PremiumStore()
@@ -48,7 +51,12 @@ struct WAGhackApp: App {
             ContentView(modelContainer: sharedModelContainer)
                 .environment(newMunicipalityAlert)
                 .environment(premiumStore)
+                .environment(soundController)
+                .task { await soundController.monitorOtherAudio() }
         }
         .modelContainer(sharedModelContainer)
+        .onChange(of: scenePhase, initial: true) { _, phase in
+            soundController.handleScenePhase(phase)
+        }
     }
 }
