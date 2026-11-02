@@ -70,7 +70,7 @@ final class SoundController {
     /// キーを変えると保存済みの音量が失われるので変えないこと。
     private static let backgroundMusicVolumeKey = "sound.backgroundMusicVolume"
     private static let soundEffectVolumeKey = "sound.soundEffectVolume"
-    private static let defaultBackgroundMusicVolume: Float = 0.25
+    private static let defaultBackgroundMusicVolume: Float = 0.5
     private static let defaultSoundEffectVolume: Float = 0.8
 
     init(userDefaults: UserDefaults = .standard) {
