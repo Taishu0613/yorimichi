@@ -2,11 +2,11 @@
 
 スケジュール実行のセッションが、毎晩この手順を1回実行する。計画は `SpotMaster/lists/nightly_plan.json`、完了した夜は `SpotMaster/work/nightly_done.json`（夜の番号の配列）、記録は `SpotMaster/work/nightly.log`。
 
-作業場所はワークツリー `/Users/wakasugitaishu/project/yorimichi-municipality-guide`（ブランチ `claude/municipality-guide`）。ここ以外を変更しない。
+作業場所はワークツリー `/Users/wakasugitaishu/project/yorimichi-municipality-guide`（ブランチ `claude/spot-master-nightly`）。ここ以外を変更しない。
 
 ## 手順
 
-1. `git pull --ff-only origin claude/municipality-guide` を実行する。失敗したら、理由を `nightly.log` に書いて終わる。
+1. `git pull --ff-only origin claude/spot-master-nightly` を実行する。失敗したら、理由を `nightly.log` に書いて終わる。
 2. `nightly_done.json` に無い、一番小さい番号の夜を選ぶ。全部終わっていれば `nightly.log` に「全夜完了」と書いて終わる。
 3. その夜の `units` ごとに、Agentツールで `model: sonnet`、`subagent_type: general-purpose` の担当を1つ起動する。同時に動かすのは2つまで。指示は下の「担当への指示」に、都道府県コード・夜の番号・`codes`・`webCodes` を入れて渡す。同じ都道府県の担当を2つ同時に動かさない。
 4. 全担当の完了後、`SpotMaster/work/` で `python3 validate_file.py spots/n<夜の番号2桁>_<都道府県コード>.json` を確かめる。足りない市区町村があれば、同じ担当へ続きを頼む。
@@ -20,7 +20,7 @@
    - 「見つからない」や無関係な結果で、実在に自信がなければ外す。
    - よく知られた通称や、実在が確かな場所はそのまま残す。
    - 直したら、もう一度 `merge_spots.py` を実行する。
-7. 変更するのは `LocalGovernmentCodeJapan_Knowledge.csv` だけ。これをコミットしてプッシュする。メッセージは `feat: みどころを追加(<都道府県名の並び>)` に、本文の末尾へ `Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>` を付ける。
+7. 変更するのは `LocalGovernmentCodeJapan_Knowledge.csv` だけ。これをコミットしてプッシュする（`git push origin claude/spot-master-nightly`）。結果は下書きのPRに積み上がる。メッセージは `feat: みどころを追加(<都道府県名の並び>)` に、本文の末尾へ `Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>` を付ける。
 8. `nightly_done.json` に夜の番号を足し、`nightly.log` に1行で結果を書く（日時、夜、市区町村数、件数、外した件数、直した件数、問題）。
 
 ## やらないこと
