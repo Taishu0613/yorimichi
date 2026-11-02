@@ -56,7 +56,13 @@ def main():
             continue
         boundaries = Boundaries(code)
         found = {}
-        for element in cached(f"osm_{code}", lambda: query_prefecture(code)):
+        try:
+            elements = cached(f"osm_{code}", lambda: query_prefecture(code))
+        except RuntimeError as error:
+            # 公開サーバーが混んでいるときは飛ばす。もう一度実行すれば、この県だけ取り直す。
+            print(error, flush=True)
+            continue
+        for element in elements:
             tags = element.get("tags", {})
             center = element.get("center") or element
             if "lon" not in center:
