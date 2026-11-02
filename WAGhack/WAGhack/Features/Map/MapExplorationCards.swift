@@ -185,11 +185,13 @@ struct MapCurrentLocationBadge: View {
 /// 記録した場所のピンを表示するか・隠すかを切り替える丸ボタン。
 /// 見た目は隣の「現在地へ戻る」ボタンと揃える(44pt・Liquid Glassの円)。
 /// 選択肢が2つしかないのでメニューにはせず、1タップで切り替える。アイコンは今の状態を表す。
+/// アイコンは目(表示中は`eye`、非表示中は`eye.slash`)。ピンの形(`mappin.and.ellipse`)はフッターの
+/// 「ピンを立て直す」(記録)ボタンに使っていて、同じ絵だと記録のボタンと見分けが付かないため。
 struct MapPinVisibilityButton: View {
     @Binding var showsPins: Bool
 
     var body: some View {
-        Button("記録のピン", systemImage: showsPins ? "mappin.and.ellipse" : "mappin.slash") {
+        Button("記録のピン", systemImage: showsPins ? "eye" : "eye.slash") {
             showsPins.toggle()
         }
         .labelStyle(.iconOnly)
