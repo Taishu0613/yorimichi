@@ -29,9 +29,11 @@ nonisolated struct BoundaryLineWidths: Equatable, Sendable {
     let municipalityLine: CGFloat
     /// 現在地の市区町村の縁取り。県境の上に重なっても隠れないよう、常に県境より太くする。
     let currentOutline: CGFloat
+    /// 訪れた政令指定都市の外周。区の線より太く、県境より細くして、県境と取り違えないようにする。
+    let designatedCityOutline: CGFloat
 
     /// これより引いた縮尺(全国〜地方)では、最も細い太さにする。
-    /// 県境1.2ptは全国表示で線同士が潰れ合わない上限(以前の固定値)。
+    /// 全国表示では小さな県や市区町村が線で潰れないよう、県境も1pt未満にしている。
     static let widestMetersPerPoint = 3_000.0
     /// これより寄った縮尺(市区町村全体が画面に収まる程度)では、最も太い太さにする。
     static let closestMetersPerPoint = 60.0
@@ -39,9 +41,10 @@ nonisolated struct BoundaryLineWidths: Equatable, Sendable {
     /// 段階に丸めて変化の回数を抑える。
     static let steps = 8.0
 
-    static let prefectureBorderRange: ClosedRange<CGFloat> = 1.2...4.0
-    static let municipalityLineRange: ClosedRange<CGFloat> = 0.6...2.8
-    static let currentOutlineRange: ClosedRange<CGFloat> = 2.5...4.2
+    static let prefectureBorderRange: ClosedRange<CGFloat> = 0.8...3.2
+    static let municipalityLineRange: ClosedRange<CGFloat> = 0.35...2.2
+    static let currentOutlineRange: ClosedRange<CGFloat> = 1.8...3.8
+    static let designatedCityOutlineRange: ClosedRange<CGFloat> = 0.6...2.4
 
     /// 演出(`MapAreaEffectTimeline`)の線の太さを書いたときの基準。以前の固定値。
     private static let designedMunicipalityLine: CGFloat = 0.7
@@ -59,6 +62,7 @@ nonisolated struct BoundaryLineWidths: Equatable, Sendable {
         prefectureBorder = Self.interpolate(Self.prefectureBorderRange, closeness)
         municipalityLine = Self.interpolate(Self.municipalityLineRange, closeness)
         currentOutline = Self.interpolate(Self.currentOutlineRange, closeness)
+        designatedCityOutline = Self.interpolate(Self.designatedCityOutlineRange, closeness)
     }
 
     /// 演出の市区町村の線を、今の縮尺に合わせて太らせる倍率。

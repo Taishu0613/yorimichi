@@ -266,15 +266,15 @@ struct DesignatedCityMapState {
 
 /// 政令指定都市の見た目。市は外周を青(.blue)の線で縁取り、中を薄い青で塗る。
 /// 区の塗り(teal)と見分けやすいよう、水色ではなくはっきりした青にしている。
-/// 塗りは区の塗りや地図が透けて見える薄さに留め、色だけに頼らないよう外周は区の線より太い線にしている。
+/// 塗りは区の塗りや地図が透けて見える薄さに留める。外周も半透明にして、線が硬く目立ちすぎないようにする。
 enum DesignatedCityStyle {
     /// 地図の線と、図鑑・祝福シートなど市を表すUIの色。
     static let color = Color.blue
-    static let outlineStroke = color
+    static let outlineStroke = color.opacity(0.55)
     static let fill = color.opacity(0.15)
-    /// 県境と同じ太さ。区の線(`municipalityLine`)より太く、現在地の縁取りより細い。
+    /// 区の線(`municipalityLine`)より太く、県境より細い(`BoundaryLineWidths.designatedCityOutline`)。
     static func outlineStrokeStyle(_ lineWidths: BoundaryLineWidths) -> StrokeStyle {
-        StrokeStyle(lineWidth: lineWidths.prefectureBorder, lineCap: .round, lineJoin: .round)
+        StrokeStyle(lineWidth: lineWidths.designatedCityOutline, lineCap: .round, lineJoin: .round)
     }
 }
 
@@ -290,13 +290,15 @@ enum CurrentMunicipalityOutlineStyle {
 /// 濃さで差をつけすぎると地図が重たく見えるため、濃さは控えめにして太さの差を主な手がかりにしている。
 enum PrefectureBorderStyle {
     /// 不透明にしておく。県境の線データは1本の県境を1回だけ持つが、線の端どうしはわずかに重なるため、
-    /// 半透明だと重なった点だけ濃く見える。値は以前の「`.label`の40%」を地図の背景に重ねた見た目に合わせた灰色。
+    /// 半透明だと重なった点だけ濃く見える。灰色にほのかに水色を混ぜ、灰色の市区町村の線と見分けやすくしている。
     static let stroke = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark ? UIColor(white: 0.5, alpha: 1) : UIColor(white: 0.55, alpha: 1)
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.42, green: 0.56, blue: 0.63, alpha: 1)
+            : UIColor(red: 0.50, green: 0.63, blue: 0.70, alpha: 1)
     })
     /// 継ぎ目は必ず丸める。既定(miter)だと、簡略化で生じた鋭角の頂点から線がトゲ状に長く伸びる。
-    /// 太さは縮尺で変える。全国表示の太さ(1.2pt)は線同士が潰れ合わない上限で、これより太いと小さな県が
-    /// 黒く塗りつぶされて見える(`BoundaryLineWidths.prefectureBorderRange`)。
+    /// 太さは縮尺で変える。全国表示で太いと小さな県が線で塗りつぶされて見えるため、引くほど細くする
+    /// (`BoundaryLineWidths.prefectureBorderRange`)。
     static func strokeStyle(_ lineWidths: BoundaryLineWidths) -> StrokeStyle {
         StrokeStyle(lineWidth: lineWidths.prefectureBorder, lineCap: .round, lineJoin: .round)
     }

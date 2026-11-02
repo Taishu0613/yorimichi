@@ -1,11 +1,11 @@
 # BoundaryData 仕様
 
-行政区域境界 GeoJSON（WAGhack 地図表示用）とその生成環境。更新: 2026-09-24 / buildRevision 4
+行政区域境界 GeoJSON（WAGhack 地図表示用）とその生成環境。更新: 2026-11-02 / buildRevision 5
 
 ## 要点
 - アプリに入れるのは `generated/BoundaryData/` のみ。WAGhack は `manifest.json`・`attribution.txt`・`municipalities/`・`prefectures/`・`prefectureLines/` を参照（地方レイヤは未使用）。
 - 元データ: 国交省 N03 2026-01-01 版（CC BY 4.0、出典表示必須）。
-- 4 レイヤ（市区町村 1,905 / 都道府県 47 / 地方 10 のポリゴン + 県境線）× LOD0〜3。
+- 4 レイヤ（市区町村 1,905 / 都道府県 47 / 地方 10 のポリゴン + 県境線）× LOD0〜4。
 - 都道府県・地方・県境線は市区町村の形から生成 → 境界は完全一致。
 - 県境線（`prefectureLines`）は「都道府県コードが変わる境目」と「海岸線」だけの線。県内の市区町村境は含まない。1本の県境は隣り合う2県のうちコードの小さい県のファイルにだけ入る（アプリが同じ線を2回描かないため）。
 - 元データの市区町村どうしのわずかなすき間・重なり（幅5.6m以下、全国16か所）は `-clean` で修復している。修復しないと県が複数のポリゴンに分かれ、県内に誤った県境が出る（千代田・中央・港区の外周など8か所で発生していた）。
@@ -30,17 +30,20 @@ BoundaryData/
 ├── prefectureLines/ 同上 prefecture_line_*（県境線。MultiLineString）
 └── regions/       同上 region_*
 ```
-範囲: LOD0 は `jp`（全国1ファイル）。LOD1〜3 は市区町村・都道府県・県境線が都道府県コード `01`〜`47`、地方が地方コード `01`〜`10`。
+範囲: LOD0 は `jp`（全国1ファイル）。LOD1〜4 は市区町村・都道府県・県境線が都道府県コード `01`〜`47`、地方が地方コード `01`〜`10`。
 県境線のファイルは「その県が持ち主の線」だけを含むので、1ファイルでその県の外周がすべて揃うわけではない。
 
 | LOD | 簡略化(DP) | 画面横幅 | 切替（拡大時 / 縮小時） |
 |---|---|---|---|
 | 0 | 2000m | 800km〜 | → LOD1: 700km未満 / ← 900km超 |
 | 1 | 500m | 200〜800km | → LOD2: 180km未満 / ← 230km超 |
-| 2 | 100m | 50〜200km | → LOD3: 45km未満 / ← 60km超 |
-| 3 | 20m | 〜50km | |
+| 2 | 150m | 50〜200km | → LOD3: 50km未満 / ← 65km超 |
+| 3 | 50m | 17〜50km | → LOD4: 17km未満 / ← 22km超 |
+| 4 | 20m | 〜17km | |
 
-GeoJSON: FeatureCollection、WGS84 経緯度、`bbox` 付き。座標の桁数は LOD0 が小数4桁（約11m）、LOD1 が5桁（約1m）、LOD2・3 が6桁（簡略化の許容距離より十分細かい）。ポリゴンのレイヤは Polygon/MultiPolygon で 1 Feature = 1 行政単位。県境線は MultiLineString で 1 Feature = 1 県の 1 種類（県境 / 海岸線）。
+各LODの簡略化の幅は、そのLODから細かい方へ切り替わる直前の縮尺(400pt幅の画面)で約1.2ptになるようにしている。それより細かい形は見た目が変わらず、描画が重くなるだけのため(buildRevision 5 で、遠目で重いという指摘を受けて LOD2 を 100m→150m にし、50m の LOD3 を追加した)。
+
+GeoJSON: FeatureCollection、WGS84 経緯度、`bbox` 付き。座標の桁数は LOD0 が小数4桁（約11m）、LOD1 が5桁（約1m）、LOD2〜4 が6桁（簡略化の許容距離より十分細かい）。ポリゴンのレイヤは Polygon/MultiPolygon で 1 Feature = 1 行政単位。県境線は MultiLineString で 1 Feature = 1 県の 1 種類（県境 / 海岸線）。
 properties（コードはすべて文字列）:
 - 市区町村 `{c:"15101", n:"新潟市北区", p:"15", r:"04"}`
 - 都道府県 `{p:"20", n:"長野県", r:"03"}`
@@ -53,10 +56,10 @@ properties（コードはすべて文字列）:
 ## 小さな島の除去（buildRevision 4〜）
 `keep-shapes` は約12.5万の島をすべて残すため、buildRevision 3 まで LOD0 は1ファイル約12MB あり、頂点の約96%が10頂点以下の島だった。アプリはこれを読み込んだ直後に捨てており、実機で起動直後の読み込みが遅い主な原因と考えられた（未計測）。
 - 各 LOD で「アプリがそのLODでは絶対に描かない島」を生成時に捨てる（`boundary_tools.mjs` の `prune-and-round`）。
-  - 基準: 島の外接矩形の長辺が `そのLODの最小画面幅（lodTransitions の zoomInBelowMeters）÷ 100` 未満。LOD0 は7km、LOD1 は1.8km、LOD2 は450m。LOD3 は捨てない。manifest の `lods[].minPieceMeters` に記録。
+  - 基準: 島の外接矩形の長辺が `そのLODの最小画面幅（lodTransitions の zoomInBelowMeters）÷ 100` 未満。LOD0 は7km、LOD1 は1.8km、LOD2 は500m、LOD3 は170m。LOD4 は捨てない。manifest の `lods[].minPieceMeters` に記録。
   - アプリの `BoundaryPieceFilter` と同じ規則（各行政単位の最大の島は必ず残す、県境線は閉じた線＝島の海岸線だけを捨てる）なので、地図の見た目は変わらない。`APP_SCREEN_RESOLUTION`（=100）はアプリの `BoundaryPieceFilter.screenResolution` と必ずそろえる。
 - 座標の丸めも同じ手順で、小さな島を捨てた後に行う。mapshaper の出力時に丸めると、ポリゴン側からは潰れた小さな島が消えるのに県境線側には残り、県境線の持ち主判定（頂点の完全一致）が失敗するため。潰れた穴は捨てる（そのLODでは1pt未満）。
-- 島数の警告（`Outer component count changed`）は、島を捨てない LOD3 だけで確認する。
+- 島数の警告（`Outer component count changed`）は、島を捨てない最も細かい LOD だけで確認する。
 
 ## 地方区分（国土地理院「日本の典型地形」地域別リスト準拠）
 01北海道 / 02東北(02-07) / 03関東(08-14, **19山梨, 20長野**) / 04北陸(**15新潟**-18) / 05中部(21-24) / 06近畿(25-30) / 07中国(31-35) / 08四国(36-39) / 09九州(40-46) / 10沖縄(47)
