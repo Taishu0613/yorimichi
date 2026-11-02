@@ -53,7 +53,7 @@ struct MunicipalityDetailScreen: View {
             VStack(alignment: .leading, spacing: 24) {
                 if target != nil {
                     MunicipalityHeroView(
-                        photo: viewModel.heroPhoto,
+                        photos: viewModel.displayedPhotos,
                         silhouette: silhouetteCode.flatMap { silhouetteStore?.municipalityMaps[$0] }
                     )
                     .animation(.spring(duration: 0.35, bounce: 0.3), value: silhouetteCode.flatMap { silhouetteStore?.municipalityMaps[$0] } != nil)
