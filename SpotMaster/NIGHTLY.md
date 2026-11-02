@@ -10,7 +10,7 @@
 2. `nightly_done.json` に無い、一番小さい番号の夜を選ぶ。全部終わっていれば `nightly.log` に「全夜完了」と書いて終わる。
 3. その夜の `units` ごとに、Agentツールで `model: sonnet`、`subagent_type: general-purpose` の担当を1つ起動する。同時に動かすのは2つまで。指示は下の「担当への指示」に、都道府県コード・夜の番号・`codes`・`webCodes` を入れて渡す。同じ都道府県の担当を2つ同時に動かさない。
 4. 全担当の完了後、`SpotMaster/work/` で `python3 validate_file.py spots/n<夜の番号2桁>_<都道府県コード>.json` を確かめる。足りない市区町村があれば、同じ担当へ続きを頼む。
-5. リポジトリ直下で実行する。
+5. リポジトリ直下（`cd /Users/wakasugitaishu/project/yorimichi-municipality-guide`）で、**サンドボックスの外で**実行する。境界データは別のフォルダへのリンクなので、サンドボックスの中では読めない。`check.log` に「境界データを読めません」があれば、確認できていないので、完了の記録を付けずに `nightly.log` に書いて終わる。
    ```bash
    python3 SpotMaster/scripts/merge_spots.py SpotMaster/work/spots
    SpotMaster/work/check_spots LocalGovernmentCodeJapan_Knowledge.csv BoundaryData/generated/BoundaryData/municipalities/lod2_100m --results SpotMaster/work/check_results.tsv --evidence SpotMaster/work/evidence > SpotMaster/work/check.log 2>&1

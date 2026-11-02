@@ -221,7 +221,15 @@ let known = knownNames()
 var failed = 0
 for code in rowsByCode.keys.sorted() where onlyCode == nil || onlyCode == code {
     let shapes = polygons(code: code)
-    guard !shapes.isEmpty else { print("?? \(code): 境界データがありません"); continue }
+    guard !shapes.isEmpty else {
+        // 境界のファイルを1つも読めないときは、場所の指定かサンドボックスの問題なので、確認できたことにせず止める。
+        if featuresByPrefecture.values.allSatisfy(\.isEmpty) {
+            print("NG 境界データを読めません: \(boundaryFolder)(サンドボックスの外で実行してください)")
+            exit(2)
+        }
+        print("?? \(code): 境界データがありません")
+        continue
+    }
     let searchRegion = region(of: shapes)
     for row in rowsByCode[code, default: []] where !checked.contains("\(code)\t\(row.name)") {
         let name = normalize(row.name)
