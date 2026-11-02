@@ -19,6 +19,8 @@
 
 1. `python3 -I SpotMaster/scripts/collect_evidence.py` で材料を集める（`SpotMaster/work/evidence/<都道府県コード>.json`）。材料はマスタの豆知識、Wikipediaの観光などの節、境界の中にあるWikidataの名所。
 2. 下の指示でAIが市区町村ごとに評価し、`SpotMaster/work/spots/*.json` に `{"行政区域コード": [...]}` の形で書く。
+   - `SpotMaster/lists/article_targets.md` の市区町村は、観光記事の検索結果も材料にする（1か所1回、全文は読まない）。
+   - それ以外でも、みどころが3件に満たない市町村は同じように1回検索して補う。
 3. `python3 SpotMaster/scripts/merge_spots.py SpotMaster/work/spots` でマスタへ書き込む。
 4. `SpotMaster/scripts/check_spots.swift` で形式と実在を確かめる。「要確認」の行は名前を地図の表記に直すか、確かめられなければ別の場所に差し替えて、3からやり直す。
 
