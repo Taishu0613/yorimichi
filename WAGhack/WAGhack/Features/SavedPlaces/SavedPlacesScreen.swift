@@ -59,6 +59,9 @@ struct SavedPlacesScreen: View {
 
                 PopFootnote("都道府県を記録するか、1つでも市区町村を訪れると制覇としてカウントします。政令指定都市は区単位で数え、区を1つ訪れると市も訪問済みになります。")
 
+                // バッジは地図が主役のまま、旅の記録から自然に辿れるようにする(常設のタブやフッターの項目は増やさない)。
+                BadgeEntryCard()
+
                 PopSectionHeader(title: "記録した都道府県")
 
                 if summary.visitedPrefectures.isEmpty {
