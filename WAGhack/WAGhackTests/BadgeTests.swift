@@ -7,21 +7,67 @@ struct BadgeTests {
     private let evaluator = BadgeRuleEvaluator()
     private let reconciler = BadgeAchievementReconciler()
 
-    @Test func 訪問0件ではどのバッジも獲得せず最初のチャレンジは最初の一歩() {
+    @Test func 訪問0件ではどのバッジも獲得せず最初のおすすめは最初の一歩() {
         let statuses = statuses(visitedCodes: [])
         #expect(statuses.earnedCount == 0)
-        #expect(statuses.nextChallenge?.id == .firstStep)
-        #expect(statuses.nextChallenge?.headline == "最初の街を訪れてみよう")
+        let recommendations = statuses.recommendations(currentPrefectureCode: nil)
+        #expect(recommendations.count == 3)
+        #expect(recommendations.first?.id == .firstStep)
+        #expect(recommendations.first?.headline == "最初の街を訪れてみよう")
     }
 
-    @Test func 準備中のバッジは獲得済みにならない() {
-        let status = status(.tripleBoundary, in: statuses(visitedCodes: Set(BadgeCatalog.tokyoSpecialWardCodes)))
-        #expect(!status.isEarned)
-        #expect(status.shortStatusText == "準備中")
+    @Test func 次のよりみちはあと少しのバッジと今いる都道府県のバッジを先に出す() {
+        // 府中市(東京)だけ訪れた状態。はじめの足あとは獲得済みなので候補から外れる。
+        let statuses = statuses(visitedCodes: ["13206"])
+        let ids = statuses.recommendations(currentPrefectureCode: "34").map(\.id)
+        // あと1つの「ふたごのまち」(広島の府中市)と、あと1つの「県またぎの旅人」が先に来る。
+        #expect(Set(ids.prefix(2)) == [.twinTowns, .prefectureTraveler])
+        #expect(statuses.recommendations(currentPrefectureCode: nil).allSatisfy { $0.nextThreshold != nil })
+    }
+
+    @Test func 超超・境目は記録した場所がおたがい1km以内の4つの街で獲得する() {
+        // 新宿区・渋谷区・豊島区・千代田区を、おたがい1km以内に置く。
+        let near = [
+            point("13104", 35.6900, 139.7000), point("13113", 35.6930, 139.7030),
+            point("13116", 35.6870, 139.7040), point("13101", 35.6910, 139.7060),
+        ]
+        let codes: Set<String> = ["13104", "13113", "13116", "13101"]
+        let four = statuses(visitedCodes: codes, points: near)
+        #expect(status(.quadrupleBoundary, in: four).isEarned)
+        #expect(status(.tripleBoundary, in: four).isEarned)
+
+        // 3つだけなら超・境目！は獲得、超超・境目！はあと1つ。
+        let three = statuses(visitedCodes: codes, points: Array(near.prefix(3)))
+        let quadruple = status(.quadrupleBoundary, in: three)
+        #expect(!quadruple.isEarned)
+        #expect(quadruple.currentValue == 3)
+        #expect(quadruple.headline == "豊島区と新宿区と渋谷区の近くで、もう1つの街を記録しよう")
+    }
+
+    @Test func 超・境目は記録した場所がおたがい1km以内の3つの街で獲得し証跡を残す() throws {
+        // 新宿区・渋谷区・豊島区の記録した場所を、おたがい1km以内に置く。
+        let near = [
+            point("13104", 35.6900, 139.7000), point("13113", 35.6930, 139.7030), point("13116", 35.6870, 139.7040),
+        ]
+        let codes: Set<String> = ["13104", "13113", "13116"]
+        let earned = status(.tripleBoundary, in: statuses(visitedCodes: codes, points: near))
+        #expect(earned.isEarned)
+        let ledger = reconciler.reconcile(
+            BadgeLedger(hasCompletedInitialSync: true, evaluatedBadgeIDs: Set(BadgeID.allCases.map(\.rawValue))),
+            with: progresses(visitedCodes: codes, points: near), now: .now
+        )
+        let evidence = try #require(ledger.achievement(for: .tripleBoundary)?.evidence)
+        #expect(Set(evidence.places.map(\.code)) == codes)
+
+        // 1つだけ遠くに記録した場所があると、近い2つまで。
+        let far = [near[0], near[1], point("13116", 35.7300, 139.7100)]
+        let partial = status(.tripleBoundary, in: statuses(visitedCodes: codes, points: far))
+        #expect(partial.currentValue == 2)
+        #expect(partial.headline == "新宿区と渋谷区の近くで、もう1つの街を記録しよう")
     }
 
     @Test func 都会にこんにちはは3つの副都心をすべて訪れて獲得() {
-        #expect(status(.helloMetropolis, in: statuses(visitedCodes: ["13104", "13113"])).headline == "あと1区で獲得")
+        #expect(status(.helloMetropolis, in: statuses(visitedCodes: ["13104", "13113"])).headline == "残り：池袋")
         #expect(status(.helloMetropolis, in: statuses(visitedCodes: ["13104", "13113", "13116"])).isEarned)
     }
 
@@ -33,10 +79,15 @@ struct BadgeTests {
         #expect(status(.twinTowns, in: statuses(visitedCodes: ["13206", "34208"])).isEarned)
     }
 
-    @Test func 数字の旅人は漢数字で始まる市区町村を数える() {
-        let partial = status(.numberTraveler, in: statuses(visitedCodes: ["13101", "13201"]))
+    @Test func 数字の旅人は名前に入っている数字の種類を集める() {
+        // 八王子市(八)・三鷹市(三)。同じ数字の街を重ねても種類は増えない。
+        let partial = status(.numberTraveler, in: statuses(visitedCodes: ["13201", "13204"]))
         #expect(partial.currentValue == 2)
-        #expect(status(.numberTraveler, in: statuses(visitedCodes: ["13101", "13201", "23203"])).isEarned)
+        #expect(partial.progress.numerals.filter(\.isCollected).map(\.symbol) == ["三", "八"])
+        // 一宮市(一)で3種類になり、ブロンズ。
+        let bronze = status(.numberTraveler, in: statuses(visitedCodes: ["13201", "13204", "23203"]))
+        #expect(bronze.rank == .bronze)
+        #expect(bronze.nextThreshold == 6)
     }
 
     @Test func 三都物語は3都市でそれぞれ1区以上訪れて獲得() {
@@ -132,6 +183,7 @@ struct BadgeTests {
             entry("14100", "横浜市", prefecture: "14", prefectureName: "神奈川県"),
             entry("14101", "横浜市鶴見区", prefecture: "14", prefectureName: "神奈川県"),
             entry("13201", "八王子市", prefecture: "13", prefectureName: "東京都"),
+            entry("13204", "三鷹市", prefecture: "13", prefectureName: "東京都"),
             entry("13206", "府中市", prefecture: "13", prefectureName: "東京都"),
             entry("23203", "一宮市", prefecture: "23", prefectureName: "愛知県"),
             entry("26100", "京都市", prefecture: "26", prefectureName: "京都府"),
@@ -151,12 +203,16 @@ struct BadgeTests {
         ExplorationMunicipality(code: code, name: name, prefectureCode: prefecture, prefectureName: prefectureName, isPrefecture: false)
     }
 
-    private func progresses(visitedCodes: Set<String>) -> [BadgeProgress] {
-        evaluator.evaluate(calculator.summarize(municipalities: municipalities, visitedCodes: visitedCodes))
+    private func progresses(visitedCodes: Set<String>, points: [BadgeVisitPoint] = []) -> [BadgeProgress] {
+        evaluator.evaluate(calculator.summarize(municipalities: municipalities, visitedCodes: visitedCodes), visitPoints: points)
     }
 
-    private func statuses(visitedCodes: Set<String>) -> [BadgeStatus] {
-        progresses(visitedCodes: visitedCodes).map { BadgeStatus(progress: $0, achievement: nil) }
+    private func statuses(visitedCodes: Set<String>, points: [BadgeVisitPoint] = []) -> [BadgeStatus] {
+        progresses(visitedCodes: visitedCodes, points: points).map { BadgeStatus(progress: $0, achievement: nil) }
+    }
+
+    private func point(_ code: String, _ latitude: Double, _ longitude: Double) -> BadgeVisitPoint {
+        BadgeVisitPoint(code: code, latitude: latitude, longitude: longitude, recordedAt: .now)
     }
 
     private func status(_ id: BadgeID, in statuses: [BadgeStatus]) -> BadgeStatus {

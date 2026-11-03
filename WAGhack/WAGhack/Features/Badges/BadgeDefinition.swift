@@ -12,6 +12,7 @@ nonisolated enum BadgeID: String, CaseIterable, Codable, Hashable {
     case twinTowns = "twin_towns"
     case numberTraveler = "number_traveler"
     case tripleBoundary = "triple_boundary"
+    case quadrupleBoundary = "quadruple_boundary"
     case threeCapitals = "three_capitals"
 }
 
@@ -29,7 +30,14 @@ enum BadgeCriterion {
     case visitedAreas([BadgeArea])
     /// 同じ名前の市区町村の組のうち、ちがう都道府県で2つ以上訪れた組の数(ふたごのまち)。
     case sameNameGroups([[String]])
-    /// 判定がまだ無い(Phase 2/3)。一覧には絵柄と名前だけを見せ、獲得済みにはしない。
+    /// 集めた数字の種類の数(数字の旅人)。数字ごとに、名前にその数字が入っている市区町村を1つ訪れれば集まる。
+    case numeralCollection([BadgeNumeral])
+    /// 名前の付いた目的地のうち訪れた数(都会にこんにちは: 池袋・新宿・渋谷)。目的地は区などの市区町村で判定する。
+    case themeSpots([BadgeThemeSpot])
+    /// 記録した場所がおたがい`maxDistanceMeters`以内にある市区町村の数のうち、最も多いもの(超・境目！・超超・境目！)。
+    /// 判定には記録した場所の座標を使う。いくつ集めれば獲得かは`tiers`の最後の値。
+    case nearbyMunicipalities(maxDistanceMeters: Double)
+    /// 判定がまだ無い。一覧には絵柄と名前だけを見せ、獲得済みにはしない。
     case comingSoon
 }
 
@@ -72,6 +80,42 @@ struct BadgeArea {
     let spanMeters: Double
 }
 
+/// 数字の旅人で集める数字1種類と、名前にその数字が入っている市区町村。
+struct BadgeNumeral {
+    let symbol: String
+    let codes: [String]
+}
+
+/// テーマで巡る目的地。街の呼び名(池袋)と、判定に使う市区町村(豊島区)は一致しないことがあるので両方持ち、
+/// 画面では両方を見せて「どこを記録すればよいか」と判定を一致させる。
+struct BadgeThemeSpot {
+    let label: String
+    let code: String
+}
+
+/// 図鑑のカテゴリ。資料「旅のクエスト図鑑」の4分類。所属は製品として確定していない(暫定)。
+enum BadgeCategory: CaseIterable, Identifiable {
+    /// 地形・境界・地域の組み合わせ。
+    case geography
+    /// 名前や漢字に隠れた特徴。
+    case placeNames
+    /// 移動や訪問の積み重ね。
+    case footprints
+    /// 街の個性・豆知識・観光テーマ。今はこのカテゴリのバッジが無いので、図鑑では絞り込みの候補に出さない。
+    case knowledge
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .geography: "街と地理"
+        case .placeNames: "地名のひみつ"
+        case .footprints: "旅の足あと"
+        case .knowledge: "知識と発見"
+        }
+    }
+}
+
 /// バッジの詳細から地図へ向かう先。地図を動かすのは持ち主の`MapScreen`なので、ここでは行き先だけを表す。
 enum BadgeMapFocus {
     /// 地域全体(東京23区・京都市など)。
@@ -101,7 +145,7 @@ struct BadgeDefinition: Identifiable {
     let name: String
     /// 一覧の下や詳細の名前の下に添える、旅の目的を感じる短い一文。
     let summary: String
-    let category: String
+    let category: BadgeCategory
     let criterion: BadgeCriterion
     /// 段階ごとの閾値(昇順)。段階の無いバッジは1つだけ持つ。
     let tiers: [Int]
@@ -112,6 +156,8 @@ struct BadgeDefinition: Identifiable {
     let conditionText: (Int) -> String
     /// 詳細の「地図で探す」で見せる地域。対象が1つの地域にまとまっているバッジだけが持つ。
     var mapArea: BadgeArea? = nil
+    /// 詳細の「旅のヒント」。対象の街の面白さや探し方を短く伝える。
+    var hint: String? = nil
 
     /// 差し替え用の画像の名前。`badge_first_step`のように安定した名前にしておき、後から画像を追加するだけで入れ替わる。
     var assetName: String { "badge_\(id.rawValue)" }

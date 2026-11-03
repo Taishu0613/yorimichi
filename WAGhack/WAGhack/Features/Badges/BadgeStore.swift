@@ -33,11 +33,12 @@ final class BadgeStore {
         statuses.first { $0.id == id }
     }
 
-    func update(summary: ExplorationSummary, now: Date = .now) {
+    /// - Parameter visitPoints: 記録した場所。距離で判定するバッジと、記録した日の表示に使う。
+    func update(summary: ExplorationSummary, visitPoints: [BadgeVisitPoint] = [], now: Date = .now) {
         // マスタの読み込み前(対象の市区町村が0件)に評価すると、既存の記録があっても何も獲得していないように見え、
         // その時点で「はじめての評価」を済ませてしまう。マスタが揃うまでは評価しない。
         guard !summary.eligibleCodes.isEmpty else { return }
-        let progresses = BadgeRuleEvaluator().evaluate(summary)
+        let progresses = BadgeRuleEvaluator().evaluate(summary, visitPoints: visitPoints)
         let reconciled = reconciler.reconcile(ledger, with: progresses, now: now)
         if reconciled != ledger {
             ledger = reconciled
