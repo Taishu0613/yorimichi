@@ -4,9 +4,24 @@ import Foundation
 struct BadgeChecklistItem: Identifiable, Equatable {
     let code: String
     let name: String
+    let prefectureCode: String
+    let prefectureName: String
     let isVisited: Bool
 
     var id: String { code }
+}
+
+/// まとまりで判定する対象(三都物語の1都市、ふたごのまちの1組)。
+struct BadgeChecklistGroup: Identifiable {
+    let name: String
+    let items: [BadgeChecklistItem]
+    /// このまとまりが条件を満たしたか(都市なら1つ以上、組ならちがう都道府県で2つ以上)。
+    let isSatisfied: Bool
+    /// 地図で見せる地域。都市のまとまりだけが持つ。
+    var area: BadgeArea? = nil
+
+    var id: String { name + (items.first?.code ?? "") }
+    var visitedCount: Int { items.filter(\.isVisited).count }
 }
 
 /// 都道府県ごとの訪問数。「地元の探検家」で、どの県がいちばん進んでいるかを見せるために使う。
@@ -24,6 +39,8 @@ struct BadgeProgress {
     /// 数えた値。判定がまだ無いバッジ(準備中)はnil。
     let value: Int?
     var checklist: [BadgeChecklistItem] = []
+    /// まとまりごとの訪問状況(三都物語・ふたごのまち)。
+    var groups: [BadgeChecklistGroup] = []
     /// 訪問数の多い順。訪れていない都道府県は含めない。
     var prefectureCounts: [BadgePrefectureCount] = []
 
@@ -59,22 +76,59 @@ struct BadgeRuleEvaluator {
                 .map(\.element)
             return BadgeProgress(definition: definition, value: counts.first?.visited ?? 0, prefectureCounts: counts)
         case .visitedTargets(let codes):
-            var names: [String: String] = [:]
-            var visitedCodes: Set<String> = []
-            for prefecture in summary.prefectures {
-                for municipality in prefecture.municipalities {
-                    names[municipality.code] = municipality.name
-                }
-                visitedCodes.formUnion(prefecture.visitedCodes)
-            }
-            let checklist = codes.map { code in
-                BadgeChecklistItem(code: code, name: names[code] ?? code, isVisited: visitedCodes.contains(code))
-            }
+            let lookup = MunicipalityLookup(summary)
+            let checklist = codes.map(lookup.item(for:))
             return BadgeProgress(
                 definition: definition, value: checklist.filter(\.isVisited).count, checklist: checklist
             )
+        case .visitedAreas(let areas):
+            let lookup = MunicipalityLookup(summary)
+            let groups = areas.map { area in
+                let items = area.codes.map(lookup.item(for:))
+                return BadgeChecklistGroup(name: area.name, items: items, isSatisfied: items.contains(where: \.isVisited), area: area)
+            }
+            return BadgeProgress(definition: definition, value: groups.filter(\.isSatisfied).count, groups: groups)
+        case .sameNameGroups(let codeGroups):
+            let lookup = MunicipalityLookup(summary)
+            let groups = codeGroups.map { codes in
+                let items = codes.map(lookup.item(for:))
+                let visitedPrefectures = Set(items.filter(\.isVisited).map(\.prefectureCode))
+                return BadgeChecklistGroup(name: items.first?.name ?? "", items: items, isSatisfied: visitedPrefectures.count >= 2)
+            }
+            // 達成した組、あと1つの組、まだの組の順にする。「次に訪れるとよい組」を上に出すため。同数なら定義の順。
+            let sorted = groups.enumerated()
+                .sorted { ($0.element.visitedCount, -$0.offset) > ($1.element.visitedCount, -$1.offset) }
+                .map(\.element)
+            return BadgeProgress(definition: definition, value: groups.filter(\.isSatisfied).count, groups: sorted)
         case .comingSoon:
             return BadgeProgress(definition: definition, value: nil)
         }
+    }
+}
+
+/// 行政区域コードから、名前と訪問済みかどうかを引く。対象リストはコードだけを持つので、表示の名前はマスタから引く。
+private struct MunicipalityLookup {
+    private var municipalities: [String: ExplorationMunicipality] = [:]
+    private var visitedCodes: Set<String> = []
+
+    init(_ summary: ExplorationSummary) {
+        for prefecture in summary.prefectures {
+            for municipality in prefecture.municipalities {
+                municipalities[municipality.code] = municipality
+            }
+            visitedCodes.formUnion(prefecture.visitedCodes)
+        }
+    }
+
+    /// マスタに無いコード(マスタの更新で無くなった等)は、コードをそのまま名前にして未訪問として出す。
+    func item(for code: String) -> BadgeChecklistItem {
+        let municipality = municipalities[code]
+        return BadgeChecklistItem(
+            code: code,
+            name: municipality?.name ?? code,
+            prefectureCode: municipality?.prefectureCode ?? String(code.prefix(2)),
+            prefectureName: municipality?.prefectureName ?? "",
+            isVisited: visitedCodes.contains(code)
+        )
     }
 }

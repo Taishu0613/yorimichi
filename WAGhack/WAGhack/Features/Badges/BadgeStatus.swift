@@ -64,10 +64,42 @@ struct BadgeStatus: Identifiable {
         if currentValue == 0, !isEarned, definition.id == .firstStep {
             return "最初の街を訪れてみよう"
         }
+        if case .sameNameGroups = definition.criterion, let group = partialGroup {
+            return "\(group.name)をもう1つ訪れよう"
+        }
         if let nextRank = BadgeRank(earnedTierCount: earnedTierCount + 1), definition.isTiered {
             return "あと\(remaining)\(definition.unit)で\(nextRank.name)"
         }
         return "あと\(remaining)\(definition.unit)で獲得"
+    }
+
+    /// 詳細の「地図で探す」の行き先と文言。まだ訪れていない対象を地図で探せるバッジだけが持つ。
+    var mapTarget: (focus: BadgeMapFocus, title: String)? {
+        guard isAvailable, !isComplete else { return nil }
+        if let area = definition.mapArea {
+            return (.area(area), "地図で未訪問の\(definition.unit)を探す")
+        }
+        switch definition.criterion {
+        case .municipalitiesInOnePrefecture:
+            guard let top = progress.prefectureCounts.first else { return nil }
+            return (.prefecture(code: top.code), "地図で\(top.name)を探検する")
+        case .visitedAreas:
+            guard let area = progress.groups.first(where: { !$0.isSatisfied })?.area else { return nil }
+            return (.area(area), "地図で\(area.name)を探す")
+        case .sameNameGroups:
+            guard let next = partialGroup?.items.first(where: { !$0.isVisited }) else { return nil }
+            return (
+                .municipality(code: next.code, prefectureCode: next.prefectureCode),
+                "地図で\(next.prefectureName)の\(next.name)を探す"
+            )
+        default:
+            return nil
+        }
+    }
+
+    /// 1つだけ訪れていて、まだ条件を満たしていないまとまり(ふたごのまちの片方だけ訪れた組)。
+    private var partialGroup: BadgeChecklistGroup? {
+        progress.groups.first { !$0.isSatisfied && $0.visitedCount > 0 }
     }
 
     /// 読み上げ用の状態。「獲得済み・シルバー」「未獲得・7 / 10区」のように、見た目の印影を言葉にする。

@@ -914,13 +914,18 @@ struct MapScreen: View {
         isSheetExpanded = false
         focusTask?.cancel()
         switch focus {
-        case .tokyoSpecialWards:
-            let center = CLLocationCoordinate2D(
-                latitude: BadgeCatalog.tokyoSpecialWardsCenter.latitude,
-                longitude: BadgeCatalog.tokyoSpecialWardsCenter.longitude
-            )
-            let span = BadgeCatalog.tokyoSpecialWardsSpanMeters
-            moveCamera(to: .region(MKCoordinateRegion(center: center, latitudinalMeters: span, longitudinalMeters: span)))
+        case .area(let area):
+            let center = CLLocationCoordinate2D(latitude: area.latitude, longitude: area.longitude)
+            moveCamera(to: .region(MKCoordinateRegion(
+                center: center, latitudinalMeters: area.spanMeters, longitudinalMeters: area.spanMeters
+            )))
+        case .municipality(let code, let prefectureCode):
+            // 未訪問の街は地図の外にあることが多いので、その街の形を読み込んでから全体が収まるように寄せる。
+            focusTask = Task {
+                await puzzleStore.prepareFocusRect(forMunicipality: code, prefectureCode: prefectureCode)
+                guard !Task.isCancelled, let rect = puzzleStore.focusRect(forMunicipality: code) else { return }
+                moveCamera(to: .rect(rect))
+            }
         case .prefecture(let code):
             // 県の形のうち、どの島(本土・離島)を見せるかを決めるため、その県で記録した場所を基準にする。
             guard let coordinate = savedPlaces.first(where: { $0.municipality?.prefectureCode == code })?.coordinate else {

@@ -1,13 +1,5 @@
 import SwiftUI
 
-/// バッジの詳細から地図へ向かう先。地図を動かすのは持ち主の`MapScreen`なので、ここでは行き先だけを表す。
-enum BadgeMapFocus {
-    /// 東京23区全体。
-    case tokyoSpecialWards
-    /// 都道府県全体。
-    case prefecture(code: String)
-}
-
 extension EnvironmentValues {
     /// 「地図で探す」の処理。旅の記録のシートを閉じて地図を寄せる。地図の無い場所(プレビュー)ではnilでボタンを出さない。
     @Entry var showBadgeAreaOnMap: ((BadgeMapFocus) -> Void)? = nil
@@ -25,6 +17,8 @@ struct BadgeDetailView: View {
 
     /// 対象の街を最初に見せる件数。
     private static let collapsedTargetCount = 8
+    /// 対象のまとまり(ふたごのまちの組)を最初に見せる件数。
+    private static let collapsedGroupCount = 4
 
     var body: some View {
         ScrollView {
@@ -35,6 +29,9 @@ struct BadgeDetailView: View {
                     conditionCard(status)
                     if !status.progress.checklist.isEmpty {
                         checklistCard(status)
+                    }
+                    if !status.progress.groups.isEmpty {
+                        groupsCard(status)
                     }
                     if !status.progress.prefectureCounts.isEmpty {
                         prefectureCountsCard(status)
@@ -195,41 +192,137 @@ struct BadgeDetailView: View {
     // MARK: - 対象の街
 
     private func checklistCard(_ status: BadgeStatus) -> some View {
-        let items = status.progress.checklist
+        // 訪れた街を先に並べる。閉じた状態でも「あなたの歩いた街」が見え、続きに未訪問の街が来る。
+        let items = status.progress.checklist.filter(\.isVisited) + status.progress.checklist.filter { !$0.isVisited }
         let visibleItems = showsAllTargets ? items : Array(items.prefix(Self.collapsedTargetCount))
+        // 対象が複数の都道府県にまたがる時(数字の旅人)は、同じ名前の町と区別できるよう都道府県も添える。
+        let showsPrefecture = Set(items.map(\.prefectureCode)).count > 1
+        let columnCount = showsPrefecture ? 1 : 2
         return VStack(alignment: .leading, spacing: 12) {
             Text("あなたの歩いた街")
                 .font(.headline.weight(.heavy))
                 .foregroundStyle(Pop.ink)
-            LazyVGrid(columns: [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)], spacing: 10) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .leading), count: columnCount), spacing: 10) {
                 ForEach(visibleItems) { item in
-                    Label {
-                        Text(item.name)
-                            .foregroundStyle(item.isVisited ? Pop.ink : Pop.muted)
-                    } icon: {
-                        Image(systemName: item.isVisited ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(item.isVisited ? Pop.theme : Pop.muted)
-                    }
-                    .font(.subheadline.weight(item.isVisited ? .bold : .regular))
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(item.name)
-                    .accessibilityValue(item.isVisited ? "訪問済み" : "未訪問")
+                    targetRow(item, showsPrefecture: showsPrefecture)
                 }
             }
             if items.count > Self.collapsedTargetCount {
-                Button {
-                    withAnimation(.easeOut(duration: 0.2)) { showsAllTargets.toggle() }
-                } label: {
-                    Label(showsAllTargets ? "閉じる" : "すべて見る(\(items.count))", systemImage: showsAllTargets ? "chevron.up" : "chevron.down")
-                        .font(.subheadline.weight(.bold))
-                }
-                .tint(Pop.theme)
-                .frame(maxWidth: .infinity, alignment: .trailing)
+                expandButton(isExpanded: showsAllTargets, total: items.count) { showsAllTargets.toggle() }
+            }
+            if showBadgeAreaOnMap != nil, items.contains(where: { !$0.isVisited }) {
+                PopFootnote("まだ訪れていない街を押すと、地図でその街を見られます。")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .popCard()
+    }
+
+    /// 三都物語の都市、ふたごのまちの組ごとの訪問状況。
+    private func groupsCard(_ status: BadgeStatus) -> some View {
+        let groups = status.progress.groups
+        let visibleGroups = showsAllTargets ? groups : Array(groups.prefix(Self.collapsedGroupCount))
+        return VStack(alignment: .leading, spacing: 14) {
+            Text(status.definition.id == .twinTowns ? "同じ名前のまち" : "めぐる都市")
+                .font(.headline.weight(.heavy))
+                .foregroundStyle(Pop.ink)
+            ForEach(visibleGroups) { group in
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Image(systemName: group.isSatisfied ? "checkmark.seal.fill" : "seal")
+                            .foregroundStyle(group.isSatisfied ? Pop.theme : Pop.muted)
+                            .accessibilityHidden(true)
+                        Text(group.name)
+                            .font(.subheadline.weight(.heavy))
+                            .foregroundStyle(Pop.ink)
+                        Spacer()
+                        if group.area != nil {
+                            Text("\(group.visitedCount) / \(group.items.count)区")
+                                .font(.caption)
+                                .foregroundStyle(Pop.muted)
+                                .monospacedDigit()
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityValue(group.isSatisfied ? "達成" : "未達成")
+                    if let area = group.area {
+                        // 都市は区が多いので区の一覧は出さず、まだの都市だけ地図へ向かえるようにする。
+                        if !group.isSatisfied, let showBadgeAreaOnMap {
+                            Button {
+                                showBadgeAreaOnMap(.area(area))
+                            } label: {
+                                Label("地図で\(area.name)を見る", systemImage: "map")
+                                    .font(.footnote.weight(.bold))
+                            }
+                            .tint(Pop.theme)
+                        }
+                    } else {
+                        ForEach(group.items) { item in
+                            targetRow(item, showsPrefecture: true)
+                        }
+                        .padding(.leading, 26)
+                    }
+                }
+            }
+            if groups.count > Self.collapsedGroupCount {
+                expandButton(isExpanded: showsAllTargets, total: groups.count) { showsAllTargets.toggle() }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .popCard()
+    }
+
+    /// 対象の街の1行。まだ訪れていない街は、押すと地図でその街へ寄せる(地図の無いプレビューでは押せない)。
+    @ViewBuilder
+    private func targetRow(_ item: BadgeChecklistItem, showsPrefecture: Bool) -> some View {
+        let label = Label {
+            HStack(spacing: 6) {
+                Text(item.name)
+                    .foregroundStyle(item.isVisited ? Pop.ink : Pop.muted)
+                if showsPrefecture, !item.prefectureName.isEmpty {
+                    Text(item.prefectureName)
+                        .font(.caption)
+                        .foregroundStyle(Pop.muted)
+                }
+                if !item.isVisited, showBadgeAreaOnMap != nil {
+                    Image(systemName: "map")
+                        .font(.caption)
+                        .foregroundStyle(Pop.theme)
+                }
+            }
+        } icon: {
+            Image(systemName: item.isVisited ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(item.isVisited ? Pop.theme : Pop.muted)
+        }
+        .font(.subheadline.weight(item.isVisited ? .bold : .regular))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(showsPrefecture ? "\(item.prefectureName)\(item.name)" : item.name)
+        .accessibilityValue(item.isVisited ? "訪問済み" : "未訪問")
+
+        if !item.isVisited, let showBadgeAreaOnMap {
+            Button {
+                showBadgeAreaOnMap(.municipality(code: item.code, prefectureCode: item.prefectureCode))
+            } label: {
+                label
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("地図でこの街を表示します")
+        } else {
+            label
+        }
+    }
+
+    private func expandButton(isExpanded: Bool, total: Int, toggle: @escaping () -> Void) -> some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.2)) { toggle() }
+        } label: {
+            Label(isExpanded ? "閉じる" : "すべて見る(\(total))", systemImage: isExpanded ? "chevron.up" : "chevron.down")
+                .font(.subheadline.weight(.bold))
+        }
+        .tint(Pop.theme)
+        .frame(maxWidth: .infinity, alignment: .trailing)
     }
 
     private func prefectureCountsCard(_ status: BadgeStatus) -> some View {
@@ -261,7 +354,7 @@ struct BadgeDetailView: View {
 
     @ViewBuilder
     private func mapButton(_ status: BadgeStatus) -> some View {
-        if let showBadgeAreaOnMap, let target = mapFocus(for: status) {
+        if let showBadgeAreaOnMap, let target = status.mapTarget {
             Button {
                 showBadgeAreaOnMap(target.focus)
             } label: {
@@ -270,20 +363,6 @@ struct BadgeDetailView: View {
             }
             .popPrimaryButton()
             .padding(.top, 4)
-        }
-    }
-
-    /// 地図で探す先。まだ訪れていない対象がある時だけ出す。
-    private func mapFocus(for status: BadgeStatus) -> (focus: BadgeMapFocus, title: String)? {
-        guard status.isAvailable, !status.isComplete else { return nil }
-        switch status.definition.id {
-        case .tokyo23:
-            return (.tokyoSpecialWards, "地図で未訪問の区を探す")
-        case .localExplorer:
-            guard let top = status.progress.prefectureCounts.first else { return nil }
-            return (.prefecture(code: top.code), "地図で\(top.name)を探検する")
-        default:
-            return nil
         }
     }
 }

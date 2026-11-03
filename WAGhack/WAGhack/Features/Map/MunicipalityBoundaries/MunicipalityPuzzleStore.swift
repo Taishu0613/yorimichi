@@ -180,6 +180,14 @@ final class MunicipalityPuzzleStore {
         return BoundaryFocusRect.rect(enclosing: bounds, including: coordinate, maximumSideMeters: nil)
     }
 
+    /// 現在地と関係なく、市区町村そのものへ地図を寄せる範囲。バッジの詳細から未訪問の街を見せるときに使う。
+    /// 先に`prepareFocusRect(forMunicipality:prefectureCode:)`で全域の範囲を用意すること。
+    func focusRect(forMunicipality code: String) -> MKMapRect? {
+        guard let bounds = municipalityFocusBounds[code] ?? boundingRect(forMunicipality: code) else { return nil }
+        let center = MKMapPoint(x: bounds.midX, y: bounds.midY).coordinate
+        return BoundaryFocusRect.rect(enclosing: bounds, including: center, maximumSideMeters: nil)
+    }
+
     /// 都道府県の制覇率の表示で、その都道府県へ地図を寄せる範囲。記録時・現在地ボタン・ピン選択・表示切り替えで使う。
     /// 県全体を収めたいので、市区町村用の長さの上限(100km)は適用しない。
     func focusRect(forPrefecture code: String, containing coordinate: CLLocationCoordinate2D) -> MKMapRect? {

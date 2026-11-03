@@ -39,7 +39,7 @@ struct BadgeUnlockOverlay: View {
 
     private var title: String {
         switch announcement {
-        case .initialSummary: "旅のスタンプ帳ができました"
+        case .initialSummary: "これまでの旅のスタンプ"
         case .newlyEarned: "新しい旅のスタンプ！"
         }
     }

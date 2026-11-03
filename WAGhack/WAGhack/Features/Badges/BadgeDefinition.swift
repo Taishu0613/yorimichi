@@ -25,6 +25,10 @@ enum BadgeCriterion {
     case municipalitiesInOnePrefecture
     /// 対象の市区町村(行政区域コード)のうち訪れた数。
     case visitedTargets(codes: [String])
+    /// 地域ごとに1つ以上訪れた地域の数(三都物語: 東京23区・京都市・大阪市)。
+    case visitedAreas([BadgeArea])
+    /// 同じ名前の市区町村の組のうち、ちがう都道府県で2つ以上訪れた組の数(ふたごのまち)。
+    case sameNameGroups([[String]])
     /// 判定がまだ無い(Phase 2/3)。一覧には絵柄と名前だけを見せ、獲得済みにはしない。
     case comingSoon
 }
@@ -58,9 +62,32 @@ enum BadgeRank: Int, CaseIterable {
     }
 }
 
+/// 判定や地図の導線に使う地域。中心と範囲は、詳細の「地図で探す」で地域全体を見せるためのもの。
+struct BadgeArea {
+    let name: String
+    let codes: [String]
+    let latitude: Double
+    let longitude: Double
+    /// 地域全体が収まる表示範囲(縦横のメートル)。
+    let spanMeters: Double
+}
+
+/// バッジの詳細から地図へ向かう先。地図を動かすのは持ち主の`MapScreen`なので、ここでは行き先だけを表す。
+enum BadgeMapFocus {
+    /// 地域全体(東京23区・京都市など)。
+    case area(BadgeArea)
+    /// 都道府県全体。
+    case prefecture(code: String)
+    /// 市区町村1つ。
+    case municipality(code: String, prefectureCode: String)
+}
+
 /// スタンプの仮の絵柄。専用の画像(`BadgeDefinition.assetName`)がアセットに入れば、そちらが優先される。
+/// 主役の絵柄に小さな添え物を重ね、要件のモチーフ(足跡＋道標など)に近づけている。
 struct BadgeArtwork {
     let symbolName: String
+    /// 主役の右下に小さく添える絵柄。
+    var secondarySymbolName: String? = nil
     /// 印影の地の色。
     let primary: Color
     /// 内側の飾りと、ランクの無いバッジの外周の色。
@@ -83,6 +110,8 @@ struct BadgeDefinition: Identifiable {
     let artwork: BadgeArtwork
     /// 閾値から達成条件の文を作る。詳細画面の「達成条件」に出す。
     let conditionText: (Int) -> String
+    /// 詳細の「地図で探す」で見せる地域。対象が1つの地域にまとまっているバッジだけが持つ。
+    var mapArea: BadgeArea? = nil
 
     /// 差し替え用の画像の名前。`badge_first_step`のように安定した名前にしておき、後から画像を追加するだけで入れ替わる。
     var assetName: String { "badge_\(id.rawValue)" }

@@ -22,9 +22,24 @@ nonisolated struct BadgeLedger: Codable, Equatable {
     var hasCompletedInitialSync = false
     /// はじめての評価で見つかった獲得の種類数。1種類以上あれば、まとめて1回だけ知らせる。見せたらnilにする。
     var pendingInitialSummaryCount: Int?
+    /// 一度でも判定したバッジ(`BadgeID`の生の値)。アップデートで判定できるようになったバッジを見分けるために持つ。
+    /// nilはこの項目が無かった版(Phase 1)の記録で、その版で判定していた5種を評価済みとみなす。
+    var evaluatedBadgeIDs: Set<String>?
+
+    /// Phase 1の版で判定していたバッジ。`evaluatedBadgeIDs`の無い記録を読むときだけ使う。
+    private static let phase1BadgeIDs: Set<BadgeID> = [
+        .firstStep, .footprintCollector, .prefectureTraveler, .localExplorer, .tokyo23,
+    ]
 
     func achievement(for id: BadgeID) -> BadgeAchievement? {
         achievements[id.rawValue]
+    }
+
+    /// このバッジをすでに判定したことがあるか。まだなら、今の記録で届いている分は過去の訪問によるもの(日時不明)として扱う。
+    func hasEvaluated(_ id: BadgeID) -> Bool {
+        guard hasCompletedInitialSync else { return false }
+        guard let evaluatedBadgeIDs else { return Self.phase1BadgeIDs.contains(id) }
+        return evaluatedBadgeIDs.contains(id.rawValue)
     }
 }
 
@@ -36,7 +51,7 @@ nonisolated struct BadgeUnlock: Equatable, Identifiable {
 
 /// 地図の上に出す、獲得の知らせ。
 nonisolated enum BadgeAnnouncement: Equatable {
-    /// 導入前の訪問履歴で、すでに獲得していたバッジのまとめ。
+    /// 導入前(またはバッジが判定できるようになる前)の訪問履歴で、すでに獲得していたバッジのまとめ。
     case initialSummary(earnedCount: Int)
     /// 新しい訪問で獲得したバッジ。同時に複数獲得したらまとめて1回で見せる。
     case newlyEarned([BadgeUnlock])
@@ -46,28 +61,33 @@ nonisolated enum BadgeAnnouncement: Equatable {
 struct BadgeAchievementReconciler {
     func reconcile(_ ledger: BadgeLedger, with progresses: [BadgeProgress], now: Date) -> BadgeLedger {
         var updated = ledger
-        let isInitialSync = !ledger.hasCompletedInitialSync
-        for progress in progresses {
+        var foundPastAchievement = false
+        for progress in progresses where progress.definition.isAvailable {
+            let id = progress.definition.id
+            // はじめて判定するバッジ(導入直後の全バッジ、アップデートで判定できるようになったバッジ)で見つかった獲得は、
+            // それまでの訪問によるものなので日時を確定できない。1件ずつの演出もせず、まとめの知らせに任せる。
+            let isFirstEvaluation = !ledger.hasEvaluated(id)
             let reached = progress.reachedTierCount
-            let key = progress.definition.id.rawValue
+            let key = id.rawValue
             let current = updated.achievements[key]
             guard reached > (current?.tierCount ?? 0) else { continue }
-            // はじめての評価で見つかった獲得は、導入前の訪問によるものなので日時を確定できない。
-            let date: Date? = isInitialSync ? nil : now
+            let date: Date? = isFirstEvaluation ? nil : now
             updated.achievements[key] = BadgeAchievement(
                 tierCount: reached,
                 achievedAt: current.map(\.achievedAt) ?? date,
                 tierAchievedAt: date,
-                // はじめての評価の分は1件ずつの演出をせず、まとめの知らせに任せる。
-                announcedTierCount: isInitialSync ? reached : (current?.announcedTierCount ?? 0)
+                announcedTierCount: isFirstEvaluation ? reached : (current?.announcedTierCount ?? 0)
             )
-        }
-        if isInitialSync {
-            updated.hasCompletedInitialSync = true
-            let earnedCount = updated.achievements.values.filter { $0.tierCount > 0 }.count
-            if earnedCount > 0 {
-                updated.pendingInitialSummaryCount = earnedCount
+            if isFirstEvaluation {
+                foundPastAchievement = true
             }
+        }
+        updated.hasCompletedInitialSync = true
+        updated.evaluatedBadgeIDs = Set(progresses.filter(\.definition.isAvailable).map(\.definition.id.rawValue))
+            .union(ledger.evaluatedBadgeIDs ?? [])
+        if foundPastAchievement {
+            // 知らせるのは、これまでに集めた種類の合計(アップデートで増えた分だけでなく)。
+            updated.pendingInitialSummaryCount = updated.achievements.values.filter { $0.tierCount > 0 }.count
         }
         return updated
     }
