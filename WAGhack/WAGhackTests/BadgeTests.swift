@@ -7,11 +7,22 @@ struct BadgeTests {
     private let evaluator = BadgeRuleEvaluator()
     private let reconciler = BadgeAchievementReconciler()
 
-    @Test func 訪問0件ではどのバッジも獲得せず最初のチャレンジは最初の一歩() {
+    @Test func 訪問0件ではどのバッジも獲得せず最初のおすすめは最初の一歩() {
         let statuses = statuses(visitedCodes: [])
         #expect(statuses.earnedCount == 0)
-        #expect(statuses.nextChallenge?.id == .firstStep)
-        #expect(statuses.nextChallenge?.headline == "最初の街を訪れてみよう")
+        let recommendations = statuses.recommendations(currentPrefectureCode: nil)
+        #expect(recommendations.count == 3)
+        #expect(recommendations.first?.id == .firstStep)
+        #expect(recommendations.first?.headline == "最初の街を訪れてみよう")
+    }
+
+    @Test func 次のよりみちはあと少しのバッジと今いる都道府県のバッジを先に出す() {
+        // 府中市(東京)だけ訪れた状態。はじめの足あとは獲得済みなので候補から外れる。
+        let statuses = statuses(visitedCodes: ["13206"])
+        let ids = statuses.recommendations(currentPrefectureCode: "34").map(\.id)
+        // あと1つの「ふたごのまち」(広島の府中市)と、あと1つの「県またぎの旅人」が先に来る。
+        #expect(Set(ids.prefix(2)) == [.twinTowns, .prefectureTraveler])
+        #expect(statuses.recommendations(currentPrefectureCode: nil).allSatisfy { $0.nextThreshold != nil })
     }
 
     @Test func 超・境目は記録した場所がおたがい1km以内の3つの街で獲得し証跡を残す() throws {

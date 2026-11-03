@@ -111,7 +111,7 @@ struct BadgeDetailView: View {
             Text(status.definition.summary)
                 .font(.subheadline)
                 .foregroundStyle(Pop.muted)
-            PopPill(text: status.definition.category, systemImage: "tag.fill", fill: Pop.themeSoft)
+            PopPill(text: status.definition.category.name, systemImage: "tag.fill", fill: Pop.themeSoft)
         }
         .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity)
