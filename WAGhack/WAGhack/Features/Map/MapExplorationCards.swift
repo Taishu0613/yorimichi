@@ -1,3 +1,4 @@
+import MapKit
 import os
 import SwiftUI
 
@@ -202,6 +203,67 @@ struct MapPinVisibilityButton: View {
         .accessibilityAddTraits(.isToggle)
         .accessibilityValue(showsPins ? "表示中" : "非表示")
         .sensoryFeedback(.selection, trigger: showsPins)
+    }
+}
+
+/// 地図の交通の見せ方。道路(Apple標準の地図そのまま)と、線路(道路を目立たなくして駅を出す)を切り替える。
+/// MapKitには「マップ」アプリの交通機関表示に当たる地図の種類が公開されていないため、線路の表示は
+/// 地図の強調を抑えて(`.muted`)元々描かれている線路を道路に埋もれにくくし、施設は駅などの公共交通だけに絞って作る。
+///
+/// `@AppStorage`に保存するためString型のrawValueを持つ。rawValueを変えると保存済みの選択が失われるので変えないこと。
+enum MapTransportLayer: String, CaseIterable {
+    case roads
+    case railways
+
+    var mapStyle: MapStyle {
+        switch self {
+        case .roads:
+            .standard(elevation: .realistic)
+        case .railways:
+            .standard(elevation: .realistic, emphasis: .muted, pointsOfInterest: .including([.publicTransport]))
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .roads: "道路"
+        case .railways: "線路"
+        }
+    }
+
+    /// 今の表示を表すアイコン。ピンの切り替えボタンと同じく、ボタンには今の状態を出す。
+    var systemImage: String {
+        switch self {
+        case .roads: "car.fill"
+        case .railways: "tram.fill"
+        }
+    }
+
+    var toggled: MapTransportLayer {
+        switch self {
+        case .roads: .railways
+        case .railways: .roads
+        }
+    }
+}
+
+/// 地図の交通の表示を道路と線路で切り替えるボタン。`MapPinVisibilityButton`と同じ丸いガラスにそろえる。
+struct MapTransportLayerButton: View {
+    @Binding var layer: MapTransportLayer
+
+    var body: some View {
+        Button("交通の表示", systemImage: layer.systemImage) {
+            layer = layer.toggled
+        }
+        .labelStyle(.iconOnly)
+        .font(.title2)
+        .contentTransition(.symbolEffect(.replace))
+        .frame(width: 56, height: 56)
+        .contentShape(Circle())
+        .glassEffect(.regular, in: Circle())
+        .accessibilityValue(layer.title)
+        .accessibilityHint("道路と線路の表示を切り替えます")
+        .sensoryFeedback(.selection, trigger: layer)
     }
 }
 

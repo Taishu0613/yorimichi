@@ -33,6 +33,8 @@ struct MapScreen: View {
     /// 記録した場所のピンを地図に出すか。塗り分けを見たいときに隠せるようにする。
     /// 次回起動時も同じ表示で始められるよう端末に保存する(表示の好みなのでSwiftDataには持たない)。
     @AppStorage("map.showsPlacePins") private var showsPlacePins = true
+    /// 地図の交通の表示(道路/線路)。ピンの表示と同じく端末に保存し、次回起動時も同じ表示で始める。
+    @AppStorage("map.transportLayer") private var transportLayer: MapTransportLayer = .roads
     /// ユーザーが選んだ踏破率ヘッダーのページ。地図の塗り分けも連動させるため、ヘッダーではなくここで持つ。
     /// 次回起動時も同じ表示で始められるよう端末に保存する。初期値は従来どおり全国(都道府県)ページ。
     /// 実際に表示するページは`progressPage`を参照すること。
@@ -492,7 +494,7 @@ struct MapScreen: View {
                 .annotationTitles(.hidden)
             }
         }
-        .mapStyle(.standard(elevation: .realistic))
+        .mapStyle(transportLayer.mapStyle)
         .mapControls {
             MapCompass()
             MapScaleView()
@@ -577,6 +579,8 @@ struct MapScreen: View {
                 .contentShape(Circle())
                 .glassEffect(.regular, in: Circle())
                 .disabled(viewModel.isBusy)
+
+                MapTransportLayerButton(layer: $transportLayer)
 
                 MapPinVisibilityButton(showsPins: $showsPlacePins)
             }
