@@ -12,6 +12,7 @@ nonisolated enum BadgeID: String, CaseIterable, Codable, Hashable {
     case twinTowns = "twin_towns"
     case numberTraveler = "number_traveler"
     case tripleBoundary = "triple_boundary"
+    case quadrupleBoundary = "quadruple_boundary"
     case threeCapitals = "three_capitals"
 }
 
@@ -33,8 +34,8 @@ enum BadgeCriterion {
     case numeralCollection([BadgeNumeral])
     /// 名前の付いた目的地のうち訪れた数(都会にこんにちは: 池袋・新宿・渋谷)。目的地は区などの市区町村で判定する。
     case themeSpots([BadgeThemeSpot])
-    /// 記録した場所がおたがい`maxDistanceMeters`以内にある市区町村の数のうち、最も多いもの(超・境目！)。
-    /// 判定には記録した場所の座標を使う。
+    /// 記録した場所がおたがい`maxDistanceMeters`以内にある市区町村の数のうち、最も多いもの(超・境目！・超超・境目！)。
+    /// 判定には記録した場所の座標を使う。いくつ集めれば獲得かは`tiers`の最後の値。
     case nearbyMunicipalities(maxDistanceMeters: Double)
     /// 判定がまだ無い。一覧には絵柄と名前だけを見せ、獲得済みにはしない。
     case comingSoon

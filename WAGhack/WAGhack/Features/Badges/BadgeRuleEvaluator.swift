@@ -159,9 +159,11 @@ struct BadgeRuleEvaluator {
         case .nearbyMunicipalities(let maxDistanceMeters):
             // 踏破率に含まれる市区町村の記録だけを使う(区を特定できない市の記録などは除く)。
             let points = visitPoints.filter { summary.eligibleCodes.contains($0.code) }
-            let cluster = NearbyClusterFinder(maxDistanceMeters: maxDistanceMeters).largestCluster(in: points)
+            let targetCount = definition.tiers.last ?? 3
+            let cluster = NearbyClusterFinder(maxDistanceMeters: maxDistanceMeters)
+                .largestCluster(in: points, maxSize: targetCount)
             let items = cluster.map { lookup.item(for: $0.code) }
-            let evidence = cluster.count >= 3 ? BadgeEvidence(places: zip(cluster, items).map { point, item in
+            let evidence = cluster.count >= targetCount ? BadgeEvidence(places: zip(cluster, items).map { point, item in
                 BadgeEvidence.Place(code: point.code, name: item.name, latitude: point.latitude, longitude: point.longitude)
             }) : nil
             // 組の真ん中を中心に、境目の集まる場所を探せる程度(数km)の範囲を見せる。
@@ -182,17 +184,20 @@ struct BadgeRuleEvaluator {
 
 /// 記録した場所がおたがい一定の距離以内にある市区町村の組を探す。
 ///
-/// 3つまでしか探さない(超・境目！の条件)。全組み合わせを比べると記録が多い人(約2,000件)で重くなるため、
-/// 緯度で並べて、距離の上限より緯度が離れた相手は比べずに打ち切る。
+/// 見つけたい数(超・境目！は3、超超・境目！は4)までしか探さない。全組み合わせを比べると記録が多い人(約2,000件)で
+/// 重くなるため、緯度で並べて、距離の上限より緯度が離れた相手は比べずに打ち切る。1kmの中に入る記録は多くても数件なので、
+/// その中から組を探す部分は総当たりで足りる。
 private struct NearbyClusterFinder {
     let maxDistanceMeters: Double
 
-    /// おたがい近い3つ、無ければいちばん近い2つ、それも無ければ記録1つ(記録が無ければ空)を返す。
-    func largestCluster(in points: [BadgeVisitPoint]) -> [BadgeVisitPoint] {
+    /// おたがい近い記録のうち最も大きな組(最大`maxSize`個、緯度の順)を返す。2つしか無ければいちばん近い2つ、
+    /// それも無ければ記録1つ(記録が無ければ空)。
+    func largestCluster(in points: [BadgeVisitPoint], maxSize: Int) -> [BadgeVisitPoint] {
         let sorted = points.sorted { $0.latitude < $1.latitude }
         let locations = sorted.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
         // 緯度1度は約111km。少し余裕を持たせて打ち切る。
         let latitudeWindow = maxDistanceMeters / 110_000
+        // 自分より緯度が大きい(後ろの)近い記録。おたがいの組は、いちばん前の記録から見た近い記録の中で探す。
         var neighbors: [[Int]] = Array(repeating: [], count: sorted.count)
         var closestPair: (Int, Int, Double)?
         for i in sorted.indices {
@@ -208,14 +213,36 @@ private struct NearbyClusterFinder {
                 j += 1
             }
         }
-        for i in sorted.indices {
-            let near = neighbors[i]
-            for (index, j) in near.enumerated() {
-                for k in near[(index + 1)...] where neighbors[min(j, k)].contains(max(j, k)) {
-                    return [sorted[i], sorted[j], sorted[k]]
+        let neighborSets = neighbors.map(Set.init)
+        func isNear(_ a: Int, _ b: Int) -> Bool {
+            neighborSets[min(a, b)].contains(max(a, b))
+        }
+        /// `clique`(おたがい近い組)に、`candidates`(組の全員と近い記録)を足して広げられるだけ広げる。
+        func extend(_ clique: [Int], candidates: [Int]) -> [Int] {
+            guard clique.count < maxSize else { return clique }
+            var best = clique
+            for (index, candidate) in candidates.enumerated() {
+                let rest = candidates[(index + 1)...].filter { isNear(candidate, $0) }
+                let found = extend(clique + [candidate], candidates: rest)
+                if found.count > best.count {
+                    best = found
+                    if best.count == maxSize { return best }
                 }
             }
+            return best
         }
+        var best: [Int] = []
+        for i in sorted.indices where !neighbors[i].isEmpty {
+            let found = extend([i], candidates: neighbors[i])
+            if found.count > best.count {
+                best = found
+                if best.count == maxSize { break }
+            }
+        }
+        if best.count >= 3 {
+            return best.map { sorted[$0] }
+        }
+        // 3つ以上の組が無いときは、どの2つでもよいので、いちばん近い2つを見せる。
         if let closestPair {
             return [sorted[closestPair.0], sorted[closestPair.1]]
         }

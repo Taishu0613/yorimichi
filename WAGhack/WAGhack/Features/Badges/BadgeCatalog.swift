@@ -146,6 +146,18 @@ enum BadgeCatalog {
             hint: "市区町村の境目が集まる場所を地図で探し、境目をまたぐように歩きながら記録してみよう。同じ街を記録し直すと、記録した場所も新しい場所に変わります。"
         ),
         BadgeDefinition(
+            id: .quadrupleBoundary,
+            name: "超超・境目！",
+            summary: "4つの街がひしめく場所へ",
+            category: .geography,
+            criterion: .nearbyMunicipalities(maxDistanceMeters: nearbyMunicipalityDistanceMeters),
+            tiers: [4],
+            unit: "市区町村",
+            artwork: BadgeArtwork(symbolName: "circle.grid.2x2.fill", secondarySymbolName: "mappin", primary: Color(red: 0.93, green: 0.45, blue: 0.20), accent: .teal),
+            conditionText: { _ in "記録した場所がおたがい1km以内にある、4つの市区町村を訪れる" },
+            hint: "4つの市区町村が1km以内にひしめく場所は、大きな街の区の境目などに隠れています。超・境目！の3つの街の近くで、4つ目を探してみよう。"
+        ),
+        BadgeDefinition(
             id: .threeCapitals,
             name: "三都物語",
             summary: "3つの都市をつなぐ旅をしよう",
