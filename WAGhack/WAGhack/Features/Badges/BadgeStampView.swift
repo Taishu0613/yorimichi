@@ -81,6 +81,17 @@ struct BadgeStampView: View {
             Image(systemName: definition.artwork.symbolName)
                 .font(.system(size: stampSize * 0.34, weight: .bold))
                 .foregroundStyle(motifColor)
+                .overlay(alignment: .bottomTrailing) {
+                    if let secondary = definition.artwork.secondarySymbolName {
+                        // 添え物は差し色の小さな丸に載せ、主役の絵柄と重なっても読めるようにする。
+                        Image(systemName: secondary)
+                            .font(.system(size: stampSize * 0.12, weight: .black))
+                            .foregroundStyle(isEarned ? definition.artwork.primary : motifColor)
+                            .frame(width: stampSize * 0.2, height: stampSize * 0.2)
+                            .background(isEarned ? definition.artwork.accent : Pop.card, in: Circle())
+                            .offset(x: stampSize * 0.1, y: stampSize * 0.06)
+                    }
+                }
                 .offset(y: rank == nil ? 0 : -stampSize * 0.04)
         }
     }
