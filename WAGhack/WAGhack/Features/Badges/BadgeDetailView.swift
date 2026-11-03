@@ -72,7 +72,8 @@ struct BadgeDetailView: View {
         case .nearbyMunicipalities(let maxDistanceMeters):
             BadgeNearbySection(
                 cluster: progress.nearbyCluster, evidence: status.achievement?.evidence,
-                isEarned: status.isEarned, maxDistanceMeters: maxDistanceMeters
+                isEarned: status.isEarned, targetCount: status.definition.tiers.last ?? 3,
+                maxDistanceMeters: maxDistanceMeters
             )
         default:
             if !progress.checklist.isEmpty {

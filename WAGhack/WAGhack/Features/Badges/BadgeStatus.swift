@@ -76,10 +76,12 @@ struct BadgeStatus: Identifiable {
             }
         case .nearbyMunicipalities:
             let cluster = progress.nearbyCluster
-            if cluster.count == 2 {
-                return "\(cluster[0].name)と\(cluster[1].name)の近くで、もう1つの街を記録しよう"
+            let targetCount = definition.tiers.last ?? 3
+            if cluster.count >= 2, cluster.count < targetCount {
+                let names = cluster.map(\.name).joined(separator: "と")
+                return "\(names)の近くで、もう\(targetCount - cluster.count)つの街を記録しよう"
             }
-            return "3つの街がぎゅっと集まる場所へ行こう"
+            return "\(targetCount)つの街がぎゅっと集まる場所へ行こう"
         default:
             break
         }
@@ -187,7 +189,7 @@ extension [BadgeStatus] {
             if let remaining = status.remaining, remaining <= 2 { return 0 }
             if let currentPrefectureCode, status.unvisitedTargetPrefectureCodes.contains(currentPrefectureCode) { return 1 }
             switch status.id {
-            case .twinTowns, .numberTraveler, .tripleBoundary: return 2
+            case .twinTowns, .numberTraveler, .tripleBoundary, .quadrupleBoundary: return 2
             case .firstStep, .footprintCollector: return 3
             default: return 4
             }

@@ -25,6 +25,25 @@ struct BadgeTests {
         #expect(statuses.recommendations(currentPrefectureCode: nil).allSatisfy { $0.nextThreshold != nil })
     }
 
+    @Test func 超超・境目は記録した場所がおたがい1km以内の4つの街で獲得する() {
+        // 新宿区・渋谷区・豊島区・千代田区を、おたがい1km以内に置く。
+        let near = [
+            point("13104", 35.6900, 139.7000), point("13113", 35.6930, 139.7030),
+            point("13116", 35.6870, 139.7040), point("13101", 35.6910, 139.7060),
+        ]
+        let codes: Set<String> = ["13104", "13113", "13116", "13101"]
+        let four = statuses(visitedCodes: codes, points: near)
+        #expect(status(.quadrupleBoundary, in: four).isEarned)
+        #expect(status(.tripleBoundary, in: four).isEarned)
+
+        // 3つだけなら超・境目！は獲得、超超・境目！はあと1つ。
+        let three = statuses(visitedCodes: codes, points: Array(near.prefix(3)))
+        let quadruple = status(.quadrupleBoundary, in: three)
+        #expect(!quadruple.isEarned)
+        #expect(quadruple.currentValue == 3)
+        #expect(quadruple.headline == "豊島区と新宿区と渋谷区の近くで、もう1つの街を記録しよう")
+    }
+
     @Test func 超・境目は記録した場所がおたがい1km以内の3つの街で獲得し証跡を残す() throws {
         // 新宿区・渋谷区・豊島区の記録した場所を、おたがい1km以内に置く。
         let near = [
