@@ -76,10 +76,12 @@ struct BadgeStatus: Identifiable {
             }
         case .nearbyMunicipalities:
             let cluster = progress.nearbyCluster
-            if cluster.count == 2 {
-                return "\(cluster[0].name)と\(cluster[1].name)の近くで、もう1つの街を記録しよう"
+            let targetCount = definition.tiers.last ?? 3
+            if cluster.count >= 2, cluster.count < targetCount {
+                let names = cluster.map(\.name).joined(separator: "と")
+                return "\(names)の近くで、もう\(targetCount - cluster.count)つの街を記録しよう"
             }
-            return "3つの街がぎゅっと集まる場所へ行こう"
+            return "\(targetCount)つの街がぎゅっと集まる場所へ行こう"
         default:
             break
         }
@@ -125,6 +127,33 @@ struct BadgeStatus: Identifiable {
         progress.groups.first { !$0.isSatisfied && $0.visitedCount > 0 }
     }
 
+    /// 旅の記録の入口カードに出す、もうすぐ届く目標の一言(「あと1種類で『数字の旅人』がブロンズ！」)。
+    var nearGoalText: String? {
+        guard let remaining else { return nil }
+        var goal = "を獲得"
+        if definition.isTiered, let nextRank = BadgeRank(earnedTierCount: earnedTierCount + 1) {
+            goal = "が\(nextRank.name)"
+        }
+        return "あと\(remaining)\(definition.unit)で「\(definition.name)」\(goal)！"
+    }
+
+    /// 図鑑の「集めた」に出す獲得日。今のランクに上がった日(段階の無いバッジは獲得した日)。
+    var achievedDateShortText: String {
+        guard let date = achievement?.tierAchievedAt ?? achievement?.achievedAt else { return "これまでの旅で" }
+        return date.formatted(.dateTime.year().month().day())
+    }
+
+    /// まだ訪れていない対象の街がある都道府県。「次のよりみち」で、今いる都道府県に関係するバッジを選ぶために使う。
+    var unvisitedTargetPrefectureCodes: Set<String> {
+        let items = progress.checklist + progress.groups.flatMap(\.items)
+            + progress.numerals.flatMap(\.items) + progress.themeSpots.map(\.item)
+        var codes = Set(items.filter { !$0.isVisited }.map(\.prefectureCode))
+        if case .municipalitiesInOnePrefecture = definition.criterion, let top = progress.prefectureCounts.first {
+            codes.insert(top.code)
+        }
+        return codes
+    }
+
     /// 読み上げ用の状態。「獲得済み・シルバー」「未獲得・7 / 10区」のように、見た目の印影を言葉にする。
     var accessibilityStatus: String {
         guard isAvailable else { return "準備中" }
@@ -137,15 +166,40 @@ struct BadgeStatus: Identifiable {
 }
 
 extension [BadgeStatus] {
-    /// 一覧の「次のチャレンジ」。次の閾値に最も近いものを選び、同じなら残りの少ないもの、それも同じなら定義の順を優先する。
-    var nextChallenge: BadgeStatus? {
-        let candidates = filter { $0.nextThreshold != nil }
-        return candidates.enumerated().min { lhs, rhs in
-            let left = (-lhs.element.fractionToNext, lhs.element.remaining ?? .max, lhs.offset)
-            let right = (-rhs.element.fractionToNext, rhs.element.remaining ?? .max, rhs.offset)
-            return left < right
-        }?.element
+    var earnedCount: Int { filter(\.isEarned).count }
+
+    /// ここ数日で獲得した(ランクが上がった)バッジのうち、いちばん新しいもの。
+    /// 自動で記録した時など、獲得の知らせを見逃しても旅の記録から気づけるようにするため。
+    func recentlyEarned(now: Date = .now) -> BadgeStatus? {
+        let recentLimit = now.addingTimeInterval(-3 * 24 * 60 * 60)
+        return compactMap { status -> (BadgeStatus, Date)? in
+            guard let date = status.achievement?.tierAchievedAt, date >= recentLimit else { return nil }
+            return (status, date)
+        }
+        .max { $0.1 < $1.1 }?.0
     }
 
-    var earnedCount: Int { filter(\.isEarned).count }
+    /// 図鑑の「次のよりみち」。まだ集められる(次の目標がある)バッジから、次の順で最大`limit`件を選ぶ。
+    /// 1. あと1〜2で次の目標に届く 2. 今いる都道府県にまだ訪れていない対象がある
+    /// 3. 地名や地理の意外性がある(ふたごのまち・数字の旅人・超・境目！) 4. はじめての人でも挑戦できる
+    /// 同じ順位の中では、次の目標に近い順、同じなら定義の順。
+    func recommendations(currentPrefectureCode: String?, limit: Int = 3) -> [BadgeStatus] {
+        let candidates = filter { $0.nextThreshold != nil }
+        func priority(_ status: BadgeStatus) -> Int {
+            if let remaining = status.remaining, remaining <= 2 { return 0 }
+            if let currentPrefectureCode, status.unvisitedTargetPrefectureCodes.contains(currentPrefectureCode) { return 1 }
+            switch status.id {
+            case .twinTowns, .numberTraveler, .tripleBoundary, .quadrupleBoundary: return 2
+            case .firstStep, .footprintCollector: return 3
+            default: return 4
+            }
+        }
+        return candidates.enumerated()
+            .sorted { lhs, rhs in
+                (priority(lhs.element), -lhs.element.fractionToNext, lhs.offset)
+                    < (priority(rhs.element), -rhs.element.fractionToNext, rhs.offset)
+            }
+            .prefix(limit)
+            .map(\.element)
+    }
 }

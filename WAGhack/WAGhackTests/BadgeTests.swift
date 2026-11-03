@@ -7,11 +7,41 @@ struct BadgeTests {
     private let evaluator = BadgeRuleEvaluator()
     private let reconciler = BadgeAchievementReconciler()
 
-    @Test func 訪問0件ではどのバッジも獲得せず最初のチャレンジは最初の一歩() {
+    @Test func 訪問0件ではどのバッジも獲得せず最初のおすすめは最初の一歩() {
         let statuses = statuses(visitedCodes: [])
         #expect(statuses.earnedCount == 0)
-        #expect(statuses.nextChallenge?.id == .firstStep)
-        #expect(statuses.nextChallenge?.headline == "最初の街を訪れてみよう")
+        let recommendations = statuses.recommendations(currentPrefectureCode: nil)
+        #expect(recommendations.count == 3)
+        #expect(recommendations.first?.id == .firstStep)
+        #expect(recommendations.first?.headline == "最初の街を訪れてみよう")
+    }
+
+    @Test func 次のよりみちはあと少しのバッジと今いる都道府県のバッジを先に出す() {
+        // 府中市(東京)だけ訪れた状態。はじめの足あとは獲得済みなので候補から外れる。
+        let statuses = statuses(visitedCodes: ["13206"])
+        let ids = statuses.recommendations(currentPrefectureCode: "34").map(\.id)
+        // あと1つの「ふたごのまち」(広島の府中市)と、あと1つの「県またぎの旅人」が先に来る。
+        #expect(Set(ids.prefix(2)) == [.twinTowns, .prefectureTraveler])
+        #expect(statuses.recommendations(currentPrefectureCode: nil).allSatisfy { $0.nextThreshold != nil })
+    }
+
+    @Test func 超超・境目は記録した場所がおたがい1km以内の4つの街で獲得する() {
+        // 新宿区・渋谷区・豊島区・千代田区を、おたがい1km以内に置く。
+        let near = [
+            point("13104", 35.6900, 139.7000), point("13113", 35.6930, 139.7030),
+            point("13116", 35.6870, 139.7040), point("13101", 35.6910, 139.7060),
+        ]
+        let codes: Set<String> = ["13104", "13113", "13116", "13101"]
+        let four = statuses(visitedCodes: codes, points: near)
+        #expect(status(.quadrupleBoundary, in: four).isEarned)
+        #expect(status(.tripleBoundary, in: four).isEarned)
+
+        // 3つだけなら超・境目！は獲得、超超・境目！はあと1つ。
+        let three = statuses(visitedCodes: codes, points: Array(near.prefix(3)))
+        let quadruple = status(.quadrupleBoundary, in: three)
+        #expect(!quadruple.isEarned)
+        #expect(quadruple.currentValue == 3)
+        #expect(quadruple.headline == "豊島区と新宿区と渋谷区の近くで、もう1つの街を記録しよう")
     }
 
     @Test func 超・境目は記録した場所がおたがい1km以内の3つの街で獲得し証跡を残す() throws {

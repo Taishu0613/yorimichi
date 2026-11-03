@@ -263,28 +263,29 @@ struct BadgeTownRowActions: View {
     }
 }
 
-// MARK: - 超・境目！(地理・位置関係型)
+// MARK: - 超・境目！・超超・境目！(地理・位置関係型)
 
-/// 3つの街が近くに集まる様子を、3つの点を結ぶ小さな図で見せる。記録した場所が近い街の数だけ点が塗られる。
-/// 獲得済みなら、獲得した時点の証跡(記録した場所)を見せる。
+/// 街が近くに集まる様子を、目標の数の点を結ぶ小さな図で見せる(3つなら三角形、4つなら四角形)。
+/// 記録した場所が近い街の数だけ点が塗られる。獲得済みなら、獲得した時点の証跡(記録した場所)を見せる。
 struct BadgeNearbySection: View {
     let cluster: [BadgeChecklistItem]
     let evidence: BadgeEvidence?
     let isEarned: Bool
+    let targetCount: Int
     let maxDistanceMeters: Double
 
     var body: some View {
         VStack(spacing: 14) {
-            BadgeNearbyDiagram(filledCount: isEarned ? 3 : min(cluster.count, 3))
-                .frame(width: 150, height: 120)
+            BadgeNearbyDiagram(pointCount: targetCount, filledCount: isEarned ? targetCount : min(cluster.count, targetCount))
+                .frame(width: 150, height: 130)
                 .accessibilityHidden(true)
-            Text("目標：3つの市区町村の記録した場所が、おたがい\(Int(maxDistanceMeters / 1_000))km以内")
+            Text("目標：\(targetCount)つの市区町村の記録した場所が、おたがい\(Int(maxDistanceMeters / 1_000))km以内")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Pop.ink)
                 .multilineTextAlignment(.center)
             if let evidence, isEarned {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("達成した3つの街")
+                    Text("達成した\(targetCount)つの街")
                         .font(.subheadline.weight(.heavy))
                     ForEach(evidence.places, id: \.code) { place in
                         Label(place.name, systemImage: "mappin.circle.fill")
@@ -306,18 +307,23 @@ struct BadgeNearbySection: View {
     }
 }
 
-/// 3つの点と、それを結ぶ線。塗った点どうしの線は実線、それ以外は点線にする。
+/// 正多角形の頂点に置いた点と、すべての点どうしを結ぶ線。塗った点どうしの線は実線、それ以外は点線にする。
 private struct BadgeNearbyDiagram: View {
+    let pointCount: Int
     let filledCount: Int
 
     var body: some View {
         Canvas { context, size in
-            let points = [
-                CGPoint(x: size.width * 0.2, y: size.height * 0.25),
-                CGPoint(x: size.width * 0.8, y: size.height * 0.25),
-                CGPoint(x: size.width * 0.5, y: size.height * 0.85),
-            ]
-            for (a, b) in [(0, 1), (1, 2), (0, 2)] {
+            let center = CGPoint(x: size.width / 2, y: size.height / 2)
+            let radius = min(size.width, size.height) / 2 - 16
+            // 3つなら頂点が上の三角形、4つなら辺が水平な四角形になるよう、最初の点の角度をずらす。
+            let startAngle = pointCount == 4 ? -3 * Double.pi / 4 : -Double.pi / 2
+            let points = (0..<pointCount).map { index in
+                let angle = startAngle + 2 * Double.pi * Double(index) / Double(pointCount)
+                return CGPoint(x: center.x + radius * cos(angle), y: center.y + radius * sin(angle))
+            }
+            let pairs = (0..<pointCount).flatMap { a in ((a + 1)..<pointCount).map { b in (a, b) } }
+            for (a, b) in pairs {
                 var path = Path()
                 path.move(to: points[a])
                 path.addLine(to: points[b])

@@ -72,7 +72,8 @@ struct BadgeDetailView: View {
         case .nearbyMunicipalities(let maxDistanceMeters):
             BadgeNearbySection(
                 cluster: progress.nearbyCluster, evidence: status.achievement?.evidence,
-                isEarned: status.isEarned, maxDistanceMeters: maxDistanceMeters
+                isEarned: status.isEarned, targetCount: status.definition.tiers.last ?? 3,
+                maxDistanceMeters: maxDistanceMeters
             )
         default:
             if !progress.checklist.isEmpty {
@@ -111,7 +112,7 @@ struct BadgeDetailView: View {
             Text(status.definition.summary)
                 .font(.subheadline)
                 .foregroundStyle(Pop.muted)
-            PopPill(text: status.definition.category, systemImage: "tag.fill", fill: Pop.themeSoft)
+            PopPill(text: status.definition.category.name, systemImage: "tag.fill", fill: Pop.themeSoft)
         }
         .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity)

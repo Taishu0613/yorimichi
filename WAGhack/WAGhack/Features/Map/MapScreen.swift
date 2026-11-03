@@ -90,9 +90,6 @@ struct MapScreen: View {
     @State private var designatedCityMapState = DesignatedCityMapState.empty
     /// バッジの進み具合と獲得記録。summaryと同じ時だけ評価し直す。シート内の画面へはenvironmentで渡す。
     @State private var badgeStore = BadgeStore()
-    /// 旅の記録の「訪問記録 / バッジ」の切り替え。獲得の知らせの「バッジを見る」から切り替えるためここで持つ。
-    /// シートを閉じても同じアプリの起動中は選んだ方を保つ(端末には保存せず、起動のたびに訪問記録から始める)。
-    @State private var travelRecordTab: TravelRecordTab = .visits
     /// 地図の上に出しているバッジ獲得の知らせ。nilなら出していない。
     @State private var badgeAnnouncement: BadgeAnnouncement?
 
@@ -272,8 +269,7 @@ struct MapScreen: View {
             isSceneActive: scenePhase == .active,
             isSheetExpanded: isSheetExpanded,
             hasSelectedPlace: selectedPlaceID != nil,
-            isPresentingCeremony: isMunicipalityCelebrationPresented || isPrefectureIntroPresented || isJapanIntroPresented
-                || badgeAnnouncement != nil,
+            isPresentingCeremony: isMunicipalityCelebrationPresented || isPrefectureIntroPresented || isJapanIntroPresented,
             isNationwideDisplay: progressPage == .prefectures,
             isJapanIntroPending: !hasRecordedJapan
         )
@@ -290,7 +286,6 @@ struct MapScreen: View {
             && viewModel.currentLocation != nil
             && !isMunicipalityInvitationPresented && !isMunicipalityCelebrationPresented
             && !isPrefectureIntroPresented && !isJapanIntroPresented
-            && badgeAnnouncement == nil
     }
 
     /// バッジ獲得の知らせを出してよいか。記録の流れ(保存中・地図の演出・儀式や誘いのシート)と旅の記録・設定を
@@ -343,15 +338,18 @@ struct MapScreen: View {
                 }
             }
             .animation(.easeOut(duration: 0.25), value: isFooterVisible)
-            .overlay {
+            // 獲得の知らせはフッターのすぐ上に小さく出す。地図の操作や移動中の利用を止めないよう、画面は暗くしない。
+            .overlay(alignment: .bottom) {
                 if let badgeAnnouncement {
-                    BadgeUnlockOverlay(
+                    BadgeUnlockBanner(
                         announcement: badgeAnnouncement,
                         statuses: badgeStore.statuses,
                         showBadges: showBadgesFromAnnouncement,
                         dismiss: dismissBadgeAnnouncement
                     )
-                    .transition(.opacity)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, footerHeight + Self.footerBottomPadding + 12)
+                    .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
                 }
             }
             .task(id: BadgeAnnouncementTrigger(
@@ -735,7 +733,7 @@ struct MapScreen: View {
 
     private var expandedSheetContent: some View {
         NavigationStack(path: $sheetPath) {
-            SavedPlacesScreen(summary: summary, selectedTab: $travelRecordTab)
+            SavedPlacesScreen(summary: summary)
                 .navigationDestination(for: MapSheetRoute.self) { route in
                     switch route {
                     case .prefecture(let code, let name):
@@ -744,6 +742,8 @@ struct MapScreen: View {
                         MunicipalityDetailScreen(municipality: place.municipality, fallbackName: place.address)
                     case .currentMunicipalityDetail(let municipality):
                         MunicipalityDetailScreen(municipality: municipality, fallbackName: municipality.municipalityName)
+                    case .badgeCollection:
+                        BadgeCollectionView()
                     case .badge(let id):
                         BadgeDetailView(badgeID: id)
                     }
@@ -905,16 +905,16 @@ struct MapScreen: View {
         }
     }
 
-    /// 知らせの「バッジを見る」。1種類ならその詳細を、まとめての知らせならスタンプ帳を、旅の記録のシートで開く。
+    /// 知らせの「詳しく見る」。1種類ならその詳細を、まとめての知らせならバッジ図鑑を、旅の記録のシートで開く。
+    /// どちらも旅の記録 → バッジ図鑑の階層に積み、戻る操作でそのまま図鑑・旅の記録まで遡れるようにする。
     private func showBadgesFromAnnouncement() {
         guard let announcement = badgeAnnouncement else { return }
         badgeAnnouncement = nil
-        travelRecordTab = .badges
+        var routes: [MapSheetRoute] = [.badgeCollection]
         if case .newlyEarned(let unlocks) = announcement, unlocks.count == 1, let unlock = unlocks.first {
-            sheetPath = [.badge(unlock.id)]
-        } else {
-            sheetPath = []
+            routes.append(.badge(unlock.id))
         }
+        sheetPath = routes
         presentSheet(at: .large)
     }
 
@@ -1461,11 +1461,15 @@ private enum MapSheetRoute: Hashable {
     case prefecture(code: String, name: String)
     case municipalityDetail(SavedPlace)
     case currentMunicipalityDetail(Municipality)
+    case badgeCollection
     case badge(BadgeID)
 
+    /// バッジ図鑑・バッジの詳細か。地図と並べて見るものではないので、中段の高さを持たせない。
     var isBadge: Bool {
-        if case .badge = self { return true }
-        return false
+        switch self {
+        case .badgeCollection, .badge: true
+        default: false
+        }
     }
 }
 

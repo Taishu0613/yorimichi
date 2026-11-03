@@ -12,6 +12,7 @@ nonisolated enum BadgeID: String, CaseIterable, Codable, Hashable {
     case twinTowns = "twin_towns"
     case numberTraveler = "number_traveler"
     case tripleBoundary = "triple_boundary"
+    case quadrupleBoundary = "quadruple_boundary"
     case threeCapitals = "three_capitals"
 }
 
@@ -33,8 +34,8 @@ enum BadgeCriterion {
     case numeralCollection([BadgeNumeral])
     /// 名前の付いた目的地のうち訪れた数(都会にこんにちは: 池袋・新宿・渋谷)。目的地は区などの市区町村で判定する。
     case themeSpots([BadgeThemeSpot])
-    /// 記録した場所がおたがい`maxDistanceMeters`以内にある市区町村の数のうち、最も多いもの(超・境目！)。
-    /// 判定には記録した場所の座標を使う。
+    /// 記録した場所がおたがい`maxDistanceMeters`以内にある市区町村の数のうち、最も多いもの(超・境目！・超超・境目！)。
+    /// 判定には記録した場所の座標を使う。いくつ集めれば獲得かは`tiers`の最後の値。
     case nearbyMunicipalities(maxDistanceMeters: Double)
     /// 判定がまだ無い。一覧には絵柄と名前だけを見せ、獲得済みにはしない。
     case comingSoon
@@ -92,6 +93,29 @@ struct BadgeThemeSpot {
     let code: String
 }
 
+/// 図鑑のカテゴリ。資料「旅のクエスト図鑑」の4分類。所属は製品として確定していない(暫定)。
+enum BadgeCategory: CaseIterable, Identifiable {
+    /// 地形・境界・地域の組み合わせ。
+    case geography
+    /// 名前や漢字に隠れた特徴。
+    case placeNames
+    /// 移動や訪問の積み重ね。
+    case footprints
+    /// 街の個性・豆知識・観光テーマ。今はこのカテゴリのバッジが無いので、図鑑では絞り込みの候補に出さない。
+    case knowledge
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .geography: "街と地理"
+        case .placeNames: "地名のひみつ"
+        case .footprints: "旅の足あと"
+        case .knowledge: "知識と発見"
+        }
+    }
+}
+
 /// バッジの詳細から地図へ向かう先。地図を動かすのは持ち主の`MapScreen`なので、ここでは行き先だけを表す。
 enum BadgeMapFocus {
     /// 地域全体(東京23区・京都市など)。
@@ -121,7 +145,7 @@ struct BadgeDefinition: Identifiable {
     let name: String
     /// 一覧の下や詳細の名前の下に添える、旅の目的を感じる短い一文。
     let summary: String
-    let category: String
+    let category: BadgeCategory
     let criterion: BadgeCriterion
     /// 段階ごとの閾値(昇順)。段階の無いバッジは1つだけ持つ。
     let tiers: [Int]
