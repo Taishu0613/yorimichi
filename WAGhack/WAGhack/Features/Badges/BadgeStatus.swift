@@ -64,8 +64,24 @@ struct BadgeStatus: Identifiable {
         if currentValue == 0, !isEarned, definition.id == .firstStep {
             return "最初の街を訪れてみよう"
         }
-        if case .sameNameGroups = definition.criterion, let group = partialGroup {
-            return "\(group.name)をもう1つ訪れよう"
+        switch definition.criterion {
+        case .sameNameGroups:
+            if let group = partialGroup {
+                return "\(group.name)をもう1つ訪れよう"
+            }
+        case .themeSpots:
+            let rest = progress.themeSpots.filter { !$0.item.isVisited }.map(\.label)
+            if !rest.isEmpty {
+                return "残り：" + rest.joined(separator: "・")
+            }
+        case .nearbyMunicipalities:
+            let cluster = progress.nearbyCluster
+            if cluster.count == 2 {
+                return "\(cluster[0].name)と\(cluster[1].name)の近くで、もう1つの街を記録しよう"
+            }
+            return "3つの街がぎゅっと集まる場所へ行こう"
+        default:
+            break
         }
         if let nextRank = BadgeRank(earnedTierCount: earnedTierCount + 1), definition.isTiered {
             return "あと\(remaining)\(definition.unit)で\(nextRank.name)"
@@ -76,6 +92,13 @@ struct BadgeStatus: Identifiable {
     /// 詳細の「地図で探す」の行き先と文言。まだ訪れていない対象を地図で探せるバッジだけが持つ。
     var mapTarget: (focus: BadgeMapFocus, title: String)? {
         guard isAvailable, !isComplete else { return nil }
+        if case .themeSpots = definition.criterion,
+           let next = progress.themeSpots.first(where: { !$0.item.isVisited }) {
+            return (.municipality(code: next.item.code, prefectureCode: next.item.prefectureCode), "\(next.label)を地図で探す")
+        }
+        if case .nearbyMunicipalities = definition.criterion, let area = progress.nearbyArea {
+            return (.area(area), "記録した場所のまわりを地図で見る")
+        }
         if let area = definition.mapArea {
             return (.area(area), "地図で未訪問の\(definition.unit)を探す")
         }

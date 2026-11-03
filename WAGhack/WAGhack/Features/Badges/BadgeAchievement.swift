@@ -12,6 +12,21 @@ nonisolated struct BadgeAchievement: Codable, Equatable {
     var tierAchievedAt: Date?
     /// 獲得の演出で見せ終えた段階の数。`tierCount`より小さければ、まだ見せていない獲得がある。
     var announcedTierCount: Int
+    /// 獲得した時点の証跡(超・境目！の3つの記録した場所)。訪問記録は再訪で場所が上書きされるため、ここに写して残す。
+    /// 証跡の要らないバッジと、この項目が無かった版の記録はnil。
+    var evidence: BadgeEvidence? = nil
+}
+
+/// 獲得を裏付ける記録した場所。
+nonisolated struct BadgeEvidence: Codable, Equatable {
+    nonisolated struct Place: Codable, Equatable {
+        let code: String
+        let name: String
+        let latitude: Double
+        let longitude: Double
+    }
+
+    let places: [Place]
 }
 
 /// 獲得記録の全体。端末に1つのJSONとして保存する(`BadgeStore`)。
@@ -76,7 +91,9 @@ struct BadgeAchievementReconciler {
                 tierCount: reached,
                 achievedAt: current.map(\.achievedAt) ?? date,
                 tierAchievedAt: date,
-                announcedTierCount: isFirstEvaluation ? reached : (current?.announcedTierCount ?? 0)
+                announcedTierCount: isFirstEvaluation ? reached : (current?.announcedTierCount ?? 0),
+                // 一度残した証跡は、後の再訪で記録した場所が変わっても書き換えない。
+                evidence: current?.evidence ?? progress.evidence
             )
             if isFirstEvaluation {
                 foundPastAchievement = true

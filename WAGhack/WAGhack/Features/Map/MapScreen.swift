@@ -752,6 +752,7 @@ struct MapScreen: View {
         .environment(silhouetteStore)
         .environment(badgeStore)
         .environment(\.showBadgeAreaOnMap, showBadgeArea)
+        .environment(\.badgeCurrentPrefectureCode, viewModel.currentVisit?.municipality.prefectureCode)
     }
 
     private var footer: some View {
@@ -858,8 +859,14 @@ struct MapScreen: View {
 
     /// municipalities/savedPlaces/visitedPrefecturesのいずれかが変わった時だけsummaryを計算し直すための
     /// まとめたトリガー値。onChangeを3つ並べると型検査が重くなりすぎるため1つにまとめている。
+    ///
+    /// 最後の記録の時刻も含める。再訪で記録し直すと件数は変わらないが記録した場所が変わり、距離で判定するバッジ
+    /// (超・境目！)の結果が変わりうるため。記録し直すのはボタン操作の時だけなので、集計し直しても重くならない。
     private var summaryInputCounts: [Int] {
-        [municipalities.count, savedPlaces.count, visitedPrefectures.count]
+        [
+            municipalities.count, savedPlaces.count, visitedPrefectures.count,
+            Int(savedPlaces.first?.savedAt.timeIntervalSince1970 ?? 0),
+        ]
     }
 
     private func refreshSummary() {
@@ -867,7 +874,11 @@ struct MapScreen: View {
             models: municipalities, savedPlaces: savedPlaces, visitedPrefectures: visitedPrefectures
         )
         designatedCityMapState = DesignatedCityMapState(summary.designatedCities)
-        badgeStore.update(summary: summary)
+        badgeStore.update(summary: summary, visitPoints: savedPlaces.compactMap { place in
+            place.municipality.map {
+                BadgeVisitPoint(code: $0.code, latitude: place.latitude, longitude: place.longitude, recordedAt: place.savedAt)
+            }
+        })
     }
 
     /// 出せる状態になったら、少し落ち着くのを待ってからバッジ獲得の知らせを出す。

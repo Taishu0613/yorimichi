@@ -7,6 +7,10 @@ extension EnvironmentValues {
 
 /// バッジ1種類の詳細。「何を達成したか」「あと何をすればよいか」を上から順に伝える。
 /// 状態は`BadgeStore`から毎回引くので、開いている間に訪問が増えてもそのまま反映される。
+///
+/// 上から共通の構成(スタンプ・名前・ひとこと・進み具合)→バッジごとの進み具合の見せ方(`BadgeDetailPatterns.swift`)→
+/// 達成条件→旅のヒント→達成の記録→地図で探す。進み具合を全バッジ同じゲージにせず、遊び方が見える形にする
+/// (数字の旅人はマス目、都会にこんにちはは目的地のカード、超・境目！は3つの点の図)。
 struct BadgeDetailView: View {
     let badgeID: BadgeID
 
@@ -14,6 +18,8 @@ struct BadgeDetailView: View {
     @Environment(\.showBadgeAreaOnMap) private var showBadgeAreaOnMap
     /// 対象の街が多い時に、最初の数件だけ見せるか全部見せるか。
     @State private var showsAllTargets = false
+    /// 「街の情報を見る」で開いている街。
+    @State private var infoItem: BadgeChecklistItem?
 
     /// 対象の街を最初に見せる件数。
     private static let collapsedTargetCount = 8
@@ -26,15 +32,13 @@ struct BadgeDetailView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     header(status)
                     statusCard(status)
+                    patternSection(status)
                     conditionCard(status)
-                    if !status.progress.checklist.isEmpty {
-                        checklistCard(status)
+                    if let hint = status.definition.hint {
+                        hintCard(hint)
                     }
-                    if !status.progress.groups.isEmpty {
-                        groupsCard(status)
-                    }
-                    if !status.progress.prefectureCounts.isEmpty {
-                        prefectureCountsCard(status)
+                    if status.isEarned {
+                        recordCard(status)
                     }
                     mapButton(status)
                 }
@@ -49,6 +53,38 @@ struct BadgeDetailView: View {
         .background(Pop.paper.ignoresSafeArea())
         .navigationTitle("バッジ")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(item: $infoItem) { item in
+            BadgeMunicipalityInfoScreen(item: item)
+        }
+    }
+
+    // MARK: - バッジごとの進み具合
+
+    @ViewBuilder
+    private func patternSection(_ status: BadgeStatus) -> some View {
+        let progress = status.progress
+        let showInfo: (BadgeChecklistItem) -> Void = { infoItem = $0 }
+        switch status.definition.criterion {
+        case .numeralCollection:
+            BadgeNumeralCollectionSection(numerals: progress.numerals, showInfo: showInfo)
+        case .themeSpots:
+            BadgeThemeSpotSection(spots: progress.themeSpots, showInfo: showInfo)
+        case .nearbyMunicipalities(let maxDistanceMeters):
+            BadgeNearbySection(
+                cluster: progress.nearbyCluster, evidence: status.achievement?.evidence,
+                isEarned: status.isEarned, maxDistanceMeters: maxDistanceMeters
+            )
+        default:
+            if !progress.checklist.isEmpty {
+                checklistCard(status)
+            }
+            if !progress.groups.isEmpty {
+                groupsCard(status)
+            }
+            if !progress.prefectureCounts.isEmpty {
+                prefectureCountsCard(status)
+            }
+        }
     }
 
     // MARK: - 見出し
@@ -87,6 +123,20 @@ struct BadgeDetailView: View {
 
     private func statusCard(_ status: BadgeStatus) -> some View {
         VStack(alignment: .leading, spacing: 10) {
+            if let numbers = progressNumbers(status) {
+                // 「9 / 12」を大きく出し、遊んでいる量がひと目で分かるようにする。
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text("\(numbers.current)")
+                        .font(.system(.largeTitle, design: .rounded, weight: .black))
+                    Text("/ \(numbers.target)\(status.definition.unit)")
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(Pop.muted)
+                }
+                .foregroundStyle(Pop.ink)
+                .monospacedDigit()
+                .frame(maxWidth: .infinity)
+                .accessibilityElement(children: .combine)
+            }
             HStack(spacing: 10) {
                 PopIconBadge(
                     systemImage: status.isComplete ? "checkmark.seal.fill" : (status.isAvailable ? "flag.fill" : "hourglass"),
@@ -97,28 +147,28 @@ struct BadgeDetailView: View {
                     .font(.headline.weight(.heavy))
                     .foregroundStyle(Pop.ink)
             }
-            if let progressText = status.progressText {
+            if status.progressText != nil || status.isComplete {
                 PopProgressBar(fraction: status.fractionToNext)
                     .accessibilityLabel("次の目標までの進み具合")
-                Text(progressText)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Pop.muted)
-                    .monospacedDigit()
             }
             if let note = note(for: status) {
                 Text(note)
                     .font(.subheadline)
                     .foregroundStyle(Pop.ink)
             }
-            if let dateText = achievedDateText(status) {
-                Label(dateText, systemImage: "calendar")
-                    .font(.footnote)
-                    .foregroundStyle(Pop.muted)
-            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .popCard(shadow: status.isEarned ? Pop.yellow.opacity(0.7) : Pop.shadow)
+    }
+
+    /// 大きく出す「今の数 / 目標の数」。コンプリート済みは最後の閾値どうしにする。
+    private func progressNumbers(_ status: BadgeStatus) -> (current: Int, target: Int)? {
+        guard status.isAvailable, let last = status.definition.tiers.last else { return nil }
+        if let next = status.nextThreshold {
+            return (status.currentValue, next)
+        }
+        return (max(status.currentValue, last), last)
     }
 
     private func note(for status: BadgeStatus) -> String? {
@@ -189,6 +239,51 @@ struct BadgeDetailView: View {
         .popCard()
     }
 
+    // MARK: - 旅のヒント・達成の記録
+
+    private func hintCard(_ hint: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            PopIconBadge(systemImage: "lightbulb.fill", fill: Pop.yellow, size: 30)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("旅のヒント")
+                    .font(.subheadline.weight(.heavy))
+                    .foregroundStyle(Pop.ink)
+                Text(hint)
+                    .font(.subheadline)
+                    .foregroundStyle(Pop.ink)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .popCard(shadow: Pop.yellow.opacity(0.6))
+    }
+
+    private func recordCard(_ status: BadgeStatus) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("達成の記録")
+                .font(.headline.weight(.heavy))
+                .foregroundStyle(Pop.ink)
+            if let dateText = achievedDateText(status) {
+                Label(dateText, systemImage: "calendar")
+                    .font(.subheadline)
+                    .foregroundStyle(Pop.ink)
+            }
+            // 段階式で2つ目以上のランクにいるなら、最初に獲得した日も残す(上の日付は今のランクに上がった日)。
+            if status.definition.isTiered, status.earnedTierCount > 1, let firstDate = status.achievement?.achievedAt {
+                Label("\(firstDate.formatted(date: .long, time: .omitted))にはじめて獲得", systemImage: "flag")
+                    .font(.footnote)
+                    .foregroundStyle(Pop.muted)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Pop.themeSoft.opacity(0.35), in: RoundedRectangle(cornerRadius: Pop.cornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Pop.cornerRadius, style: .continuous)
+                .strokeBorder(Pop.border, style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
+        )
+    }
+
     // MARK: - 対象の街
 
     private func checklistCard(_ status: BadgeStatus) -> some View {
@@ -204,15 +299,13 @@ struct BadgeDetailView: View {
                 .foregroundStyle(Pop.ink)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .leading), count: columnCount), spacing: 10) {
                 ForEach(visibleItems) { item in
-                    targetRow(item, showsPrefecture: showsPrefecture)
+                    BadgeTownRow(item: item, showsPrefecture: showsPrefecture) { infoItem = $0 }
                 }
             }
             if items.count > Self.collapsedTargetCount {
                 expandButton(isExpanded: showsAllTargets, total: items.count) { showsAllTargets.toggle() }
             }
-            if showBadgeAreaOnMap != nil, items.contains(where: { !$0.isVisited }) {
-                PopFootnote("まだ訪れていない街を押すと、地図でその街を見られます。")
-            }
+            PopFootnote("街を押すと、地図で探すか、街の情報を見られます。")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
@@ -259,7 +352,7 @@ struct BadgeDetailView: View {
                         }
                     } else {
                         ForEach(group.items) { item in
-                            targetRow(item, showsPrefecture: true)
+                            BadgeTownRow(item: item, showsPrefecture: true) { infoItem = $0 }
                         }
                         .padding(.leading, 26)
                     }
@@ -272,46 +365,6 @@ struct BadgeDetailView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .popCard()
-    }
-
-    /// 対象の街の1行。まだ訪れていない街は、押すと地図でその街へ寄せる(地図の無いプレビューでは押せない)。
-    @ViewBuilder
-    private func targetRow(_ item: BadgeChecklistItem, showsPrefecture: Bool) -> some View {
-        let label = Label {
-            HStack(spacing: 6) {
-                Text(item.name)
-                    .foregroundStyle(item.isVisited ? Pop.ink : Pop.muted)
-                if showsPrefecture, !item.prefectureName.isEmpty {
-                    Text(item.prefectureName)
-                        .font(.caption)
-                        .foregroundStyle(Pop.muted)
-                }
-                if !item.isVisited, showBadgeAreaOnMap != nil {
-                    Image(systemName: "map")
-                        .font(.caption)
-                        .foregroundStyle(Pop.theme)
-                }
-            }
-        } icon: {
-            Image(systemName: item.isVisited ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(item.isVisited ? Pop.theme : Pop.muted)
-        }
-        .font(.subheadline.weight(item.isVisited ? .bold : .regular))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(showsPrefecture ? "\(item.prefectureName)\(item.name)" : item.name)
-        .accessibilityValue(item.isVisited ? "訪問済み" : "未訪問")
-
-        if !item.isVisited, let showBadgeAreaOnMap {
-            Button {
-                showBadgeAreaOnMap(.municipality(code: item.code, prefectureCode: item.prefectureCode))
-            } label: {
-                label
-            }
-            .buttonStyle(.plain)
-            .accessibilityHint("地図でこの街を表示します")
-        } else {
-            label
-        }
     }
 
     private func expandButton(isExpanded: Bool, total: Int, toggle: @escaping () -> Void) -> some View {
