@@ -88,6 +88,13 @@ struct MapScreen: View {
     @State private var summary = ExplorationSummary(prefectures: [], eligibleCodes: [])
     /// 地図に描く政令指定都市の訪問状況。summaryと同じ時だけ計算し直す。
     @State private var designatedCityMapState = DesignatedCityMapState.empty
+    /// バッジの進み具合と獲得記録。summaryと同じ時だけ評価し直す。シート内の画面へはenvironmentで渡す。
+    @State private var badgeStore = BadgeStore()
+    /// 旅の記録の「訪問記録 / バッジ」の切り替え。獲得の知らせの「バッジを見る」から切り替えるためここで持つ。
+    /// シートを閉じても同じアプリの起動中は選んだ方を保つ(端末には保存せず、起動のたびに訪問記録から始める)。
+    @State private var travelRecordTab: TravelRecordTab = .visits
+    /// 地図の上に出しているバッジ獲得の知らせ。nilなら出していない。
+    @State private var badgeAnnouncement: BadgeAnnouncement?
 
     /// フッターと画面下端(セーフエリア)の間の余白。
     /// フッターは「旅の記録」の1行(MapRecordsSummaryRow)の高さで、現在地の取得中・取得失敗の行
@@ -120,6 +127,8 @@ struct MapScreen: View {
     /// 記録する区域全体へ地図を寄せるカメラアニメーションの長さ。区域全体まで引くと移動量が大きくなるため、
     /// 現在地へ寄せる移動(`focusAnimationDuration`)より少し長くして急に感じないようにする。
     private static let areaFocusAnimationDuration: TimeInterval = 0.5
+    /// 県の形が読み込めなかった時に、記録した場所を中心に見せる範囲(縦横のメートル)。
+    private static let prefectureFallbackSpanMeters: CLLocationDistance = 100_000
     /// カメラの移動完了が「現在地への移動」によるものかを判定する許容距離。
     /// Mapは上側のセーフエリアをヘッダー分広げているため、カメラが現在地を中心に合わせても
     /// `context.region.center`とは百数十mずれうる(未計測)。狭い許容距離だと判定を外してタイムアウトまで
@@ -228,8 +237,9 @@ struct MapScreen: View {
     }
 
     /// ピン、または現在地バッジから詳細を開いているか。どちらも「都道府県 → 詳細」までpathを積んで中段で見せる。
+    /// バッジの詳細は地図と並べて見るものではないので含めない(旅の記録と同じ全画面の1段で見せる)。
     private var isShowingDetailRoute: Bool {
-        selectedPlace != nil || !sheetPath.isEmpty
+        selectedPlace != nil || sheetPath.contains { !$0.isBadge }
     }
 
     /// 詳細表示中だけ中段を持つ。旅の記録だけを開いたときは全画面の1段にする。
@@ -262,7 +272,8 @@ struct MapScreen: View {
             isSceneActive: scenePhase == .active,
             isSheetExpanded: isSheetExpanded,
             hasSelectedPlace: selectedPlaceID != nil,
-            isPresentingCeremony: isMunicipalityCelebrationPresented || isPrefectureIntroPresented || isJapanIntroPresented,
+            isPresentingCeremony: isMunicipalityCelebrationPresented || isPrefectureIntroPresented || isJapanIntroPresented
+                || badgeAnnouncement != nil,
             isNationwideDisplay: progressPage == .prefectures,
             isJapanIntroPending: !hasRecordedJapan
         )
@@ -279,6 +290,17 @@ struct MapScreen: View {
             && viewModel.currentLocation != nil
             && !isMunicipalityInvitationPresented && !isMunicipalityCelebrationPresented
             && !isPrefectureIntroPresented && !isJapanIntroPresented
+            && badgeAnnouncement == nil
+    }
+
+    /// バッジ獲得の知らせを出してよいか。記録の流れ(保存中・地図の演出・儀式や誘いのシート)と旅の記録・設定を
+    /// 見ている間は待ち、地図だけが見えている落ち着いた時に出す。シートの下に重ねても見えないためでもある。
+    private var canPresentBadgeAnnouncement: Bool {
+        isActive && hasRecordedJapan && badgeAnnouncement == nil
+            && !isSheetExpanded && !isSettingsPresented
+            && !isMunicipalityInvitationPresented && !isMunicipalityCelebrationPresented
+            && !isPrefectureIntroPresented && !isJapanIntroPresented
+            && areaEffect.phase != .placing && !viewModel.isBusy
     }
 
     var body: some View {
@@ -321,6 +343,22 @@ struct MapScreen: View {
                 }
             }
             .animation(.easeOut(duration: 0.25), value: isFooterVisible)
+            .overlay {
+                if let badgeAnnouncement {
+                    BadgeUnlockOverlay(
+                        announcement: badgeAnnouncement,
+                        statuses: badgeStore.statuses,
+                        showBadges: showBadgesFromAnnouncement,
+                        dismiss: dismissBadgeAnnouncement
+                    )
+                    .transition(.opacity)
+                }
+            }
+            .task(id: BadgeAnnouncementTrigger(
+                canPresent: canPresentBadgeAnnouncement, pending: badgeStore.pendingAnnouncement
+            )) {
+                await presentBadgeAnnouncementWhenCalm()
+            }
             .sheet(isPresented: $isSheetExpanded) {
                 sheetContent()
             }
@@ -697,7 +735,7 @@ struct MapScreen: View {
 
     private var expandedSheetContent: some View {
         NavigationStack(path: $sheetPath) {
-            SavedPlacesScreen(summary: summary)
+            SavedPlacesScreen(summary: summary, selectedTab: $travelRecordTab)
                 .navigationDestination(for: MapSheetRoute.self) { route in
                     switch route {
                     case .prefecture(let code, let name):
@@ -706,10 +744,14 @@ struct MapScreen: View {
                         MunicipalityDetailScreen(municipality: place.municipality, fallbackName: place.address)
                     case .currentMunicipalityDetail(let municipality):
                         MunicipalityDetailScreen(municipality: municipality, fallbackName: municipality.municipalityName)
+                    case .badge(let id):
+                        BadgeDetailView(badgeID: id)
                     }
                 }
         }
         .environment(silhouetteStore)
+        .environment(badgeStore)
+        .environment(\.showBadgeAreaOnMap, showBadgeArea)
     }
 
     private var footer: some View {
@@ -825,6 +867,83 @@ struct MapScreen: View {
             models: municipalities, savedPlaces: savedPlaces, visitedPrefectures: visitedPrefectures
         )
         designatedCityMapState = DesignatedCityMapState(summary.designatedCities)
+        badgeStore.update(summary: summary)
+    }
+
+    /// 出せる状態になったら、少し落ち着くのを待ってからバッジ獲得の知らせを出す。
+    /// 待つのは、儀式シートを閉じた直後や、保存から地図の演出・儀式シートへ移る隙間に割り込まないため。
+    /// 待っている間に状態が変われば(`BadgeAnnouncementTrigger`が変わる)このタスクごと取り消される。
+    private func presentBadgeAnnouncementWhenCalm() async {
+        guard canPresentBadgeAnnouncement, let pending = badgeStore.pendingAnnouncement else { return }
+        do {
+            try await Task.sleep(for: .milliseconds(800))
+        } catch {
+            // 取り消し(状態の変化)だけが投げられる。変化後の状態で走り直すタスクに任せる。
+            return
+        }
+        // 見せ始めた時点で済んだことにし、アプリを閉じても同じ知らせを繰り返さない。
+        badgeStore.markAnnounced(pending)
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
+            badgeAnnouncement = pending
+        }
+    }
+
+    private func dismissBadgeAnnouncement() {
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+            badgeAnnouncement = nil
+        }
+    }
+
+    /// 知らせの「バッジを見る」。1種類ならその詳細を、まとめての知らせならスタンプ帳を、旅の記録のシートで開く。
+    private func showBadgesFromAnnouncement() {
+        guard let announcement = badgeAnnouncement else { return }
+        badgeAnnouncement = nil
+        travelRecordTab = .badges
+        if case .newlyEarned(let unlocks) = announcement, unlocks.count == 1, let unlock = unlocks.first {
+            sheetPath = [.badge(unlock.id)]
+        } else {
+            sheetPath = []
+        }
+        presentSheet(at: .large)
+    }
+
+    /// バッジの詳細の「地図で探す」。旅の記録のシートを閉じ、対象の地域へ地図を寄せる。
+    /// 独自の地図機能は作らず、ふだんの地図(訪問済みの塗り分け)の上で未訪問の区域を探してもらう。
+    private func showBadgeArea(_ focus: BadgeMapFocus) {
+        // 折りたたむと`handleExpansionChange`がpathとピンの選択を片付ける。
+        isSheetExpanded = false
+        focusTask?.cancel()
+        switch focus {
+        case .tokyoSpecialWards:
+            let center = CLLocationCoordinate2D(
+                latitude: BadgeCatalog.tokyoSpecialWardsCenter.latitude,
+                longitude: BadgeCatalog.tokyoSpecialWardsCenter.longitude
+            )
+            let span = BadgeCatalog.tokyoSpecialWardsSpanMeters
+            moveCamera(to: .region(MKCoordinateRegion(center: center, latitudinalMeters: span, longitudinalMeters: span)))
+        case .prefecture(let code):
+            // 県の形のうち、どの島(本土・離島)を見せるかを決めるため、その県で記録した場所を基準にする。
+            guard let coordinate = savedPlaces.first(where: { $0.municipality?.prefectureCode == code })?.coordinate else {
+                return
+            }
+            focusTask = Task {
+                await puzzleStore.prepareFocusRect(forPrefecture: code)
+                guard !Task.isCancelled else { return }
+                if let rect = puzzleStore.focusRect(forPrefecture: code, containing: coordinate) {
+                    moveCamera(to: .rect(rect))
+                } else {
+                    let span = Self.prefectureFallbackSpanMeters
+                    moveCamera(to: .region(MKCoordinateRegion(center: coordinate, latitudinalMeters: span, longitudinalMeters: span)))
+                }
+            }
+        }
+    }
+
+    private func moveCamera(to position: MapCameraPosition) {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: Self.areaFocusAnimationDuration)) {
+            cameraPosition = position
+        }
+        _ = noteCameraMove(duration: Self.areaFocusAnimationDuration)
     }
 
     private func expandedRoutes(for place: SavedPlace) -> [MapSheetRoute] {
@@ -1326,6 +1445,18 @@ private enum MapSheetRoute: Hashable {
     case prefecture(code: String, name: String)
     case municipalityDetail(SavedPlace)
     case currentMunicipalityDetail(Municipality)
+    case badge(BadgeID)
+
+    var isBadge: Bool {
+        if case .badge = self { return true }
+        return false
+    }
+}
+
+/// バッジ獲得の知らせを出すか確かめ直すきっかけ。出せる状態になった時と、まだ見せていない獲得が変わった時に走らせる。
+private struct BadgeAnnouncementTrigger: Equatable {
+    let canPresent: Bool
+    let pending: BadgeAnnouncement?
 }
 
 /// Wikipedia画像のように非同期で後から差し込まれる要素があるシートを、実測した高さに追従させる。

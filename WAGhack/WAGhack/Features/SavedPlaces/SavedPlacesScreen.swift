@@ -14,13 +14,54 @@ struct SavedPlacesScreen: View {
     @State private var store = SavedPlacesStore()
     /// マップのシート内でだけ渡される。プレビューなど渡されない場所では地図を出さない。
     @Environment(SilhouetteMapStore.self) private var silhouetteStore: SilhouetteMapStore?
+    /// 「訪問記録」と「バッジ」のどちらを見せるか。獲得の知らせの「バッジを見る」から切り替えるため、持ち主は`MapScreen`。
+    @Binding var selectedTab: TravelRecordTab
 
     var body: some View {
+        // マップのシート内NavigationStackにpushされる前提なので、自前のNavigationStackは持たない。
+        // 2つのタブは別々のScrollViewにして重ねておき、見えている方だけを触れるようにする。
+        // 内容を差し替える形にすると、切り替えるたびにスクロール位置が先頭へ戻ってしまうため。
+        ZStack {
+            visitsContent
+                .opacity(selectedTab == .visits ? 1 : 0)
+                .allowsHitTesting(selectedTab == .visits)
+                .accessibilityHidden(selectedTab != .visits)
+            BadgeCollectionView()
+                .opacity(selectedTab == .badges ? 1 : 0)
+                .allowsHitTesting(selectedTab == .badges)
+                .accessibilityHidden(selectedTab != .badges)
+        }
+        // タイトルのすぐ下に切り替えを置く。safeAreaBarにすると、スクロールした内容の上でもナビゲーションバーと同じ縁の効果がかかる。
+        .safeAreaBar(edge: .top) {
+            Picker("表示", selection: $selectedTab) {
+                ForEach(TravelRecordTab.allCases) { tab in
+                    Text(tab.title).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 8)
+        }
+        // ナビゲーションバーの裏と下端まで白く塗り、シートのガラスが透けて灰色っぽく見えないようにする。
+        .background(Pop.paper.ignoresSafeArea())
+        .task { await silhouetteStore?.loadJapanMapIfNeeded() }
+        .navigationTitle("旅の記録")
+        .navigationBarTitleDisplayMode(.inline)
+        .alert("削除できませんでした", isPresented: Binding(
+            get: { store.deletionErrorMessage != nil },
+            set: { if !$0 { store.deletionErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(store.deletionErrorMessage ?? "不明なエラーが発生しました。")
+        }
+    }
+
+    private var visitsContent: some View {
         let excludedPlaces = store.excludedPlaces(savedPlaces, summary: summary)
 
-        // マップのシート内NavigationStackにpushされる前提なので、自前のNavigationStackは持たない。
         // 市区町村詳細と同じPOPなカードを並べるため、ListではなくScrollViewにする。
-        ScrollView {
+        return ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 14) {
                     HStack(alignment: .top, spacing: 12) {
@@ -100,25 +141,27 @@ struct SavedPlacesScreen: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
         }
-        // ナビゲーションバーの裏と下端まで白く塗り、シートのガラスが透けて灰色っぽく見えないようにする。
-        .background(Pop.paper.ignoresSafeArea())
-        .task { await silhouetteStore?.loadJapanMapIfNeeded() }
-        .navigationTitle("旅の記録")
-        .navigationBarTitleDisplayMode(.inline)
-        .alert("削除できませんでした", isPresented: Binding(
-            get: { store.deletionErrorMessage != nil },
-            set: { if !$0 { store.deletionErrorMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(store.deletionErrorMessage ?? "不明なエラーが発生しました。")
+    }
+}
+
+/// 旅の記録の切り替え。
+enum TravelRecordTab: String, CaseIterable, Identifiable {
+    case visits
+    case badges
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .visits: "訪問記録"
+        case .badges: "バッジ"
         }
     }
 }
 
 #Preview {
     NavigationStack {
-        SavedPlacesScreen(summary: ExplorationSummary(prefectures: [], eligibleCodes: []))
+        SavedPlacesScreen(summary: ExplorationSummary(prefectures: [], eligibleCodes: []), selectedTab: .constant(.visits))
     }
     .modelContainer(for: [SavedPlace.self, Municipality.self, VisitedPrefecture.self], inMemory: true)
 }
