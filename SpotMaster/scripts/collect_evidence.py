@@ -23,7 +23,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 ROOT = "SpotMaster/work"
 CACHE = f"{ROOT}/cache"
-BOUNDARY = "BoundaryData/generated/BoundaryData/municipalities/lod2_100m"
+BOUNDARY = "BoundaryData/generated/BoundaryData/municipalities/lod2_150m"
 USER_AGENT = "Yorimichi-SpotMaster/1.0 (https://github.com/Taishu0613/yorimichi; data preparation)"
 SECTION_PATTERN = re.compile("観光|名所|旧跡|見どころ|見所|史跡|文化財|スポット|名勝|景勝|祭|イベント|施設|特産|グルメ|温泉|公園|博物館")
 MAXIMUM_SECTION_CHARACTERS = 1800
