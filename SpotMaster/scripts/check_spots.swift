@@ -2,7 +2,7 @@
 //
 // 使い方(リポジトリ直下で):
 //   swiftc -O SpotMaster/scripts/check_spots.swift -o /tmp/check_spots
-//   /tmp/check_spots LocalGovernmentCodeJapan_Knowledge.csv BoundaryData/generated/BoundaryData/municipalities/lod2_100m \
+//   /tmp/check_spots LocalGovernmentCodeJapan_Knowledge.csv BoundaryData/generated/BoundaryData/municipalities/lod2_150m \
 //     [--format-only] [--code 12101] [--results SpotMaster/work/check_results.tsv] [--evidence SpotMaster/work/evidence]
 //
 // 実在の確認はMapKitの検索で、名前で見つかる場所がその市区町村の境界の中にあるかを見る。
@@ -26,8 +26,8 @@ let categories: Set<String> = [
 ]
 /// 画面の1行に収まる長さの目安。
 let maximumActionLength = 16, maximumReasonLength = 40, maximumSpotCount = 10
-/// 境界データの間引きの誤差。これより境界に近ければ区域の中とみなす(LOD2は100m)。
-let boundaryToleranceMeters = 100.0
+/// 境界データの間引きの誤差。これより境界に近ければ区域の中とみなす(LOD2は150m)。
+let boundaryToleranceMeters = 150.0
 
 func parseCSV(_ source: String) -> [[String]] {
     var rows: [[String]] = [], row: [String] = [], field = "", quoted = false
@@ -221,7 +221,15 @@ let known = knownNames()
 var failed = 0
 for code in rowsByCode.keys.sorted() where onlyCode == nil || onlyCode == code {
     let shapes = polygons(code: code)
-    guard !shapes.isEmpty else { print("?? \(code): 境界データがありません"); continue }
+    guard !shapes.isEmpty else {
+        // 境界のファイルを1つも読めないときは、場所の指定かサンドボックスの問題なので、確認できたことにせず止める。
+        if featuresByPrefecture.values.allSatisfy(\.isEmpty) {
+            print("NG 境界データを読めません: \(boundaryFolder)(サンドボックスの外で実行してください)")
+            exit(2)
+        }
+        print("?? \(code): 境界データがありません")
+        continue
+    }
     let searchRegion = region(of: shapes)
     for row in rowsByCode[code, default: []] where !checked.contains("\(code)\t\(row.name)") {
         let name = normalize(row.name)
