@@ -60,14 +60,22 @@ final class MunicipalityPuzzleStore {
     private(set) var municipalityPieces: [BoundaryPiece] = []
     /// 今の表示範囲の県境と海岸線。1本の県境は1回だけ入っている。
     private(set) var prefectureBorders: [BoundaryLinePiece] = []
+    /// 未訪問の市区町村の網目を描く線(県内の市区町村どうしの境)。網目を描く縮尺の市区町村モードのときだけ用意する(それ以外は空)。
+    ///
+    /// 以前は未訪問の市区町村を1つずつ透明のポリゴン(縁取りだけ)で描いており、網目が出る縮尺では1画面に
+    /// 500〜600枚が載って重かった。MapKitは1枚ごとに描画を持つため、境を県ごとの一筆書きの線(数本)にまとめて枚数を減らしている。
+    /// 隣り合う境を両側から2回描くことも無くなる。
+    private(set) var municipalityMeshLines: [BoundaryLinePiece] = []
     /// 今の表示範囲の都道府県の面。制覇率の塗り専用で、「県境のみ」の読み込みのときだけ用意する(それ以外は空)。
     private(set) var prefectureAreas: [BoundaryPiece] = []
     /// 今の表示範囲の政令指定都市の外周(`DesignatedCityOutline`)。`code`は`DesignatedCity.key`。
     /// 縁取り専用で穴を持たない。市区町村の読み込みのときだけ用意する(それ以外は空)。
     private(set) var designatedCityOutlines: [BoundaryPiece] = []
-    /// 未訪問の市区町村まで描くか。falseのときは訪問済み・現在地のピースだけを描く。
+    /// 未訪問の市区町村(網目)まで描くか。falseのときは訪問済み・現在地のピースだけを描く。
     private(set) var showsUnvisitedMunicipalities = false
     private(set) var displayMode: BoundaryDisplayMode = .municipalities
+    /// 今の縮尺での線の太さ。ピースと同じ更新で書き換える(下の`load`参照)。
+    private(set) var lineWidths = BoundaryLineWidths.widest
 
     // 描画範囲で省かれる飛び地も含めた、カメラ用の区域全体の範囲。
     @ObservationIgnored private var municipalityFocusBounds: [String: MKMapRect] = [:]
@@ -79,6 +87,8 @@ final class MunicipalityPuzzleStore {
     @ObservationIgnored private var currentLOD: Int?
     /// 表示モードだけが変わったときに、同じ範囲で読み込み直すために覚えておく。
     @ObservationIgnored private var lastRegion: MKCoordinateRegion?
+    /// 最後にカメラが止まったときの縮尺。線の太さを決めるのに使う。レイアウト前(地図の横幅が0)はnil。
+    @ObservationIgnored private var lastScale: BoundaryMapScale?
     @ObservationIgnored private var loadTask: Task<Void, Never>?
     /// `MKPolygon`(と穴のあるピースの輪郭)を作り直すと地図側で同じ形の再描画が走るため、LODが変わるまで使い回す。
     /// 同じLODのまま全国を見て回るとピース数ぶん増えるが、1つあたりは座標の参照程度なので上限は設けていない。
@@ -157,8 +167,12 @@ final class MunicipalityPuzzleStore {
     }
 
     /// 地図のカメラが止まるたびに呼ぶ。前回の読み込みが終わっていなければ取り消して、最新の範囲だけを反映する。
-    func showRegion(_ region: MKCoordinateRegion) {
+    /// - Parameter scale: 画面に見えている範囲の縮尺。線の太さを決める。nilなら太さは変えない。
+    func showRegion(_ region: MKCoordinateRegion, scale: BoundaryMapScale?) {
         lastRegion = region
+        if let scale {
+            lastScale = scale
+        }
         reload()
     }
 
@@ -217,17 +231,25 @@ final class MunicipalityPuzzleStore {
     private func reload() {
         guard let region = lastRegion else { return }
         let mode = displayMode
+        let scale = lastScale
         loadTask?.cancel()
-        loadTask = Task { await load(region: region, mode: mode) }
+        loadTask = Task { await load(region: region, mode: mode, scale: scale) }
     }
 
-    private func load(region: MKCoordinateRegion, mode: BoundaryDisplayMode) async {
+    /// 読み込みが終わってから、ピース・線・太さをまとめて書き換える。
+    ///
+    /// 間に`await`を挟まずに書き換えるので、地図の再評価は1回で済む。線の太さを地図側で先に変えると、
+    /// 古いピースを新しい太さで描き直した直後に、読み込みを終えたピースの入れ替えでもう一度描き直すことになるため、
+    /// 太さもここで一緒に書き換える。
+    private func load(region: MKCoordinateRegion, mode: BoundaryDisplayMode, scale: BoundaryMapScale?) async {
         let visibleWidth = region.widthMeters
         guard visibleWidth <= Self.maximumVisibleWidthMeters else {
             prefectureBorders = []
             prefectureAreas = []
             municipalityPieces = []
+            municipalityMeshLines = []
             designatedCityOutlines = []
+            updateLineWidths(for: scale)
             return
         }
         do {
@@ -242,6 +264,21 @@ final class MunicipalityPuzzleStore {
                 in: manifest.files(in: .prefectureLines, lod: lod, intersecting: searchBox),
                 pieceFilter: loadFilter
             )
+            // 広域では網目が細かすぎて見分けられず重いだけなので、県境と訪問済みの市区町村だけを描く。
+            let showsUnvisited = UnvisitedMunicipalityVisibility.isVisible(
+                current: showsUnvisitedMunicipalities, visibleWidthMeters: visibleWidth
+            )
+            // 網目の線は省かない。つながった境を一筆書きにした線は閉じていることがあり、海岸線と同じ規則
+            // (閉じた小さい線を省く)を当てると、ほかの市区町村に囲まれた小さな町の輪郭が消えてしまう。
+            // 以前のポリゴンでも各市区町村の最大のピースは必ず描いていたので、それに合わせる。
+            // 小さすぎて描けない島の中の境は、データ生成時にLODごとに捨ててある。
+            var meshLines: [BoundaryLine] = []
+            if mode == .municipalities, showsUnvisited {
+                meshLines = try await repository.lines(
+                    in: manifest.files(in: .municipalityLines, lod: lod, intersecting: searchBox),
+                    pieceFilter: Self.keepsEveryLine
+                )
+            }
             // 県境のみのモードでは、重い市区町村ファイルはそもそも読まない。
             // 代わりに都道府県の面を読む(都道府県の制覇率を塗る表示で使う。47件なので軽い)。
             var municipalities: [AdministrativeBoundary] = []
@@ -268,24 +305,37 @@ final class MunicipalityPuzzleStore {
             }
             let drawFilter = BoundaryPieceFilter(visibleWidthMeters: visibleWidth)
             prefectureBorders = makeLinePieces(lod: lod, from: borderLines, within: searchBox, filter: drawFilter)
+            municipalityMeshLines = makeLinePieces(lod: lod, from: meshLines, within: searchBox, filter: Self.keepsEveryLine)
             prefectureAreas = makePieces(.prefectures, lod: lod, from: prefectures, within: searchBox, filter: drawFilter)
             municipalityPieces = makePieces(.municipalities, lod: lod, from: municipalities, within: searchBox, filter: drawFilter)
             designatedCityOutlines = makePieces(
                 "designatedCity", lod: lod, from: designatedCities(from: municipalities), within: searchBox, filter: drawFilter
             )
-            // 広域では網目が細かすぎて見分けられず重いだけなので、県境と訪問済みの市区町村だけを描く。
-            let showsUnvisited = UnvisitedMunicipalityVisibility.isVisible(
-                current: showsUnvisitedMunicipalities, visibleWidthMeters: visibleWidth
-            )
             // 同じ値を書き戻しても観測している地図全体の再評価が走るため、変わったときだけ書き換える。
             if showsUnvisited != showsUnvisitedMunicipalities {
                 showsUnvisitedMunicipalities = showsUnvisited
             }
+            updateLineWidths(for: scale)
         } catch is CancellationError {
             // 新しい範囲・モードの読み込みに置き換わっただけなので何もしない。
         } catch {
             // 境界は地図の装飾で、無くても記録機能は使える。ユーザーには出さず開発者向けに残す。
             logger.error("行政区域の境界を読み込めませんでした: \(String(describing: error), privacy: .public)")
+            // 形は前のままでも、太さは今の縮尺に合わせる。
+            updateLineWidths(for: scale)
+        }
+    }
+
+    /// 何も省かないフィルタ。網目の線に使う(理由は`load`の読み込み箇所のコメント参照)。
+    /// リポジトリはファイルごとに最初のフィルタの結果をキャッシュするので、網目の線には常にこれを渡す。
+    private static let keepsEveryLine = BoundaryPieceFilter(visibleWidthMeters: 0)
+
+    private func updateLineWidths(for scale: BoundaryMapScale?) {
+        guard let scale else { return }
+        let widths = BoundaryLineWidths(scale: scale, current: lineWidths)
+        // 同じ太さを書き戻しても地図全体の再評価が走るため、段階が変わったときだけ書き換える。
+        if widths != lineWidths {
+            lineWidths = widths
         }
     }
 

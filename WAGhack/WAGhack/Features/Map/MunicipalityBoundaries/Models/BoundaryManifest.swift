@@ -9,6 +9,10 @@ nonisolated enum BoundaryLayer: String, Sendable {
     case prefectures
     /// 県境と海岸線の線。1本の県境は隣り合う2県のうちコードの小さい県のファイルにだけ入っている。
     case prefectureLines
+    /// 県内の市区町村どうしの境の線(未訪問の網目用)。県境・海岸線は含まない。
+    /// 地図に載せる枚数を減らすため、県ごとに、つながった境を一筆書きにした線で入っている(往復する区間がある)。
+    /// 網目を描く縮尺(画面の横幅150km未満)でしか使わないので、LOD2〜4にしか無い。
+    case municipalityLines
 }
 
 /// 同梱した境界データの目録(`manifest.json`)。アプリが使う項目だけを読む。

@@ -7,20 +7,25 @@ import SwiftUI
 /// ここで組み合わせて塗り分けるだけにする(状態は持たない)。
 ///
 /// 重なりの階層(`mapOverlayLevel`):
-/// - 下(`.aboveRoads`、地名ラベルより下): 市区町村のピースの塗りと細い線、訪れた政令指定都市の薄い塗り、
-///   または都道府県の制覇率の塗り。塗っても地名が読める。
-///   県境・海岸線の線(`MapPolyline`)もこの階層に置く(上の階層に置くと描かれないため。理由は描画箇所のコメント参照)。
+/// - 下(`.aboveRoads`、地名ラベルより下): 未訪問の市区町村の網目(線)、訪問済みの市区町村のピースの塗りと細い線、
+///   訪れた政令指定都市の薄い塗り、または都道府県の制覇率の塗り。塗っても地名が読める。
+///   網目と県境・海岸線の線(`MapPolyline`)もこの階層に置く(上の階層に置くと描かれないため。理由は描画箇所のコメント参照)。
+///   同じ階層の中では後に書いたものが上に重なる。網目は最初に書き、訪問済みの線や県境の下に来るようにしている。
 /// - 上(`.aboveLabels`): 訪れた政令指定都市の外周と、現在地の縁取り。線だけなので地名はほぼ隠れない。
 ///
 /// 記録・脈打ちの演出(`emphasis`)は、該当する区域のスタイルを差し替えるだけで描く。ポリゴンを足したり
 /// 消したりしないのは、MapKitがポリゴン1枚ごとに描画を持ち、追加・削除のたびに作り直しが走って重くなるため。
 struct MunicipalityPuzzleLayer: MapContent {
+    /// 今の表示範囲の市区町村のピース。描くのは訪問済み・現在地・演出中の区域だけ(`visibleMunicipalityPieces`)。
     let municipalityPieces: [BoundaryPiece]
+    /// 未訪問の市区町村の網目(県内の市区町村どうしの境を一筆書きにした線)。網目を描かない縮尺では空。
+    ///
+    /// 未訪問の区域はポリゴンを載せず、この線だけで示す。MapKitは1枚ごとに描画を持つため、
+    /// 1区域1枚(穴のある区域は数枚)のポリゴンだと網目が出る縮尺で500〜600枚になり重かった。
+    let municipalityMeshLines: [BoundaryLinePiece]
     let prefectureBorders: [BoundaryLinePiece]
     /// 都道府県の面。制覇率の塗り(`prefectureConquestLevels`)にだけ使う。
     let prefectureAreas: [BoundaryPiece]
-    /// falseのときは、未訪問の市区町村を描かない(広域表示で枚数を抑えるため)。
-    let showsUnvisitedMunicipalities: Bool
     let visitedCodes: Set<String>
     /// 政令指定都市の外周(`MunicipalityPuzzleStore.designatedCityOutlines`)。
     let designatedCityOutlines: [BoundaryPiece]
@@ -45,6 +50,17 @@ struct MunicipalityPuzzleLayer: MapContent {
                 MapPolygon(area.polygon)
                     .foregroundStyle(emphasizedFill?.color ?? PrefectureConquestStyle.fill(for: level))
                     .mapOverlayLevel(level: .aboveRoads)
+            }
+        }
+        // 網目は訪問済みのピースより先(下)に置く。訪問済みのtealの線と県境が網目の上に見えるようにするため。
+        // 線には`mapOverlayLevel`を付けない(付けると描かれない。県境の線のコメント参照)。
+        // 見た目は未訪問のピースの線(`MunicipalityPieceStyle`)と同じにする。
+        // 一筆書きのため同じ区間を往復する部分があるが、1本の線の中の重なりは濃く見えない(iOS 26.5シミュレータで確認)。
+        if prefectureConquestLevels == nil {
+            let meshStyle = MunicipalityPieceStyle(isVisited: false, lineWidths: lineWidths)
+            ForEach(municipalityMeshLines) { line in
+                MapPolyline(line.polyline)
+                    .stroke(meshStyle.stroke, style: meshStyle.strokeStyle)
             }
         }
         ForEach(visibleMunicipalityPieces) { piece in
@@ -128,13 +144,13 @@ struct MunicipalityPuzzleLayer: MapContent {
         return emphasis.look
     }
 
-    /// 塗りを描くピース。広域では訪問済みと現在地(と演出中の区域)だけに絞る。
+    /// ポリゴンで描くピース。縮尺によらず訪問済みと現在地(と演出中の区域)だけ。未訪問の区域は網目の線で示す。
+    /// 現在地と演出中の区域は、未訪問でもスタイルの差し替え(演出)や縁取りの下地のためにポリゴンで描く。
     private var visibleMunicipalityPieces: [BoundaryPiece] {
         guard prefectureConquestLevels == nil else { return [] }
         let emphasizedCode = municipalityEmphasis?.code
         return municipalityPieces.filter { piece in
-            showsUnvisitedMunicipalities || visitedCodes.contains(piece.code)
-                || piece.code == currentCode || piece.code == emphasizedCode
+            visitedCodes.contains(piece.code) || piece.code == currentCode || piece.code == emphasizedCode
         }
     }
 

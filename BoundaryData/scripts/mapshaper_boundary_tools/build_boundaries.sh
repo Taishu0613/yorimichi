@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build the five-LOD resource tree from the official N03 2026 nationwide GeoJSON.
-# Layers: municipalities / prefectures / regions (polygons) and prefectureLines (borders + coastlines).
+# Layers: municipalities / prefectures / regions (polygons), prefectureLines (borders + coastlines)
+# and municipalityLines (borders between municipalities of one prefecture, LOD 2-4 only).
 # Run with bash (including the Bash 3.2 supplied with macOS).
 #
 # Folder layout (DATA_ROOT = BoundaryData at the repository root, two levels above this script):
@@ -114,6 +115,17 @@ for spec in "0:2000" "1:500" "2:150" "3:50" "4:20"; do
     -filter 'RANK < 2' target=prefectureLines
     -o target=prefectureLines format=geojson precision=0.000001 "$lines"
   )
+  # Borders between municipalities of the same prefecture (the grey mesh of unvisited municipalities).
+  # Prefecture borders and coastlines are left out: prefectureLines already draws them. The app draws the mesh
+  # only below 150 km screen width, which is always LOD 2 or finer, so coarser LODs are not built.
+  mlines="$WORK/municipality_lines_lod${lod}.geojson"
+  if (( lod >= 2 )); then
+    common+=(
+      -lines target=municipalities + name=municipalityLines
+        where='!!B && A.p === B.p && A.c !== B.c' each='p=A.p'
+      -o target=municipalityLines format=geojson precision=0.000001 "$mlines"
+    )
+  fi
   if [[ "$lod" == "0" ]]; then
     ms "${common[@]}" \
       -o target=municipalities format=geojson precision=0.000001 bbox \
@@ -141,6 +153,12 @@ for spec in "0:2000" "1:500" "2:150" "3:50" "4:20"; do
   # Give each line one owner prefecture (a shared border is stored once) and split per prefecture.
   node "$HELPER" prefecture-lines "$lines" "$pdir" "$STAGE/prefectureLines" "$lod" \
     >> "$REPORTS/03_lod${lod}.log" 2>&1
+  # Merge the municipality borders of each prefecture into a few walks (one line overlay each in the app).
+  # Needs the municipality vertices at full precision and before small islands are dropped, like prefecture-lines.
+  if (( lod >= 2 )); then
+    node "$HELPER" municipality-lines "$mlines" "$mdir" "$STAGE/municipalityLines" "$lod" \
+      >> "$REPORTS/03_lod${lod}.log" 2>&1
+  fi
   # keep-shapes above keeps every island. Drop the ones the app can never draw at this LOD, then round
   # coarse LODs to fewer digits. Both must run after prefecture-lines, which needs every prefecture vertex
   # at full precision (rounding in Mapshaper drops collapsed island rings from polygons but not from lines).

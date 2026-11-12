@@ -57,7 +57,7 @@ bash build_boundaries.sh
 | 3 | 50m | 都道府県 47 ファイル | 地方 10 ファイル |
 | 4 | 20m | 都道府県 47 ファイル | 地方 10 ファイル |
 
-市区町村 189 + 都道府県 189 + 県境線 (LOD ごとに持ち主のいる県の数) + 地方 41 + manifest.json + attribution.txt です。
+市区町村 189 + 都道府県 189 + 県境線 (LOD ごとに持ち主のいる県の数) + 市区町村境線 141 (LOD2〜4 のみ、各 47) + 地方 41 + manifest.json + attribution.txt です。
 全 LOD を同じ未簡略化データから生成します。
 
 各 Feature の属性:
@@ -68,10 +68,16 @@ bash build_boundaries.sh
 | 都道府県 | `p` 都道府県コード, `n` 名前, `r` 地方コード |
 | 地方 | `r` 地方コード, `n` 地方名 |
 | 県境線 | `p` 持ち主の都道府県コード（LOD0 はなし）, `k` `border`=県境 / `coast`=海岸線 |
+| 市区町村境線 | `p` 都道府県コード, `k` `municipal` |
 
 県境線は `-lines p` で「都道府県コードが変わる境目」（RANK 1）と「外周＝海岸線」（RANK 0）だけを取り出し、
 `boundary_tools.mjs prefecture-lines` で各線を 1 県に割り当てて（県境は隣り合う 2 県のうちコードの小さい方）、
 つながる線を 1 本にまとめてから都道府県ごとのファイルに分けます。同じ LOD の都道府県ポリゴンと頂点が完全一致することを使って割り当てます。
+
+市区町村境線は `-lines where='!!B && A.p === B.p && A.c !== B.c'` で「同じ県の別の市区町村どうしの境」だけを取り出し、
+`boundary_tools.mjs municipality-lines` で全頂点が両側の市区町村ポリゴンの頂点であることを確かめてから、県ごとに
+つながった境を一筆書きの 1 本にまとめます（`walkNetwork`。アプリの地図で線 1 本 = オーバーレイ 1 枚になるため）。
+行き止まりの境は往復します。まとめ方のテストは `node --test walk_network.test.mjs`。
 
 `manifest.json` には各ファイルの `prefectureCode` / `regionCode`、および `regions`（地方の定義）が入ります。
 

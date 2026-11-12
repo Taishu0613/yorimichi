@@ -195,6 +195,29 @@ struct BoundaryLineGeoJSONDecoderTests {
         #expect(lines.count == 1)
     }
 
+    @Test func 市区町村境の線を読む() throws {
+        // 一筆書きの線は閉じていることがある(ほかの町に囲まれた町の輪郭など)。小さくても何も省かないフィルタでは残す。
+        let json = """
+        {"type":"FeatureCollection","features":[
+          {"type":"Feature","properties":{"p":"11","k":"municipal"},
+           "geometry":{"type":"MultiLineString","coordinates":[
+             [[139.5,35.9],[139.6,35.9],[139.5,35.9],[139.5,36.0]],
+             [[139.0,35.0],[139.001,35.0],[139.001,35.001],[139.0,35.0]]
+           ]}}
+        ]}
+        """
+
+        let lines = try BoundaryLineGeoJSONDecoder().decode(
+            Data(json.utf8), fileID: "municipality_line_11_lod2", pieceFilter: BoundaryPieceFilter(visibleWidthMeters: 0)
+        )
+
+        #expect(lines.map(\.id) == ["municipality_line_11_lod2/0", "municipality_line_11_lod2/1"])
+        #expect(lines.allSatisfy { $0.kind == .municipal })
+        // 往復する区間(139.6,35.9で折り返す)も、そのまま1本の線として読む。
+        #expect(lines[0].coordinates.count == 4)
+        #expect(lines[1].isClosed)
+    }
+
     @Test func 未知の線の種類は読み込みを失敗させる() {
         let json = """
         {"type":"FeatureCollection","features":[
