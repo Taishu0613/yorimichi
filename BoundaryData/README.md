@@ -1,13 +1,17 @@
 # BoundaryData 仕様
 
-行政区域境界 GeoJSON（WAGhack 地図表示用）とその生成環境。更新: 2026-11-02 / buildRevision 5
+行政区域境界 GeoJSON（WAGhack 地図表示用）とその生成環境。更新: 2026-11-12 / buildRevision 6
 
 ## 要点
-- アプリに入れるのは `generated/BoundaryData/` のみ。WAGhack は `manifest.json`・`attribution.txt`・`municipalities/`・`prefectures/`・`prefectureLines/` を参照（地方レイヤは未使用）。
+- アプリに入れるのは `generated/BoundaryData/` のみ。WAGhack は `manifest.json`・`attribution.txt`・`municipalities/`・`prefectures/`・`prefectureLines/`・`municipalityLines/` を参照（地方レイヤは未使用）。
 - 元データ: 国交省 N03 2026-01-01 版（CC BY 4.0、出典表示必須）。
-- 4 レイヤ（市区町村 1,905 / 都道府県 47 / 地方 10 のポリゴン + 県境線）× LOD0〜4。
-- 都道府県・地方・県境線は市区町村の形から生成 → 境界は完全一致。
+- 5 レイヤ（市区町村 1,905 / 都道府県 47 / 地方 10 のポリゴン + 県境線 + 市区町村境線）× LOD0〜4（市区町村境線は LOD2〜4 のみ）。
+- 都道府県・地方・県境線・市区町村境線は市区町村の形から生成 → 境界は完全一致。
 - 県境線（`prefectureLines`）は「都道府県コードが変わる境目」と「海岸線」だけの線。県内の市区町村境は含まない。1本の県境は隣り合う2県のうちコードの小さい県のファイルにだけ入る（アプリが同じ線を2回描かないため）。
+- 市区町村境線（`municipalityLines`、buildRevision 6〜）は「県内の市区町村どうしの境」だけの線。県境と海岸線は含まない（`prefectureLines` が持つ）。アプリが未訪問の市区町村の網目を描くのに使う。
+  - アプリは線1本ごとに地図のオーバーレイを1枚持つため、県ごとに、つながった境を**一筆書き**にした1本の線にまとめてある（`boundary_tools.mjs` の `walkNetwork`）。県境や海岸線で行き止まりになる境は往復するので、同じ区間が2回入る（頂点は LOD2 で約29%、LOD4 で約36%増）。往復する区間は、木（最小全域木）の上で選ぶ T-join で少なくし、往復で最も得をする2つの奇数次の交点を線の両端にしている。
+  - 網目は画面の横幅150km未満（必ず LOD2 以上）でしか描かないので、LOD0・1 は作らない。
+  - 頂点は簡略化後の市区町村ポリゴンの頂点そのもの（生成時に全頂点が両側の市区町村ポリゴンにあることを検査）。小さな島を捨てる規則は、つながった境の全体の外接矩形で判定する（ほかの町に囲まれた町の輪郭のように閉じた線もあるため、閉じているかどうかでは分けない）。
 - 元データの市区町村どうしのわずかなすき間・重なり（幅5.6m以下、全国16か所）は `-clean` で修復している。修復しないと県が複数のポリゴンに分かれ、県内に誤った県境が出る（千代田・中央・港区の外周など8か所で発生していた）。
 - Git 管理対象は本 README と `scripts/`（`node_modules` 除く）のみ。他は大容量・再生成可のため管理外。
 
@@ -28,9 +32,10 @@ BoundaryData/
 ├── municipalities/lod{N}_{m}m/municipality_{範囲}_lod{N}.geojson
 ├── prefectures/   同上 prefecture_*
 ├── prefectureLines/ 同上 prefecture_line_*（県境線。MultiLineString）
+├── municipalityLines/ 同上 municipality_line_*（市区町村境線。MultiLineString。LOD2〜4 のみ）
 └── regions/       同上 region_*
 ```
-範囲: LOD0 は `jp`（全国1ファイル）。LOD1〜4 は市区町村・都道府県・県境線が都道府県コード `01`〜`47`、地方が地方コード `01`〜`10`。
+範囲: LOD0 は `jp`（全国1ファイル）。LOD1〜4 は市区町村・都道府県・県境線・市区町村境線が都道府県コード `01`〜`47`、地方が地方コード `01`〜`10`。
 県境線のファイルは「その県が持ち主の線」だけを含むので、1ファイルでその県の外周がすべて揃うわけではない。
 
 | LOD | 簡略化(DP) | 画面横幅 | 切替（拡大時 / 縮小時） |
@@ -49,8 +54,9 @@ properties（コードはすべて文字列）:
 - 都道府県 `{p:"20", n:"長野県", r:"03"}`
 - 地方 `{r:"04", n:"北陸"}`
 - 県境線 `{p:"13", k:"border"}`（`k` は `border`=県境 / `coast`=海岸線。LOD0 は `p` なし）
+- 市区町村境線 `{p:"13", k:"municipal"}`（1ファイル1 Feature。線1本 = つながった境1つぶんの一筆書き）
 
-`manifest.json`（schemaVersion 2）: `lods`, `lodTransitions`, `source`, `regionSource`, `regions[{code,name,nameEn,prefectureCodes}]`, `files[{id, layer, lod, prefectureCode, regionCode, path, bbox, byteSize, featureCount, polygonCount, holeCount, vertexCount, sha256}]`（県境線は `polygonCount`/`holeCount` の代わりに `lineCount`）。
+`manifest.json`（schemaVersion 2）: `lods`, `lodTransitions`, `source`, `regionSource`, `regions[{code,name,nameEn,prefectureCodes}]`, `files[{id, layer, lod, prefectureCode, regionCode, path, bbox, byteSize, featureCount, polygonCount, holeCount, vertexCount, sha256}]`（県境線・市区町村境線は `polygonCount`/`holeCount` の代わりに `lineCount`）。
 全国ファイルは `prefectureCode`/`regionCode` が null、地方ファイルは `prefectureCode` が null。
 
 ## 小さな島の除去（buildRevision 4〜）
@@ -67,7 +73,7 @@ properties（コードはすべて文字列）:
 - 変更は `regions.json` のみ編集 → 再生成。
 
 ## アプリへの組み込み
-- Xcode の Resources に上記 5 つを追加済み（`municipalities/`・`prefectures/`・`prefectureLines/` はフォルダ参照）。バンドル直下にそのままコピーされ、manifest の `path` がそのまま使える。
+- Xcode の Resources に上記 6 つを追加済み（`municipalities/`・`prefectures/`・`prefectureLines/`・`municipalityLines/` はフォルダ参照）。バンドル直下にそのままコピーされ、manifest の `path` がそのまま使える。
 - 生成物が無いとアプリのビルドが失敗する。クローン直後は下記「再生成」を先に行う。
 - 使い方は リポジトリ直下 `README.md` の「市区町村パズル」を参照。
 
@@ -79,7 +85,8 @@ bash build_boundaries.sh   # 入力は raw/ の原本
 - Node 22+、mapshaper 0.7.65 固定。数分で完了。
 - `generated/BoundaryData` が既にあると停止する → 先に別の場所へ移動する。
 - `N03-20260101_prefecture.geojson` は使わない（別々に簡略化すると境界がずれる）。
-- 流れ: 属性検査 → すき間・重なりの修復（`-clean`）と全国トポロジー化 → LOD ごとに全国一括で簡略化 → 結合・県境線生成・分割 → 小さな島の除去と座標の丸め（`prune-and-round`）→ 構造検査 → manifest 生成。
+- 流れ: 属性検査 → すき間・重なりの修復（`-clean`）と全国トポロジー化 → LOD ごとに全国一括で簡略化 → 結合・県境線・市区町村境線の生成・分割（市区町村境線は一筆書きにまとめる）→ 小さな島の除去と座標の丸め（`prune-and-round`）→ 構造検査 → manifest 生成。
+- 一筆書きのまとめ方のテスト: `node --test walk_network.test.mjs`（`scripts/mapshaper_boundary_tools/` で実行）。
 - 修復するのは市区町村どうしのすき間・重なりだけ（`-clean` の既定。修復内容は `reports/<実行ID>/02_normalize.log`）。コード欠損など属性の異常は修復せず停止する。実機検証は未実施（`releaseStatus: needs_spatial_and_device_review`）。
 
 ## 既知の問題

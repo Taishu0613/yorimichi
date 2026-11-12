@@ -6,6 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 
 const LODS = [
   { id: 0, intervalMeters: 2000, minWidthMeters: 800000, maxWidthMeters: null },
@@ -48,9 +49,14 @@ const LAYERS = {
   regions: { prefix: 'region', key: 'r', split: 'region' },
   // Prefecture borders and coastlines as lines (see prefectureLines). Each file holds the lines OWNED by
   // one prefecture, so a file does not cover every border of that prefecture and codes are not unique.
-  prefectureLines: { prefix: 'prefecture_line', key: 'p', split: 'prefecture', geometry: 'line' },
+  prefectureLines: { prefix: 'prefecture_line', key: 'p', split: 'prefecture', geometry: 'line',
+    kinds: new Set(['coast', 'border']) },
+  // Borders between municipalities of the same prefecture, merged into one walk per connected part
+  // (see municipalityLines). Only for the LODs the app draws the unvisited municipality mesh at.
+  municipalityLines: { prefix: 'municipality_line', key: 'p', split: 'prefecture', geometry: 'line',
+    kinds: new Set(['municipal']), lods: [2, 3, 4], keepsWholeWalks: true },
 };
-const LINE_KINDS = new Set(['coast', 'border']);
+const layerHasLOD = (spec, lod) => !spec.lods || spec.lods.includes(lod);
 const PREFS = Array.from({ length: 47 }, (_, i) => String(i + 1).padStart(2, '0'));
 const read = p => JSON.parse(fs.readFileSync(p, 'utf8'));
 const write = (p, value) => fs.writeFileSync(p, JSON.stringify(value, null, 2) + '\n');
@@ -228,9 +234,10 @@ function manifest(root, sourceReport, baselineReport, report, versionFile) {
   for (const file of walk(root)) {
     const rel = path.relative(root, file).split(path.sep).join('/');
     try {
-      const m = rel.match(/^(municipalities|prefectures|regions|prefectureLines)\/lod([0-4])_(\d+)m\/(municipality|prefecture|region|prefecture_line)_(jp|\d{2})_lod([0-4])\.geojson$/);
+      const m = rel.match(/^(municipalities|prefectures|regions|prefectureLines|municipalityLines)\/lod([0-4])_(\d+)m\/(municipality|prefecture|region|prefecture_line|municipality_line)_(jp|\d{2})_lod([0-4])\.geojson$/);
       ensure(m, `Unexpected output filename: ${rel}`);
       const layer = m[1], lod = Number(m[2]), spec = LAYERS[layer];
+      ensure(layerHasLOD(spec, lod), `${layer} is not built for LOD ${lod}: ${rel}`);
       const scope = m[5] === 'jp' ? null : m[5];
       ensure(Number(m[3]) === LODS[lod].intervalMeters && Number(m[6]) === lod && m[4] === spec.prefix, `LOD/name mismatch: ${rel}`);
       ensure((lod === 0) === (scope === null), `Unexpected split scope: ${rel}`);
@@ -245,7 +252,7 @@ function manifest(root, sourceReport, baselineReport, report, versionFile) {
         for (const f of data.features) {
           ensure(f.type === 'Feature', `${rel}: not a Feature.`);
           const a = f.properties || {};
-          ensure(LINE_KINDS.has(a.k), `${rel}: invalid line kind ${a.k}.`);
+          ensure(spec.kinds.has(a.k), `${rel}: invalid line kind ${a.k}.`);
           ensure(pref === null ? a.p === undefined : a.p === pref, `${rel}: line owned by a different prefecture.`);
           const s = lineStats(f.geometry, `${rel}/${a.k}`);
           for (let i = 0; i < 2; i++) { bbox[i] = Math.min(bbox[i], s.bbox[i]); bbox[i + 2] = Math.max(bbox[i + 2], s.bbox[i + 2]); }
@@ -293,6 +300,10 @@ function manifest(root, sourceReport, baselineReport, report, versionFile) {
   for (const l of LODS) {
     for (const [layer, spec] of Object.entries(LAYERS)) {
       const count = files.filter(f => f.layer === layer && f.lod === l.id).length;
+      if (!layerHasLOD(spec, l.id)) {
+        if (count !== 0) errors.push({ issue: `Unexpected files: ${layer}, LOD ${l.id}`, count });
+        continue;
+      }
       if (spec.geometry === 'line') {
         // A prefecture whose every border is owned by lower-coded neighbours can have no file.
         if (l.id === 0 ? count !== 1 : count < 1 || count > expected.prefectures.size) {
@@ -310,7 +321,7 @@ function manifest(root, sourceReport, baselineReport, report, versionFile) {
     remainingChecks: ['Shared boundaries, overlaps and gaps', 'Hole preservation and small islands', 'iPhone rendering and memory', 'Source attribution and distribution requirements'] });
   ensure(errors.length === 0, `Output checks failed. See ${report}.`);
   write(path.join(root, 'manifest.json'), {
-    schemaVersion: 2, dataVersion: '20260101', buildRevision: 5,
+    schemaVersion: 2, dataVersion: '20260101', buildRevision: 6,
     builtAt: new Date().toISOString(),
     generator: { name: 'mapshaper', version: fs.readFileSync(versionFile, 'utf8').trim() },
     releaseStatus: 'needs_spatial_and_device_review',
@@ -330,7 +341,7 @@ function manifest(root, sourceReport, baselineReport, report, versionFile) {
     'https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N03-2026.html',
     'ライセンス: CC BY 4.0',
     'https://creativecommons.org/licenses/by/4.0/',
-    '加工: 属性整理、境界のすき間・重なりの修復、同一コードの形状統合、境界簡略化、都道府県別分割、都道府県外形・県境線および地方外形の生成。',
+    '加工: 属性整理、境界のすき間・重なりの修復、同一コードの形状統合、境界簡略化、都道府県別分割、都道府県外形・県境線・市区町村境線および地方外形の生成。',
     '地方区分: 国土地理院「日本の典型地形」の地域別リストに準拠。',
     '境界は概略表示であり、測量等の精密な用途には使用しないでください。',
   ];
@@ -473,6 +484,253 @@ function chainLines(lines, key) {
   return result;
 }
 
+/** Split the national municipality line layer into per-prefecture files of walks.
+ *
+ * Input: Mapshaper `-lines` restricted to borders whose two sides are different municipalities of the SAME
+ * prefecture (prefecture borders and coastlines are already in prefectureLines). Mapshaper gives each arc once.
+ *
+ * The app draws the grey mesh of unvisited municipalities with these lines. SwiftUI's Map has no multi-polyline,
+ * so every line is one overlay, and the number of overlays is what makes the map heavy. Each connected network of
+ * borders is therefore written as ONE line that walks every arc (see walkNetwork). Arcs that end on a prefecture
+ * border or the coast are dead ends, so some arcs have to be walked there and back; the walk keeps that to little.
+ *
+ * Every vertex must be a vertex of both municipalities on its sides (same simplified topology and precision as the
+ * municipality polygons, before prune-and-round), so the lines lie exactly on the polygon edges.
+ */
+function municipalityLines(linesFile, municipalityDir, outDir, lodText) {
+  const lod = Number(lodText);
+  ensure(LAYERS.municipalityLines.lods.includes(lod), `municipalityLines is not built for LOD ${lodText}`);
+  const key = ([x, y]) => `${x},${y}`;
+
+  const municipalitiesOfVertex = new Map();
+  for (const file of walk(municipalityDir)) {
+    for (const f of read(file).features) {
+      const polys = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates;
+      for (const ring of polys.flat()) {
+        for (const v of ring) {
+          const k = key(v);
+          if (!municipalitiesOfVertex.has(k)) municipalitiesOfVertex.set(k, new Set());
+          municipalitiesOfVertex.get(k).add(f.properties.c);
+        }
+      }
+    }
+  }
+
+  const arcsByPrefecture = new Map();
+  const errors = [];
+  let arcCount = 0, arcVertexCount = 0;
+  for (const f of read(linesFile).features) {
+    const pref = f.properties.p;
+    const lines = f.geometry.type === 'LineString' ? [f.geometry.coordinates] : f.geometry.coordinates;
+    for (const line of lines) {
+      let common = null;
+      for (const v of line) {
+        const codes = municipalitiesOfVertex.get(key(v)) || new Set();
+        common = common === null ? new Set(codes) : new Set([...common].filter(c => codes.has(c)));
+      }
+      // Two municipalities of `pref` share every vertex. Three or more only for a tiny arc between junctions.
+      const inPref = [...common].filter(c => c.slice(0, 2) === pref);
+      if (line.length < 2 || inPref.length < 2) {
+        errors.push({ p: pref, first: line[0], municipalities: [...common] });
+        continue;
+      }
+      if (!arcsByPrefecture.has(pref)) arcsByPrefecture.set(pref, []);
+      arcsByPrefecture.get(pref).push(line);
+      arcCount++; arcVertexCount += line.length;
+    }
+  }
+  ensure(errors.length === 0, `${errors.length} municipality lines are not on two municipalities of one prefecture (LOD ${lod}). First: ${JSON.stringify(errors[0])}`);
+
+  const dir = path.join(outDir, `lod${lod}_${LODS[lod].intervalMeters}m`);
+  fs.mkdirSync(dir, { recursive: true });
+  let walkCount = 0, walkVertexCount = 0;
+  for (const [pref, arcs] of [...arcsByPrefecture].sort()) {
+    const walks = walkNetwork(arcs, key).sort((a, b) => b.length - a.length);
+    walkCount += walks.length;
+    walkVertexCount += walks.reduce((n, w) => n + w.length, 0);
+    const features = [{ type: 'Feature', properties: { p: pref, k: 'municipal' },
+      geometry: { type: 'MultiLineString', coordinates: walks } }];
+    fs.writeFileSync(path.join(dir, `municipality_line_${pref}_lod${lod}.geojson`),
+      JSON.stringify({ type: 'FeatureCollection', bbox: featuresBBox(features), features }));
+  }
+  console.log(`Municipality lines LOD ${lod}: ${arcCount} arcs (${arcVertexCount} vertices) -> ${walkCount} walks ` +
+    `(${walkVertexCount} vertices, +${((walkVertexCount / arcVertexCount - 1) * 100).toFixed(1)}%) in ${arcsByPrefecture.size} files.`);
+}
+
+/** Cover every arc of a line network with as few lines as possible: one walk per connected part.
+ *
+ * A walk that uses each arc exactly once exists only if at most two junctions have an odd number of arc ends
+ * (Euler). Otherwise some arcs must be walked twice. Which ones (a "T-join" on the odd junctions) is chosen on a
+ * spanning tree of the cheapest arcs: an arc of the tree is doubled when the part of the tree below it holds an
+ * odd number of odd junctions. This is not the optimum (Chinese postman) but close for these networks, where
+ * most doubled arcs are dead ends that every walk must double anyway. The two odd junctions whose removal saves
+ * the most become the two ends of the walk. Then Hierholzer's algorithm builds the walk.
+ *
+ * `arcs` are coordinate arrays meeting only at their end points. Returns coordinate arrays (one per part).
+ */
+function walkNetwork(arcs, key) {
+  const nodeIds = new Map();
+  const nodeOf = v => {
+    const k = key(v);
+    if (!nodeIds.has(k)) nodeIds.set(k, nodeIds.size);
+    return nodeIds.get(k);
+  };
+  const edges = arcs.map(coords => ({ u: nodeOf(coords[0]), v: nodeOf(coords[coords.length - 1]),
+    coords, cost: coords.length - 1 }));
+  const nodeCount = nodeIds.size;
+
+  // Connected parts (union-find).
+  const parent = Array.from({ length: nodeCount }, (_, i) => i);
+  const find = x => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+  for (const e of edges) parent[find(e.u)] = find(e.v);
+  const edgesByPart = new Map();
+  edges.forEach((e, i) => {
+    const r = find(e.u);
+    if (!edgesByPart.has(r)) edgesByPart.set(r, []);
+    edgesByPart.get(r).push(i);
+  });
+
+  const walks = [];
+  for (const edgeIDs of edgesByPart.values()) {
+    const degree = new Map();
+    for (const i of edgeIDs) for (const n of [edges[i].u, edges[i].v]) degree.set(n, (degree.get(n) || 0) + 1);
+    const odd = new Set([...degree].filter(([, d]) => d % 2 === 1).map(([n]) => n));
+
+    // Minimum spanning tree by vertex count (Kruskal). Self-loops never join a tree.
+    const treeParent = new Map(), treeAdjacency = new Map();
+    for (const n of degree.keys()) { treeParent.set(n, n); treeAdjacency.set(n, []); }
+    const findTree = x => { while (treeParent.get(x) !== x) x = treeParent.get(x); return x; };
+    for (const i of [...edgeIDs].sort((a, b) => edges[a].cost - edges[b].cost)) {
+      const { u, v } = edges[i];
+      const ru = findTree(u), rv = findTree(v);
+      if (ru === rv) continue;
+      treeParent.set(ru, rv);
+      treeAdjacency.get(u).push({ to: v, edge: i });
+      treeAdjacency.get(v).push({ to: u, edge: i });
+    }
+
+    const doubled = treeJoin(treeAdjacency, odd, edges);
+    const ends = odd.size >= 2 ? bestEnds(treeAdjacency, odd, doubled, edges) : null;
+    if (ends) for (const i of treePath(treeAdjacency, ends[0], ends[1])) doubled.has(i) ? doubled.delete(i) : doubled.add(i);
+
+    // Hierholzer on the arcs plus the doubled ones. Each traversal is [edge index, forward?].
+    const traversals = [...edgeIDs, ...doubled];
+    const adjacency = new Map();
+    traversals.forEach((i, t) => {
+      for (const n of new Set([edges[i].u, edges[i].v])) {
+        if (!adjacency.has(n)) adjacency.set(n, []);
+        adjacency.get(n).push(t);
+      }
+    });
+    const used = new Array(traversals.length).fill(false);
+    const next = new Map();
+    const start = ends ? ends[0] : edges[edgeIDs[0]].u;
+    const stack = [{ node: start, via: null }];
+    const steps = [];
+    while (stack.length) {
+      const top = stack[stack.length - 1];
+      const list = adjacency.get(top.node) || [];
+      let p = next.get(top.node) || 0;
+      while (p < list.length && used[list[p]]) p++;
+      next.set(top.node, p);
+      if (p < list.length) {
+        const t = list[p];
+        used[t] = true;
+        const e = edges[traversals[t]];
+        const to = e.u === top.node ? e.v : e.u;
+        stack.push({ node: to, via: { edge: traversals[t], from: top.node } });
+      } else {
+        stack.pop();
+        if (top.via) steps.push(top.via);
+      }
+    }
+    ensure(used.every(Boolean), 'Walk left arcs unused; the network is not connected as expected.');
+    steps.reverse();
+    let walkCoords = null;
+    for (const { edge, from } of steps) {
+      const e = edges[edge];
+      const coords = e.u === from ? e.coords : e.coords.slice().reverse();
+      walkCoords = walkCoords === null ? coords.slice() : walkCoords.concat(coords.slice(1));
+    }
+    walks.push(walkCoords);
+  }
+  return walks;
+}
+
+/** Tree arcs to double so that every junction in `odd` gets an even count: those with an odd number of `odd`
+ * junctions on the far side. Returns a Set of edge indices. */
+function treeJoin(treeAdjacency, odd, edges) {
+  const doubled = new Set();
+  const visited = new Set();
+  for (const root of treeAdjacency.keys()) {
+    if (visited.has(root)) continue;
+    // Iterative post-order: parity of odd junctions in each subtree.
+    const order = [], parentEdge = new Map([[root, null]]);
+    const stack = [root];
+    visited.add(root);
+    while (stack.length) {
+      const n = stack.pop();
+      order.push(n);
+      for (const { to, edge } of treeAdjacency.get(n)) {
+        if (visited.has(to)) continue;
+        visited.add(to); parentEdge.set(to, edge); stack.push(to);
+      }
+    }
+    const parity = new Map();
+    for (const n of order.reverse()) {
+      const own = (parity.get(n) || 0) + (odd.has(n) ? 1 : 0);
+      const e = parentEdge.get(n);
+      if (e !== null && own % 2 === 1) {
+        doubled.add(e);
+        const up = edges[e].u === n ? edges[e].v : edges[e].u;
+        parity.set(up, (parity.get(up) || 0) + 1);
+      }
+    }
+  }
+  return doubled;
+}
+
+/** The pair of odd junctions to leave as the two ends of the walk: dropping them from the join flips the tree path
+ * between them, so pick the path that removes the most doubled vertices and adds the fewest. */
+function bestEnds(treeAdjacency, odd, doubled, edges) {
+  let best = null, bestGain = -Infinity;
+  for (const from of odd) {
+    // Gain along the tree from `from` to every node (the tree has one path between two nodes).
+    const gain = new Map([[from, 0]]);
+    const stack = [from];
+    while (stack.length) {
+      const n = stack.pop();
+      for (const { to, edge } of treeAdjacency.get(n)) {
+        if (gain.has(to)) continue;
+        gain.set(to, gain.get(n) + (doubled.has(edge) ? edges[edge].cost : -edges[edge].cost));
+        stack.push(to);
+      }
+    }
+    for (const to of odd) {
+      if (to !== from && gain.get(to) > bestGain) { bestGain = gain.get(to); best = [from, to]; }
+    }
+  }
+  return best;
+}
+
+/** Edge indices on the tree path between two nodes. */
+function treePath(treeAdjacency, from, to) {
+  const via = new Map([[from, null]]);
+  const stack = [from];
+  while (stack.length) {
+    const n = stack.pop();
+    if (n === to) break;
+    for (const step of treeAdjacency.get(n)) {
+      if (via.has(step.to)) continue;
+      via.set(step.to, { from: n, edge: step.edge });
+      stack.push(step.to);
+    }
+  }
+  const path = [];
+  for (let n = to; via.get(n); n = via.get(n).from) path.push(via.get(n).edge);
+  return path;
+}
+
 /** Make one LOD as light as the app allows: drop the pieces it can never draw there, then round coordinates.
  *
  * keep-shapes keeps every one of the ~125k islands, so without this LOD0 was 12 MB per layer and ~96% of
@@ -516,8 +774,11 @@ function pruneAndRound(root, lodText) {
         const g = f.geometry;
         if (spec.geometry === 'line') {
           const lines = g.type === 'LineString' ? [g.coordinates] : g.coordinates;
+          // A municipality line is a whole connected network (an island's or an enclave's borders), so it is
+          // dropped only when the whole network is smaller than the minimum, open or closed.
+          const isTooSmall = line => longerSideMeters(line) < minimum && (spec.keepsWholeWalks || isClosedLine(line));
           const kept = lines
-            .filter(line => !isClosedLine(line) || longerSideMeters(line) >= minimum)
+            .filter(line => !isTooSmall(line))
             .map(roundPath)
             .filter(line => line.length >= 2);
           before += lines.length; after += kept.length;
@@ -594,15 +855,21 @@ async function hash(input, report) {
   for await (const chunk of fs.createReadStream(input)) h.update(chunk);
   write(report, { sourceFile: path.basename(input), byteSize: fs.statSync(input).size, sha256: h.digest('hex') });
 }
-const [command, ...args] = process.argv.slice(2);
-try {
-  if (command === 'audit') audit(...args);
-  else if (command === 'region-expr') regionExpr(...args);
-  else if (command === 'region-name-expr') regionNameExpr(...args);
-  else if (command === 'baseline') baseline(...args);
-  else if (command === 'manifest') manifest(...args);
-  else if (command === 'prefecture-lines') prefectureLines(...args);
-  else if (command === 'prune-and-round') pruneAndRound(...args);
-  else if (command === 'hash') await hash(...args);
-  else throw new Error('Use audit, region-expr, region-name-expr, baseline, prefecture-lines, prune-and-round, manifest, or hash. See build_boundaries.sh for arguments.');
-} catch (err) { console.error(`ERROR: ${err.message}`); process.exitCode = 1; }
+// Run as a command only when executed directly; tests import walkNetwork without running a command.
+const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) {
+  const [command, ...args] = process.argv.slice(2);
+  try {
+    if (command === 'audit') audit(...args);
+    else if (command === 'region-expr') regionExpr(...args);
+    else if (command === 'region-name-expr') regionNameExpr(...args);
+    else if (command === 'baseline') baseline(...args);
+    else if (command === 'manifest') manifest(...args);
+    else if (command === 'prefecture-lines') prefectureLines(...args);
+    else if (command === 'municipality-lines') municipalityLines(...args);
+    else if (command === 'prune-and-round') pruneAndRound(...args);
+    else if (command === 'hash') await hash(...args);
+    else throw new Error('Use audit, region-expr, region-name-expr, baseline, prefecture-lines, municipality-lines, prune-and-round, manifest, or hash. See build_boundaries.sh for arguments.');
+  } catch (err) { console.error(`ERROR: ${err.message}`); process.exitCode = 1; }
+}
+export { walkNetwork };
