@@ -73,13 +73,16 @@ nonisolated struct AdministrativeBoundary: Identifiable, Sendable {
     var id: String { code }
 }
 
-/// 県境または海岸線の1本の線。県境は隣り合う2県のどちらか一方だけが持つので、同じ線を2回描かない。
+/// 県境・海岸線、または県内の市区町村どうしの境の1本の線。県境は隣り合う2県のどちらか一方だけが持つので、同じ線を2回描かない。
 nonisolated struct BoundaryLine: Identifiable, Sendable {
     enum Kind: String, Sendable {
         /// 都道府県どうしの境。
         case border
         /// 海岸線(陸地の外周)。島ごとに閉じた線になる。
         case coast
+        /// 県内の市区町村どうしの境(`BoundaryLayer.municipalityLines`)。つながった境をまとめた一筆書きなので、
+        /// 同じ区間を往復することがある。
+        case municipal
     }
 
     /// ファイルidとファイル内の番号の組み合わせ。同じファイルを読めば常に同じidになる。

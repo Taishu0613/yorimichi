@@ -47,8 +47,6 @@ struct MapScreen: View {
     @State private var mapHeight: CGFloat = 0
     /// 地図の横幅(pt)。表示範囲と合わせて縮尺(1ptあたりのm)を求めるために使う。
     @State private var mapWidth: CGFloat = 0
-    /// 今の縮尺での境界線の太さ。カメラが止まったときだけ更新する(動かしている最中に変えると毎フレーム全ピースを描き直すため)。
-    @State private var boundaryLineWidths = BoundaryLineWidths.widest
     /// ヘッダー(進捗カード+現在地バッジ/戻るボタンの行)の実測高さ。MapKit標準のコンパス/スケール表示が
     /// ここに被らないよう、Mapのセーフエリアをこの分だけ広げる。
     @State private var headerOverlayHeight: CGFloat = 0
@@ -459,16 +457,17 @@ struct MapScreen: View {
             // ピースは地面に敷くものなので、ピンや現在地より先(下)に置く。
             MunicipalityPuzzleLayer(
                 municipalityPieces: puzzleStore.municipalityPieces,
+                municipalityMeshLines: puzzleStore.municipalityMeshLines,
                 prefectureBorders: puzzleStore.prefectureBorders,
                 prefectureAreas: puzzleStore.prefectureAreas,
-                showsUnvisitedMunicipalities: puzzleStore.showsUnvisitedMunicipalities,
                 visitedCodes: visitedMunicipalityCodes,
                 designatedCityOutlines: puzzleStore.designatedCityOutlines,
                 designatedCities: designatedCityMapState,
                 currentCode: viewModel.currentVisit?.municipality.code,
                 prefectureConquestLevels: prefectureConquestLevels,
                 emphasis: areaEffect.emphasis,
-                lineWidths: boundaryLineWidths
+                // 線の太さはカメラが止まったときだけ、ピースの入れ替えと同じ更新で変わる(`MunicipalityPuzzleStore.lineWidths`)。
+                lineWidths: puzzleStore.lineWidths
             )
             UserAnnotation()
             if showsPlacePins {
@@ -508,9 +507,12 @@ struct MapScreen: View {
             let fullFrameRect = MapFullFrameRect.rect(
                 visibleRect: context.rect, mapHeight: mapHeight, topInset: headerOverlayHeight, bottomInset: mapBottomInset
             )
-            puzzleStore.showRegion(MKCoordinateRegion(fullFrameRect))
+            let scale = BoundaryMapScale(visibleRect: context.rect, mapWidthPoints: mapWidth)
+            puzzleStore.showRegion(MKCoordinateRegion(fullFrameRect), scale: scale)
             areaEffect.cameraDidSettle(visibleRect: context.rect)
-            handleMapScaleChange(visibleRect: context.rect)
+            if let scale {
+                switchToMunicipalityPageIfZoomedIn(scale: scale)
+            }
         }
         // 地図を動かしている間は脈打ちを止める。操作中は毎フレーム呼ばれるため、ここでは脈打ち中かを見るだけにし、
         // 止めるときの1回しか状態を書き換えない(書き換えるたびに画面全体が描き直されるため)。
@@ -1082,17 +1084,6 @@ struct MapScreen: View {
             japanIntroCameraTarget = nil
             presentJapanIntroIfNeeded()
         }
-    }
-
-    /// カメラが止まったときに、縮尺に合わせて線の太さとヘッダーのページを決め直す。
-    private func handleMapScaleChange(visibleRect: MKMapRect) {
-        guard let scale = BoundaryMapScale(visibleRect: visibleRect, mapWidthPoints: mapWidth) else { return }
-        let lineWidths = BoundaryLineWidths(scale: scale)
-        // 同じ太さを書き戻しても地図全体の再評価が走るため、段階が変わったときだけ書き換える。
-        if lineWidths != boundaryLineWidths {
-            boundaryLineWidths = lineWidths
-        }
-        switchToMunicipalityPageIfZoomedIn(scale: scale)
     }
 
     /// 都道府県ページのままユーザーが市区町村の縮尺まで拡大したら、市区町村ページ(パズル表示)に切り替える。

@@ -11,7 +11,8 @@ actor BoundaryRepository {
     }
 
     /// LOD1で広域(〜900km)を見たときに重なる都道府県数(十数件)を市区町村・県境線の2レイヤぶん収め、
-    /// 行き来しても読み直さずに済む数。
+    /// 行き来しても読み直さずに済む数。網目を描く縮尺(〜150km)では市区町村境の線のファイルも加わるが、
+    /// 重なる都道府県は10件前後なので3レイヤぶんでも収まる。
     /// 1ファイルは数百KB〜数MB。
     static let maximumCachedFileCount = 48
 
@@ -27,7 +28,8 @@ actor BoundaryRepository {
         self.baseURL = baseURL
     }
 
-    /// アプリ本体に同梱したデータを読む。Xcodeプロジェクト上で`manifest.json`と`municipalities`・`prefectures`・`prefectureLines`フォルダを
+    /// アプリ本体に同梱したデータを読む。Xcodeプロジェクト上で`manifest.json`と`municipalities`・`prefectures`・`prefectureLines`・
+    /// `municipalityLines`フォルダを
     /// バンドル直下へコピーしている(`BoundaryData/README.md`「アプリへの組み込み」参照)。
     static func bundled(in bundle: Bundle = .main) -> BoundaryRepository {
         BoundaryRepository(baseURL: bundle.resourceURL ?? bundle.bundleURL)

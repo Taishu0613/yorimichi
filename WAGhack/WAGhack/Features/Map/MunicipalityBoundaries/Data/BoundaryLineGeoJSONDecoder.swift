@@ -1,10 +1,11 @@
 import CoreLocation
 import Foundation
 
-/// 県境・海岸線のGeoJSON(FeatureCollection)を`BoundaryLine`へ変換する。
+/// 県境・海岸線と市区町村境のGeoJSON(FeatureCollection)を`BoundaryLine`へ変換する。
 ///
-/// 対応するのは`BoundaryData`の`prefectureLines`レイヤの形式だけ(WGS84経緯度、LineString/MultiLineString、
-/// properties `{p, k}`。kは`border`/`coast`)。1つのFeatureに同じ種類の線が多数まとめて入っている。
+/// 対応するのは`BoundaryData`の`prefectureLines`・`municipalityLines`レイヤの形式だけ(WGS84経緯度、
+/// LineString/MultiLineString、properties `{p, k}`。kは`border`/`coast`/`municipal`)。
+/// 1つのFeatureに同じ種類の線が多数まとめて入っている。
 nonisolated struct BoundaryLineGeoJSONDecoder {
     enum DecodingError: Error, Equatable {
         case unsupportedGeometry(type: String)
@@ -58,7 +59,7 @@ private nonisolated struct LineFeatureCollection: Decodable {
 }
 
 private nonisolated struct LineFeature: Decodable {
-    /// k: 線の種類(`border`=県境 / `coast`=海岸線)。所有する都道府県コード`p`もあるがアプリでは使わない。
+    /// k: 線の種類(`border`=県境 / `coast`=海岸線 / `municipal`=市区町村境)。所有する都道府県コード`p`もあるがアプリでは使わない。
     struct Properties: Decodable {
         let k: String
     }

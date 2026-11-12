@@ -40,6 +40,12 @@ nonisolated struct BoundaryLineWidths: Equatable, Sendable {
     /// 太さの段階数。カメラが止まるたびに少しずつ太さが変わると、そのたびに全ピースの描き直しが走るため、
     /// 段階に丸めて変化の回数を抑える。
     static let steps = 8.0
+    /// 段の切り替えのヒステリシス(1段の幅に対する割合)。今の段の境目を、この割合だけ越えてから次の段へ移る。
+    ///
+    /// 段の境目は横幅390ptの画面で約130km・79km・49km・30kmに来る。130kmは網目(未訪問の市区町村)を出し入れする
+    /// 120〜150kmの帯の中、49kmはLOD2↔3の切替(50/65km)とほぼ同じ縮尺で、境目付近を行き来するたびに
+    /// 全ピースの描き直しが繰り返されていた。1段は縮尺の約1.6倍に当たり、0.25段は約13%の拡大・縮小になる。
+    static let stepHysteresis = 0.25
 
     static let prefectureBorderRange: ClosedRange<CGFloat> = 0.8...3.2
     static let municipalityLineRange: ClosedRange<CGFloat> = 0.35...2.2
@@ -51,14 +57,30 @@ nonisolated struct BoundaryLineWidths: Equatable, Sendable {
     private static let designedOutline: CGFloat = 2.5
 
     /// 最も引いた縮尺の太さ。縮尺がまだ分からない起動直後に使う(細い方が潰れる心配がない)。
-    static let widest = BoundaryLineWidths(closeness: 0)
+    static let widest = BoundaryLineWidths(step: 0)
 
+    /// 段階(0=最も引いた縮尺 〜 `steps`=最も寄った縮尺)。太さはこの値だけから決まる。
+    let step: Int
+
+    /// 縮尺から太さを決める(ヒステリシスなし)。
     init(scale: BoundaryMapScale) {
-        self.init(closeness: Self.closeness(metersPerPoint: scale.metersPerPoint))
+        self.init(step: Int(Self.stepPosition(metersPerPoint: scale.metersPerPoint).rounded()))
     }
 
-    /// - Parameter closeness: 0(最も引いた縮尺)〜1(最も寄った縮尺)。
-    private init(closeness: Double) {
+    /// 今の太さ(`current`)と縮尺から、次の太さを決める。境目をわずかに越えただけなら今の段を保つ
+    /// (`stepHysteresis`。`UnvisitedMunicipalityVisibility`・`BoundaryLODSelector`と同じ考え方)。
+    init(scale: BoundaryMapScale, current: BoundaryLineWidths) {
+        let position = Self.stepPosition(metersPerPoint: scale.metersPerPoint)
+        if abs(position - Double(current.step)) <= 0.5 + Self.stepHysteresis {
+            self = current
+        } else {
+            self.init(step: Int(position.rounded()))
+        }
+    }
+
+    private init(step: Int) {
+        self.step = step
+        let closeness = Double(step) / Self.steps
         prefectureBorder = Self.interpolate(Self.prefectureBorderRange, closeness)
         municipalityLine = Self.interpolate(Self.municipalityLineRange, closeness)
         currentOutline = Self.interpolate(Self.currentOutlineRange, closeness)
@@ -77,10 +99,15 @@ nonisolated struct BoundaryLineWidths: Equatable, Sendable {
 
     /// 縮尺を0(引き)〜1(寄り)に換算し、`steps`段に丸める。
     static func closeness(metersPerPoint: Double) -> Double {
+        stepPosition(metersPerPoint: metersPerPoint).rounded() / steps
+    }
+
+    /// 縮尺を0(引き)〜`steps`(寄り)の連続値に換算する。縮尺の対数に比例する。
+    private static func stepPosition(metersPerPoint: Double) -> Double {
         guard metersPerPoint.isFinite, metersPerPoint > 0 else { return 0 }
         let clamped = min(max(metersPerPoint, closestMetersPerPoint), widestMetersPerPoint)
         let ratio = log(widestMetersPerPoint / clamped) / log(widestMetersPerPoint / closestMetersPerPoint)
-        return (ratio * steps).rounded() / steps
+        return ratio * steps
     }
 
     private static func interpolate(_ range: ClosedRange<CGFloat>, _ closeness: Double) -> CGFloat {

@@ -55,6 +55,42 @@ struct BoundaryLineWidthsTests {
         #expect(BoundaryLineWidths.closeness(metersPerPoint: 250) == BoundaryLineWidths.closeness(metersPerPoint: 255))
     }
 
+    // 横幅390ptの画面では、段4と段5の境目が横幅約130km(1ptあたり約333m)に来る。
+
+    @Test func 段の境目をわずかに越えただけでは今の太さを保つ() throws {
+        let current = BoundaryLineWidths(scale: try #require(makeScale(widthMeters: 140_000, points: 390)))
+        let crossed = try #require(makeScale(widthMeters: 125_000, points: 390))
+
+        // ヒステリシスなしなら段が変わる位置。
+        #expect(BoundaryLineWidths(scale: crossed) != current)
+        #expect(BoundaryLineWidths(scale: crossed, current: current) == current)
+    }
+
+    @Test func 境目付近を行き来しても太さは変わらない() throws {
+        var widths = BoundaryLineWidths(scale: try #require(makeScale(widthMeters: 140_000, points: 390)))
+        let first = widths
+        for widthMeters in [125_000.0, 135_000, 122_000, 138_000, 126_000] {
+            widths = BoundaryLineWidths(scale: try #require(makeScale(widthMeters: widthMeters, points: 390)), current: widths)
+            #expect(widths == first)
+        }
+    }
+
+    @Test func 境目を十分越えたら次の段へ移る() throws {
+        let current = BoundaryLineWidths(scale: try #require(makeScale(widthMeters: 140_000, points: 390)))
+        let zoomedIn = try #require(makeScale(widthMeters: 110_000, points: 390))
+
+        let next = BoundaryLineWidths(scale: zoomedIn, current: current)
+
+        #expect(next == BoundaryLineWidths(scale: zoomedIn))
+        #expect(next.municipalityLine > current.municipalityLine)
+    }
+
+    @Test func 一気に寄ったら最寄りの段へ移る() throws {
+        let next = BoundaryLineWidths(scale: try #require(makeScale(widthMeters: 10_000)), current: .widest)
+
+        #expect(next.municipalityLine == BoundaryLineWidths.municipalityLineRange.upperBound)
+    }
+
     @Test func 県全体の縮尺では市区町村ページに切り替えない() {
         #expect(!MapProgressPageZoomPolicy.shouldSwitchToMunicipalities(visibleWidthMeters: 60_000))
     }

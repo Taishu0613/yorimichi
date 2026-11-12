@@ -13,6 +13,7 @@
 		C0DEC0DE0000000000000007 /* municipalities in Resources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE0000000000000008 /* municipalities */; };
 		C0DEC0DE0000000000000009 /* prefectures in Resources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE0000000000000010 /* prefectures */; };
 		C0DEC0DE0000000000000011 /* prefectureLines in Resources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE0000000000000012 /* prefectureLines */; };
+		C0DEC0DE0000000000000013 /* municipalityLines in Resources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE0000000000000014 /* municipalityLines */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -42,6 +43,7 @@
 		C0DEC0DE0000000000000008 /* municipalities */ = {isa = PBXFileReference; lastKnownFileType = folder; name = municipalities; path = ../BoundaryData/generated/BoundaryData/municipalities; sourceTree = "<group>"; };
 		C0DEC0DE0000000000000010 /* prefectures */ = {isa = PBXFileReference; lastKnownFileType = folder; name = prefectures; path = ../BoundaryData/generated/BoundaryData/prefectures; sourceTree = "<group>"; };
 		C0DEC0DE0000000000000012 /* prefectureLines */ = {isa = PBXFileReference; lastKnownFileType = folder; name = prefectureLines; path = ../BoundaryData/generated/BoundaryData/prefectureLines; sourceTree = "<group>"; };
+		C0DEC0DE0000000000000014 /* municipalityLines */ = {isa = PBXFileReference; lastKnownFileType = folder; name = municipalityLines; path = ../BoundaryData/generated/BoundaryData/municipalityLines; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -96,6 +98,7 @@
 				C0DEC0DE0000000000000008 /* municipalities */,
 				C0DEC0DE0000000000000010 /* prefectures */,
 				C0DEC0DE0000000000000012 /* prefectureLines */,
+				C0DEC0DE0000000000000014 /* municipalityLines */,
 				94AD809B303A88720016FA7C /* WAGhack */,
 				94AD80AB303A88740016FA7C /* WAGhackTests */,
 				94AD80B5303A88740016FA7C /* WAGhackUITests */,
@@ -239,6 +242,7 @@
 				C0DEC0DE0000000000000007 /* municipalities in Resources */,
 				C0DEC0DE0000000000000009 /* prefectures in Resources */,
 				C0DEC0DE0000000000000011 /* prefectureLines in Resources */,
+				C0DEC0DE0000000000000013 /* municipalityLines in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
