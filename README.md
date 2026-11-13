@@ -128,10 +128,10 @@ SwiftDataのQueryを取得層として維持し、単一実装だけのRepositor
 - 線の太さは縮尺で変える（`BoundaryLineWidths`）。1ptあたりのmの対数で補間し、全国表示（約3,000m/pt以上）で最も細く、市区町村全体が収まる縮尺（約60m/pt以下）で最も太くする。カメラが止まったときだけ8段階に丸めて更新する（動かしている最中や小さな変化で全ピースを描き直さないため）。段の境目を約0.25段ぶん越えるまで今の段を保つヒステリシスを入れ、太さはピースの入れ替えと同じ更新で書き換える（`MunicipalityPuzzleStore.lineWidths`。2026-11）。記録・脈打ちの演出の線も同じ倍率で太らせる。
 - 県境・海岸線: 境界データの`prefectureLines`（線）を`MapPolyline`で描く。市区町村の線より太い不透明の灰色（全国表示1.2pt〜市区町村の縮尺4.0pt）で、主に太さと色味で市区町村の線と区別する。線の継ぎ目は丸める（鋭角がトゲ状に伸びるのを防ぐ）。1本の県境はデータ上1回しか入っていないので二重に描かない。
   - 線には`mapOverlayLevel(.aboveLabels)`を付けない（付けると線が描かれない。iOS 26.5シミュレータで確認）。現在地の縁取り（ポリゴン）だけ`.aboveLabels`に置く。
-- 市区町村名: アプリで描く（`MunicipalityNameLabelLayer`。2026-11）。Appleマップ標準の地名は文字の大きさ・色を変えられず、お店などのアイコンに混ざって読みにくかったため。13ptの太字を地図の地の色でフチ取り、訪問済みはティール、未訪問は灰色にする（ダークモードでは文字を明るく・フチを暗く）。
-  - 出すのは網目を描く縮尺（市区町村モード）のときだけで、さらに区域の最大の島が名前の入る大きさ（1文字14pt換算、最低56pt幅）に見えるものに限る（`MunicipalityNameLabelPolicy.fits`）。小さい区域に詰めると隣と重なるため。
-  - 位置は外接矩形の中心ではなく、区域を横に切った線のうち内側で最も長い区間の中点（`MunicipalityNameLabelPolicy.labelCoordinate`）。コの字形・飛び地を囲む区域でも名前が区域の外に出ない。
-  - 政令指定都市の区は区の名前だけを出す（「名古屋市中区」→「中区」）。Appleマップ標準の地名も消せないので、市区町村名が二重に見える場所がある。
+- 区域名: 地図をタップすると、その場所の市区町村（全国ページでは都道府県）の名前を吹き出しで3秒出す（`MapAreaNameCallout`。2026-11）。記録済みの区域にはチェックを添える。
+  - 市区町村名を常に描くと、Appleマップ標準の地名（アプリから消せない）と二重に見えるため、知りたい所をタップしたときだけにしている。
+  - 区域は読み込み済みの境界の形から点の内外判定で探す（`AreaHitTest`、`MunicipalityPuzzleStore.areaName(at:)`）。穴（飛び地）の中は飛び地の区域になる。
+  - ピンのタップでも地図のタップは呼ばれるため、ピンを選んでいる間は出さず、ピンを選んだら消す。
   - 以前は都道府県ポリゴンの外周を県境として描いていた。元データのすき間で県が複数のポリゴンに分かれていた場所（千代田・中央・港区の外周、田原市と豊橋市の間など8か所）に、県内なのに県境の線が出ていた。データ生成で`-clean`を入れ、県境を線データにして解消した。
 - 穴（飛び地）のある形: MapKitは穴のあるポリゴンの縁取りを、同じ太さを指定しても太くぼやけて描く（iOS 26.5シミュレータで確認）。そのため川越市・小金井市など飛び地を囲む市区町村や、東京都などの訪問済みの縁取りだけが、引いたときに県境のような太い線に見えていた。穴のあるピースは、塗りを穴付きのポリゴン（縁取りなし）で描き、縁取りは外周と各穴をそれぞれ穴の無いポリゴンにして描く（`BoundaryPiece.outlines`）。線（`MapPolyline`）にしないのは、`.aboveLabels`に置けず灰色の県境の下に隠れることがあるため。
 - 表示モード: 踏破率ヘッダー上部のセグメント（市区町村｜都道府県）で切り替える（ヘッダーの横スワイプでも可）。市区町村では市区町村のピースを塗り、都道府県では都道府県ごとの制覇率で塗り分け、市区町村のデータは読み込まない。選択は`@AppStorage("map.progressPage")`で端末に保存（初期値は都道府県）。都道府県ページのままユーザーが画面幅40km以下まで拡大すると、市区町村ページへ自動で切り替える（`MapProgressPageZoomPolicy`。アプリが動かしたカメラでは切り替えない＝`MapCameraPosition.positionedByUser`で判定）。引いたときに都道府県ページへ戻す自動切り替えはしない。記録の儀式では、記録する単位に合わせてアプリが表示を切り替える（2026-10-22）。「日本」と初めての都道府県の儀式では都道府県ページ（都道府県の儀式では県全体へ寄せる）、その後に続く市区町村の誘いでは市区町村ページ（市区町村全体へ寄せる）にし、保存する選択も書き換える。初回の日本→都道府県→市区町村の流れで、地図の単位を記録の順に合わせるため。起動直後など都道府県が不明な間は保存値を書き換えずに都道府県ページを見せ、分かり次第保存した選択へ戻す。以前あった右上の境界メニュー（市区町村と県境／県境のみ）は、ヘッダーの切り替えと役割が重なるため廃止した。
@@ -198,7 +198,7 @@ MapKitはポリゴン1枚ごとに描画を持つため、枚数がそのまま�
 
 `カメラ停止(onMapCameraChange .onEnd。表示範囲と縮尺) / 表示モード変更 → MunicipalityPuzzleStore → BoundaryRepository(actor) → 市区町村ピース + 県境線 +（網目を描く縮尺のとき）市区町村境の線 +（都道府県表示のとき）都道府県の面 + 線の太さ`
 `上記 + SavedPlaceの訪問コード + 現在地コード + 制覇率 → MunicipalityPuzzleLayer（MapContent）`
-`MunicipalityPuzzleStore.municipalityNameLabels（名前と位置）+ SavedPlaceの訪問コード → MunicipalityNameLabelLayer（MapContent）`
+`地図のタップ → MapReaderで座標に変換 → MunicipalityPuzzleStore.areaName(at:)（読み込み済みの区域から内外判定）→ MapScreen.tappedAreaName → MapAreaNameCallout（3秒で消す）`
 
 `Features/Map/MunicipalityBoundaries/`にまとめてあり、フォルダごと消せば機能を外せる。
 
@@ -208,14 +208,13 @@ MapKitはポリゴン1枚ごとに描画を持つため、枚数がそのまま�
 | `Models/BoundaryManifest.swift` | manifest.jsonの読み取り。レイヤ（`BoundaryLayer`）・LOD・表示範囲からファイルを選ぶ |
 | `Models/BoundaryLOD.swift` | 画面幅からLODを決める（ヒステリシス） |
 | `Models/UnvisitedMunicipalityVisibility.swift` | 画面幅から未訪問の網目を描くかを決める（ヒステリシス） |
-| `Models/MunicipalityNameLabel.swift` | 市区町村名の値型と、出す条件・置く位置の規則（`MunicipalityNameLabelPolicy`） |
+| `Models/TappedAreaName.swift` | タップした区域名の値型と、座標がどの区域に入るかの判定（`AreaHitTest`） |
 | `Models/BoundaryPieceFilter.swift` | 縮尺に対して小さすぎる島を省く規則 |
 | `Data/BoundaryGeoJSONDecoder.swift` | ポリゴンのGeoJSON → 値型への変換（市区町村`{c,n,p}`・都道府県`{p,n}`） |
 | `Data/BoundaryLineGeoJSONDecoder.swift` | 県境線・市区町村境の線のGeoJSON → `BoundaryLine`（`{p,k}`、kは`border`/`coast`/`municipal`） |
 | `Data/BoundaryRepository.swift` | バンドルからの読み込み（メインスレッド外）とファイル単位のLRUキャッシュ（48件） |
 | `MunicipalityPuzzleStore.swift` | 表示範囲・モード → LOD → ファイル → 描くピースと網目の線。未訪問の網目を描くかと線の太さも決め、まとめて書き換える。古い読み込みは取り消す |
 | `MunicipalityPuzzleLayer.swift` | 塗り分けと重なり順（`MunicipalityPieceStyle` / `PrefectureBorderStyle`） |
-| `MunicipalityNameLabelLayer.swift` | 市区町村名の文字（フチ取り・訪問済みの色分け。`MunicipalityNameLabelStyle`） |
 | `BoundaryDisplayMode.swift` | 読み込む境界の種類。ユーザーは直接選ばず、`MapScreen`が踏破率ヘッダーのページから決める |
 | `BoundaryAttributionView.swift` | 出典表示 |
 
