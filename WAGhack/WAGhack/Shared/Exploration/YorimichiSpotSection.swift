@@ -134,7 +134,7 @@ struct YorimichiSpotRow: View {
     private var thumbnail: some View {
         let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
         return ZStack {
-            shape.fill(Pop.themeSoft)
+            shape.fill(Pop.themeTint)
             Image(systemName: spot.experience.systemImage)
                 .font(.title3.weight(.bold))
                 .foregroundStyle(Pop.theme)

@@ -141,7 +141,7 @@ struct MunicipalityHeroView: View {
             shape.fill(Pop.shadow, style: FillStyle(eoFill: true))
                 .offset(x: shadowOffset, y: shadowOffset)
             // 白い紙の上で地図と同じ見え方になるよう、塗りは不透明な薄い色にしてから縁取る。
-            shape.fill(Pop.themeSoft, style: FillStyle(eoFill: true))
+            shape.fill(Pop.themeTint, style: FillStyle(eoFill: true))
             shape.stroke(Pop.theme, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
         }
     }

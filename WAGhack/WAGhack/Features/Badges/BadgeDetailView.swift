@@ -102,7 +102,7 @@ struct BadgeDetailView: View {
             // 獲得済みは台紙に押したように見せる。まだのものは台紙の枠だけを用意して、押す場所があることを伝える。
             .background {
                 RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .fill(status.isEarned ? Pop.themeSoft.opacity(0.55) : Pop.card)
+                    .fill(status.isEarned ? Pop.themeTint.opacity(0.55) : Pop.card)
                     .overlay(
                         RoundedRectangle(cornerRadius: 28, style: .continuous)
                             .strokeBorder(Pop.border, style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
@@ -278,7 +278,7 @@ struct BadgeDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(Pop.themeSoft.opacity(0.35), in: RoundedRectangle(cornerRadius: Pop.cornerRadius, style: .continuous))
+        .background(Pop.themeTint.opacity(0.35), in: RoundedRectangle(cornerRadius: Pop.cornerRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: Pop.cornerRadius, style: .continuous)
                 .strokeBorder(Pop.border, style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))

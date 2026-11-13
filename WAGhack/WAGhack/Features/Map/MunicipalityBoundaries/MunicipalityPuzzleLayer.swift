@@ -224,13 +224,17 @@ struct MunicipalityPieceStyle {
         // 訪問済みの色は、アプリのテーマ色(.teal。進捗カードやタブのtintと同じ)に揃える。
         // 未開拓は塗らず、線も地図の邪魔にならない薄さにする。
         let normalFill: Color = isVisited ? .teal.opacity(0.35) : .clear
-        let normalStroke: Color = isVisited ? .teal.opacity(0.9) : .gray.opacity(0.35)
+        let normalStroke: Color = isVisited ? .teal.opacity(0.9) : Self.unvisitedStroke
         fill = emphasis?.fill?.color ?? normalFill
         stroke = emphasis?.pieceStroke?.paint.color ?? normalStroke
         // 訪問済みも未訪問と同じ太さ。訪問済みは塗りで分かる。県境より常に細く、県境との区別は太さと色
         // (県境は不透明の灰色、こちらは半透明)の両方で付く。
         lineWidth = emphasis?.pieceStroke.map { CGFloat($0.width * lineWidths.pieceStrokeScale) } ?? lineWidths.municipalityLine
     }
+
+    /// 未訪問のピースの線。ダークモードの地図は背景が暗く、ライトと同じ薄さでは線がほとんど見えないため少し濃くする。
+    /// それでも県境(不透明・太い)よりは控えめに留め、太さと濃さの序列は崩さない。
+    static let unvisitedStroke = MapOverlayColor.adaptiveOpacity(.systemGray, light: 0.35, dark: 0.5)
 }
 
 /// 都道府県の制覇率の塗り。市区町村のピースと同じく、未訪問は塗らず、訪問済みはテーマ色(.teal)にして
@@ -286,8 +290,9 @@ struct DesignatedCityMapState {
 enum DesignatedCityStyle {
     /// 地図の線と、図鑑・祝福シートなど市を表すUIの色。
     static let color = Color.blue
-    static let outlineStroke = color.opacity(0.55)
-    static let fill = color.opacity(0.15)
+    /// ダークモードの地図では、青を同じ透明度で重ねると暗い背景に沈んで市の範囲が読めないため、少し濃くする。
+    static let outlineStroke = MapOverlayColor.adaptiveOpacity(.systemBlue, light: 0.55, dark: 0.75)
+    static let fill = MapOverlayColor.adaptiveOpacity(.systemBlue, light: 0.15, dark: 0.22)
     /// 区の線(`municipalityLine`)より太く、県境より細い(`BoundaryLineWidths.designatedCityOutline`)。
     static func outlineStrokeStyle(_ lineWidths: BoundaryLineWidths) -> StrokeStyle {
         StrokeStyle(lineWidth: lineWidths.designatedCityOutline, lineCap: .round, lineJoin: .round)
@@ -317,6 +322,18 @@ enum PrefectureBorderStyle {
     /// (`BoundaryLineWidths.prefectureBorderRange`)。
     static func strokeStyle(_ lineWidths: BoundaryLineWidths) -> StrokeStyle {
         StrokeStyle(lineWidth: lineWidths.prefectureBorder, lineCap: .round, lineJoin: .round)
+    }
+}
+
+/// 地図に重ねる色を、ライト・ダークで透明度だけ変えて作る。
+/// 暗い地図の上では同じ透明度の線や塗りが沈んで見えるため、ダークモードだけ少し濃くしたいときに使う。
+/// 色そのもの(システムカラー)はモードに合わせてiOSが切り替えるので、ここでは透明度だけを決める。
+enum MapOverlayColor {
+    static func adaptiveOpacity(_ base: UIColor, light: CGFloat, dark: CGFloat) -> Color {
+        Color(uiColor: UIColor { traits in
+            let opacity = traits.userInterfaceStyle == .dark ? dark : light
+            return base.resolvedColor(with: traits).withAlphaComponent(opacity)
+        })
     }
 }
 

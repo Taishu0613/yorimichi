@@ -28,7 +28,7 @@ struct BadgeStampView: View {
         ZStack {
             if !isEarned, definition.isAvailable {
                 Circle()
-                    .stroke(Pop.themeSoft, lineWidth: ringWidth)
+                    .stroke(Pop.themeTint, lineWidth: ringWidth)
                 Circle()
                     .trim(from: 0, to: min(max(progressFraction, 0), 1))
                     .stroke(Pop.theme, style: StrokeStyle(lineWidth: ringWidth, lineCap: .round))

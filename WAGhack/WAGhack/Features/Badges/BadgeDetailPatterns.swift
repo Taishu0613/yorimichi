@@ -230,7 +230,7 @@ struct BadgeThemeSpotSection: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
             .background(
-                item.isVisited ? Pop.themeSoft.opacity(0.6) : Pop.card,
+                item.isVisited ? Pop.themeTint.opacity(0.6) : Pop.card,
                 in: RoundedRectangle(cornerRadius: 14, style: .continuous)
             )
             .overlay(
