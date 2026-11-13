@@ -1,14 +1,14 @@
 import CoreLocation
 
-/// 地図をタップした場所の区域(市区町村、または都道府県ページなら都道府県)の名前。吹き出し(`MapAreaNameCallout`)に出す。
+/// 地図を長押しした場所の区域(市区町村、または都道府県ページなら都道府県)の名前。吹き出し(`MapAreaNameCallout`)に出す。
 ///
 /// 市区町村名を地図に常に描くと、Appleマップ標準の地名(アプリから消せない)と二重に見えるため、
-/// 名前は知りたい区域をタップしたときだけ出す。
-nonisolated struct TappedAreaName: Equatable, Sendable {
+/// 名前は知りたい区域を長押ししたときだけ出す。
+nonisolated struct PressedAreaName: Equatable, Sendable {
     /// 市区町村なら行政区域コード(5桁)、都道府県なら都道府県コード(2桁)。訪問済みかを調べるのに使う。
     let code: String
     let name: String
-    /// 吹き出しを出す位置。タップした場所そのもの(指を置いた所に名前が出る方が、どの区域の名前か分かりやすい)。
+    /// 吹き出しを出す位置。長押しした場所そのもの(指を置いた所に名前が出る方が、どの区域の名前か分かりやすい)。
     let coordinate: CLLocationCoordinate2D
 
     static func == (lhs: Self, rhs: Self) -> Bool {
