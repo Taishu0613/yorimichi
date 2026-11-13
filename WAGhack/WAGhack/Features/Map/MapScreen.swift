@@ -40,6 +40,10 @@ struct MapScreen: View {
     /// 実際に表示するページは`progressPage`を参照すること。
     @AppStorage("map.progressPage") private var preferredProgressPage: MapProgressPage = .prefectures
     @State private var selectedPlaceID: PersistentIdentifier?
+    /// 地図を長押しした区域の名前。吹き出しで少しの間だけ出す(`handleMapLongPress`)。
+    @State private var pressedAreaName: PressedAreaName?
+    /// 区域名の吹き出しを消すまでの待ち。続けてタップしたら取り消して、最後のタップから数え直す。
+    @State private var pressedAreaNameHideTask: Task<Void, Never>?
     @State private var actionTask: Task<Void, Never>?
     @State private var focusTask: Task<Void, Never>?
     /// 最後にカメラが止まった時の表示範囲。区域へ寄せるアニメーションの長さを、そこからの変化量で決めるために使う。
@@ -448,151 +452,202 @@ struct MapScreen: View {
             .onDisappear {
                 focusTask?.cancel()
                 actionTask?.cancel()
+                pressedAreaNameHideTask?.cancel()
                 areaEffect.settleImmediately()
             }
     }
 
     private func mapLayer(prefecture: PrefectureExploration?, summary: ExplorationSummary) -> some View {
-        Map(position: $cameraPosition, selection: $selectedPlaceID) {
-            // ピースは地面に敷くものなので、ピンや現在地より先(下)に置く。
-            MunicipalityPuzzleLayer(
-                municipalityPieces: puzzleStore.municipalityPieces,
-                municipalityMeshLines: puzzleStore.municipalityMeshLines,
-                prefectureBorders: puzzleStore.prefectureBorders,
-                prefectureAreas: puzzleStore.prefectureAreas,
-                visitedCodes: visitedMunicipalityCodes,
-                designatedCityOutlines: puzzleStore.designatedCityOutlines,
-                designatedCities: designatedCityMapState,
-                currentCode: viewModel.currentVisit?.municipality.code,
-                prefectureConquestLevels: prefectureConquestLevels,
-                emphasis: areaEffect.emphasis,
-                // 線の太さはカメラが止まったときだけ、ピースの入れ替えと同じ更新で変わる(`MunicipalityPuzzleStore.lineWidths`)。
-                lineWidths: puzzleStore.lineWidths
-            )
-            UserAnnotation()
-            if showsPlacePins {
-                ForEach(savedPlaces) { place in
-                    Marker(place.displayName, systemImage: "checkmark", coordinate: place.coordinate)
-                        .tint(selectedPlaceID == place.persistentModelID ? .teal : .orange)
-                        .tag(place.persistentModelID)
-                }
-            }
-            // Markerとは別に、再記録した場所の上に吹き出しを重ねる。Marker自体の見た目は変えない。
-            // 選択用のtagを付けないので、地図の選択(selectedPlaceID)には関わらない。
-            // 記録した直後の手応えなので、ピンを隠していても出す。
-            if let confirmation = rerecordConfirmation, confirmation.stage != .updated,
-               let place = savedPlaces.first(where: { $0.persistentModelID == confirmation.placeID }) {
-                Annotation(coordinate: place.coordinate, anchor: .bottom) {
-                    MapRerecordCallout(
-                        placeName: confirmation.placeName,
-                        isDismissing: confirmation.stage == .dismissing
-                    )
-                } label: {
-                    EmptyView()
-                }
-                .annotationTitles(.hidden)
-            }
-        }
-        .mapStyle(transportLayer.mapStyle)
-        .mapControls {
-            MapCompass()
-            MapScaleView()
-        }
-        // 動かしている最中に市区町村ポリゴンを読み込み直すと重くなるため、カメラが止まった時だけ表示範囲を伝える。
-        .onMapCameraChange(frequency: .onEnd) { context in
-            handleCameraSettled(at: context.region.center)
-            visibleMapRect = context.rect
-            MapRegionMemory.save(context.region)
-            // ヘッダー・シートの裏にも地図は映っているので、ビュー全体を基準に読み込む(`MapFullFrameRect`参照)。
-            let fullFrameRect = MapFullFrameRect.rect(
-                visibleRect: context.rect, mapHeight: mapHeight, topInset: headerOverlayHeight, bottomInset: mapBottomInset
-            )
-            let scale = BoundaryMapScale(visibleRect: context.rect, mapWidthPoints: mapWidth)
-            puzzleStore.showRegion(MKCoordinateRegion(fullFrameRect), scale: scale)
-            areaEffect.cameraDidSettle(visibleRect: context.rect)
-            if let scale {
-                switchToMunicipalityPageIfZoomedIn(scale: scale)
-            }
-        }
-        // 地図を動かしている間は脈打ちを止める。操作中は毎フレーム呼ばれるため、ここでは脈打ち中かを見るだけにし、
-        // 止めるときの1回しか状態を書き換えない(書き換えるたびに画面全体が描き直されるため)。
-        .onMapCameraChange(frequency: .continuous) { _ in
-            if areaEffect.isPulsing {
-                areaEffect.stopPulse()
-            }
-        }
-        .onChange(of: loadingBoundaryMode, initial: true) { _, mode in
-            puzzleStore.setDisplayMode(mode)
-        }
-        .onGeometryChange(for: CGFloat.self) { proxy in
-            proxy.size.height
-        } action: { height in
-            mapHeight = height
-        }
-        .onGeometryChange(for: CGFloat.self) { proxy in
-            proxy.size.width
-        } action: { width in
-            mapWidth = width
-            areaEffect.updateMapWidth(width)
-        }
-        // シートに隠れる分をセーフエリアから除き、法的表示とカメラの中心をシートの上に収める。
-        .safeAreaPadding(.bottom, mapBottomInset)
-        // MapKit標準のコンパス/スケールはセーフエリアを避けて自動配置されるため、
-        // ヘッダーの実測高さ分だけ上のセーフエリアも広げて、両者が重ならないようにする。
-        .safeAreaPadding(.top, headerOverlayHeight)
-        .overlay(alignment: .top) {
-            // safeAreaInsetだとカメラの表示枠まで縮むため、overlayで地図の上に重ねるだけにする。
-            VStack(alignment: .trailing, spacing: 4) {
-                MapProgressHeader(
-                    prefecture: prefecture,
-                    summary: summary,
-                    prefectureMap: prefecture.flatMap { silhouetteStore.prefectureMaps[$0.code] },
-                    japanMap: silhouetteStore.japanMap,
-                    page: progressPageBinding,
-                    showPrefecture: showPrefectureProgress,
-                    showNationwide: showNationwideProgress
+        // 長押しした場所の座標を得るためにMapReaderで包む(`handleMapLongPress`)。
+        MapReader { proxy in
+            Map(position: $cameraPosition, selection: $selectedPlaceID) {
+                // ピースは地面に敷くものなので、ピンや現在地より先(下)に置く。
+                MunicipalityPuzzleLayer(
+                    municipalityPieces: puzzleStore.municipalityPieces,
+                    municipalityMeshLines: puzzleStore.municipalityMeshLines,
+                    prefectureBorders: puzzleStore.prefectureBorders,
+                    prefectureAreas: puzzleStore.prefectureAreas,
+                    visitedCodes: visitedMunicipalityCodes,
+                    designatedCityOutlines: puzzleStore.designatedCityOutlines,
+                    designatedCities: designatedCityMapState,
+                    currentCode: viewModel.currentVisit?.municipality.code,
+                    prefectureConquestLevels: prefectureConquestLevels,
+                    emphasis: areaEffect.emphasis,
+                    // 線の太さはカメラが止まったときだけ、ピースの入れ替えと同じ更新で変わる(`MunicipalityPuzzleStore.lineWidths`)。
+                    lineWidths: puzzleStore.lineWidths
                 )
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                if let currentLocationName {
-                    MapCurrentLocationBadge(
-                        name: currentLocationName, isRecorded: isCurrentPlaceVisited, onTap: handleCurrentLocationBadgeTap
-                    )
-                    .frame(maxWidth: .infinity, alignment: .center)
+                UserAnnotation()
+                if showsPlacePins {
+                    ForEach(savedPlaces) { place in
+                        Marker(place.displayName, systemImage: "checkmark", coordinate: place.coordinate)
+                            .tint(selectedPlaceID == place.persistentModelID ? .teal : .orange)
+                            .tag(place.persistentModelID)
+                    }
+                }
+                // Markerとは別に、再記録した場所の上に吹き出しを重ねる。Marker自体の見た目は変えない。
+                // 選択用のtagを付けないので、地図の選択(selectedPlaceID)には関わらない。
+                // 記録した直後の手応えなので、ピンを隠していても出す。
+                if let confirmation = rerecordConfirmation, confirmation.stage != .updated,
+                   let place = savedPlaces.first(where: { $0.persistentModelID == confirmation.placeID }) {
+                    Annotation(coordinate: place.coordinate, anchor: .bottom) {
+                        MapRerecordCallout(
+                            placeName: confirmation.placeName,
+                            isDismissing: confirmation.stage == .dismissing
+                        )
+                    } label: {
+                        EmptyView()
+                    }
+                    .annotationTitles(.hidden)
+                }
+                // 地図を長押しした区域の名前。市区町村名を常に描くとAppleマップ標準の地名と二重に見えるため、
+                // 知りたい所を長押ししたときだけ出す(`PressedAreaName`)。ピンより後(上)に置き、ピンに隠れないようにする。
+                if let pressedAreaName {
+                    Annotation(coordinate: pressedAreaName.coordinate, anchor: .bottom) {
+                        MapAreaNameCallout(name: pressedAreaName.name, isVisited: isAreaVisited(pressedAreaName.code))
+                    } label: {
+                        EmptyView()
+                    }
+                    .annotationTitles(.hidden)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 2)
-            .padding(.bottom, 8)
+            // タップはピンの選択に使うので、区域名は長押しで出す(`onTapGesture`だとピンを選べなくなる。`MapLongPressGesture`参照)。
+            .gesture(MapLongPressGesture { position in
+                handleMapLongPress(at: position, proxy: proxy)
+            })
+            // 長押しが効いたと指で分かるよう、吹き出しを出すたびに軽く震わせる。
+            .sensoryFeedback(.impact(weight: .light), trigger: pressedAreaName) { _, newValue in newValue != nil }
+            .mapStyle(transportLayer.mapStyle)
+            .mapControls {
+                MapCompass()
+                MapScaleView()
+            }
+            // 動かしている最中に市区町村ポリゴンを読み込み直すと重くなるため、カメラが止まった時だけ表示範囲を伝える。
+            .onMapCameraChange(frequency: .onEnd) { context in
+                handleCameraSettled(at: context.region.center)
+                visibleMapRect = context.rect
+                MapRegionMemory.save(context.region)
+                // ヘッダー・シートの裏にも地図は映っているので、ビュー全体を基準に読み込む(`MapFullFrameRect`参照)。
+                let fullFrameRect = MapFullFrameRect.rect(
+                    visibleRect: context.rect, mapHeight: mapHeight, topInset: headerOverlayHeight, bottomInset: mapBottomInset
+                )
+                let scale = BoundaryMapScale(visibleRect: context.rect, mapWidthPoints: mapWidth)
+                puzzleStore.showRegion(MKCoordinateRegion(fullFrameRect), scale: scale)
+                areaEffect.cameraDidSettle(visibleRect: context.rect)
+                if let scale {
+                    switchToMunicipalityPageIfZoomedIn(scale: scale)
+                }
+            }
+            // 地図を動かしている間は脈打ちを止める。操作中は毎フレーム呼ばれるため、ここでは脈打ち中かを見るだけにし、
+            // 止めるときの1回しか状態を書き換えない(書き換えるたびに画面全体が描き直されるため)。
+            .onMapCameraChange(frequency: .continuous) { _ in
+                if areaEffect.isPulsing {
+                    areaEffect.stopPulse()
+                }
+            }
+            .onChange(of: loadingBoundaryMode, initial: true) { _, mode in
+                puzzleStore.setDisplayMode(mode)
+            }
             .onGeometryChange(for: CGFloat.self) { proxy in
                 proxy.size.height
             } action: { height in
-                headerOverlayHeight = height
+                mapHeight = height
             }
-        }
-        .overlay(alignment: .bottomTrailing) {
-            VStack(spacing: 12) {
-                Button("現在地へ戻る", systemImage: "location.fill") {
-                    selectedPlaceID = nil
-                    refreshLocation()
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.width
+            } action: { width in
+                mapWidth = width
+                areaEffect.updateMapWidth(width)
+            }
+            // シートに隠れる分をセーフエリアから除き、法的表示とカメラの中心をシートの上に収める。
+            .safeAreaPadding(.bottom, mapBottomInset)
+            // MapKit標準のコンパス/スケールはセーフエリアを避けて自動配置されるため、
+            // ヘッダーの実測高さ分だけ上のセーフエリアも広げて、両者が重ならないようにする。
+            .safeAreaPadding(.top, headerOverlayHeight)
+            .overlay(alignment: .top) {
+                // safeAreaInsetだとカメラの表示枠まで縮むため、overlayで地図の上に重ねるだけにする。
+                VStack(alignment: .trailing, spacing: 4) {
+                    MapProgressHeader(
+                        prefecture: prefecture,
+                        summary: summary,
+                        prefectureMap: prefecture.flatMap { silhouetteStore.prefectureMaps[$0.code] },
+                        japanMap: silhouetteStore.japanMap,
+                        page: progressPageBinding,
+                        showPrefecture: showPrefectureProgress,
+                        showNationwide: showNationwideProgress
+                    )
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if let currentLocationName {
+                        MapCurrentLocationBadge(
+                            name: currentLocationName, isRecorded: isCurrentPlaceVisited, onTap: handleCurrentLocationBadgeTap
+                        )
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    }
                 }
-                .labelStyle(.iconOnly)
-                .font(.title2)
-                .frame(width: 56, height: 56)
-                .contentShape(Circle())
-                .glassEffect(.regular, in: Circle())
-                .disabled(viewModel.isBusy)
-
-                MapTransportLayerButton(layer: $transportLayer)
-
-                MapPinVisibilityButton(showsPins: $showsPlacePins)
+                .padding(.horizontal, 16)
+                .padding(.top, 2)
+                .padding(.bottom, 8)
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.size.height
+                } action: { height in
+                    headerOverlayHeight = height
+                }
             }
-            .padding(.trailing, 16)
-            .padding(.bottom, mapBottomInset + 16)
+            .overlay(alignment: .bottomTrailing) {
+                VStack(spacing: 12) {
+                    Button("現在地へ戻る", systemImage: "location.fill") {
+                        selectedPlaceID = nil
+                        refreshLocation()
+                    }
+                    .labelStyle(.iconOnly)
+                    .font(.title2)
+                    .frame(width: 56, height: 56)
+                    .contentShape(Circle())
+                    .glassEffect(.regular, in: Circle())
+                    .disabled(viewModel.isBusy)
+
+                    MapTransportLayerButton(layer: $transportLayer)
+
+                    MapPinVisibilityButton(showsPins: $showsPlacePins)
+                }
+                .padding(.trailing, 16)
+                .padding(.bottom, mapBottomInset + 16)
+            }
         }
+    }
+
+    /// 区域名の吹き出しを出しておく長さ。名前を読むには足り、地図を見る邪魔にならない程度。
+    private static let pressedAreaNameDuration: Duration = .seconds(3)
+
+    /// 地図を長押ししたら、その場所の区域(市区町村ページなら市区町村、全国ページなら都道府県)の名前を吹き出しで出す。
+    /// 区域の外(海など)を長押ししたら吹き出しを消す。ピンを選んだら`handleSelectionChange`で消す。
+    private func handleMapLongPress(at position: CGPoint, proxy: MapProxy) {
+        pressedAreaNameHideTask?.cancel()
+        guard let coordinate = proxy.convert(position, from: .local),
+              let areaName = puzzleStore.areaName(at: coordinate) else {
+            pressedAreaName = nil
+            return
+        }
+        pressedAreaName = areaName
+        pressedAreaNameHideTask = Task {
+            try? await Task.sleep(for: Self.pressedAreaNameDuration)
+            // 取り消し(次の長押し)なら、新しい吹き出しを消さないようここで止める。
+            guard !Task.isCancelled else { return }
+            pressedAreaName = nil
+        }
+    }
+
+    /// 吹き出しの区域が記録済みか。全国ページでは都道府県の制覇率の段階で、市区町村ページでは記録の有無で判断する。
+    private func isAreaVisited(_ code: String) -> Bool {
+        if let prefectureConquestLevels {
+            return (prefectureConquestLevels[code] ?? .unvisited) != .unvisited
+        }
+        return visitedMunicipalityCodes.contains(code)
     }
 
     private func handleSelectionChange() {
         if let selectedPlace {
+            pressedAreaNameHideTask?.cancel()
+            pressedAreaName = nil
             // ピンを選ぶと地図がそのピンへ動いて再記録の場所から離れるため、吹き出しは待たずに消す。
             rerecordConfirmation = nil
             // ピンの地点だけでなく、その区域(都道府県の表示なら都道府県)全体が収まる縮尺で見せる。
