@@ -45,12 +45,20 @@ nonisolated struct GeoBoundingBox: Equatable, Sendable {
 
     /// 縦横のうち長い方の辺の長さ(m)。島の大きさを比べる用途の概算なので、中央の緯度で経度方向を補正するだけにしている。
     var longerSideMeters: Double {
-        let metersPerDegreeLatitude = 110_540.0
+        max(widthMeters, heightMeters)
+    }
+
+    /// 東西の幅(m)。中央の緯度で経度方向を補正した概算。
+    var widthMeters: Double {
         let centerLatitude = (minLatitude + maxLatitude) / 2
         let metersPerDegreeLongitude = 111_320.0 * cos(centerLatitude * .pi / 180)
-        let width = (maxLongitude - minLongitude) * metersPerDegreeLongitude
-        let height = (maxLatitude - minLatitude) * metersPerDegreeLatitude
-        return max(width, height)
+        return (maxLongitude - minLongitude) * metersPerDegreeLongitude
+    }
+
+    /// 南北の高さ(m)。
+    var heightMeters: Double {
+        let metersPerDegreeLatitude = 110_540.0
+        return (maxLatitude - minLatitude) * metersPerDegreeLatitude
     }
 }
 

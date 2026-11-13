@@ -469,6 +469,8 @@ struct MapScreen: View {
                 // 線の太さはカメラが止まったときだけ、ピースの入れ替えと同じ更新で変わる(`MunicipalityPuzzleStore.lineWidths`)。
                 lineWidths: puzzleStore.lineWidths
             )
+            // 市区町村名はピースの上、ピンや現在地より下に置く。
+            MunicipalityNameLabelLayer(labels: puzzleStore.municipalityNameLabels, visitedCodes: visitedMunicipalityCodes)
             UserAnnotation()
             if showsPlacePins {
                 ForEach(savedPlaces) { place in
