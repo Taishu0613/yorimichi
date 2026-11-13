@@ -20,6 +20,11 @@ enum Pop {
     static let theme = Color.teal
     /// テーマ色を白に薄く重ねた色。ピルや訪問済みの区の塗りに使う。モードによらず明るいので、上の文字は`inkOnAccent`にする。
     static let themeSoft = fixed(0xDAF1F5)
+    /// 面を薄くテーマ色に染めるときの色。ライトモードでは`themeSoft`と同じで、ダークモードでは暗い青緑にする。
+    /// `themeSoft`はモードによらず明るいため、ダークモードで面や地図のシルエットに使うと浮いて眩しく、
+    /// 上に`ink`(ダークモードでは明るい字)を載せると読めなくなる。小さなピル・チップ(文字は`inkOnAccent`)は`themeSoft`、
+    /// 上の文字が`ink`の面・リングやバーの下地・シルエットはこちらを使う。
+    static let themeTint = dynamic(light: 0xDAF1F5, dark: 0x234850)
     /// アクセントの黄色。蛍光ペンの見出しと、達成のピルにだけ使う。
     static let yellow = fixed(0xFFDF52)
     /// 怪奇・都市伝説だけに添える色。みどころ(黄色)と雰囲気を分けるための、アイコンと蛍光ペンだけの差し色。
@@ -98,7 +103,7 @@ struct PopProgressBar: View {
     var body: some View {
         let clamped = min(max(fraction, 0), 1)
         Capsule()
-            .fill(Pop.themeSoft.opacity(0.8))
+            .fill(Pop.themeTint.opacity(0.8))
             .overlay(alignment: .leading) {
                 GeometryReader { proxy in
                     Capsule()
@@ -120,6 +125,11 @@ struct MarkerHeading: View {
     let marker: Color
     let foreground: Color
     @ScaledMetric private var size: CGFloat
+    @Environment(\.colorScheme) private var colorScheme
+
+    /// ダークモードでの蛍光ペンの濃さ。ダークモードでは文字(`ink`)が明るくなるため、明るい黄色・水色の蛍光ペンを
+    /// そのまま引くと明るい字が明るい帯に重なって読めない。半透明にして暗い紙に馴染ませ、字とのコントラストを保つ。
+    private static let darkMarkerOpacity = 0.4
 
     init(_ text: String, size: CGFloat = 21, marker: Color = Pop.yellow, foreground: Color = Pop.ink) {
         self.text = text
@@ -134,7 +144,7 @@ struct MarkerHeading: View {
             .foregroundStyle(foreground)
             .background(alignment: .bottom) {
                 Capsule()
-                    .fill(marker)
+                    .fill(marker.opacity(colorScheme == .dark ? Self.darkMarkerOpacity : 1))
                     .frame(height: size * 0.42)
                     .padding(.horizontal, -5)
                     .rotationEffect(.degrees(-1.5))
