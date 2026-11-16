@@ -38,7 +38,7 @@
 3. 市区町村ごとに材料を集める。
    - 今の文(出力の[今の…])は材料として使ってよいが、事実は確かめ直す。
    - 都市伝説: `WebSearch` で「<都道府県><市区町村> 心霊」「<市区町村> 都市伝説 怪談」などを1〜2回検索し、同じ話が複数のサイトに出てくるか確かめる。
-   - みどころ: ja.wikipediaの記事(出力のURL)を、web-fetchエージェントで読む。1回の呼び出しに5市区町村分くらいのURLをまとめ、「地名の由来・名物の起源・日本初・伝説・意外な事実を、年や数字ごと短く抜き出して」と頼む。
+   - みどころ: ja.wikipediaの記事(出力のURL。候補が2つあるときは両方渡し、開けた方を使う)を、web-fetchエージェントで読む。URLはパーセントエンコードのまま渡す。1回の呼び出しに5市区町村分くらいのURLをまとめ、「地名の由来・名物の起源・日本初・伝説・意外な事実を、年や数字ごと短く抜き出して」と頼む。
 4. `Trivia/out/bNN.json`(NNはバッチ番号2桁)に `{"行政区域コード": {"highlight": "...", "legend": "..."}}` の形で書く。途中で止まってもよいように、10市区町村ほど書くごとに保存する。
 5. `python3 Trivia/scripts/merge_trivia.py --check` で確かめ、出た問題を直す。通ったら `python3 Trivia/scripts/merge_trivia.py` でマスタへ書き込む。
 6. 変更は `Trivia/out/bNN.json` と `LocalGovernmentCodeJapan_Knowledge.csv` だけ。コミットして `git push origin claude/project-thread-4nmqmc` する。押し出しが拒否されたら `git pull --rebase origin claude/project-thread-4nmqmc` してマージをやり直してからプッシュする(CSVがぶつかったら、相手側を取ってから `merge_trivia.py` をもう一度実行する)。メッセージは `feat: みどころ・都市伝説を書き直す(バッチNN <最初の都道府県>〜)`。

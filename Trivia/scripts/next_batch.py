@@ -7,6 +7,7 @@
 """
 import csv
 import json
+import re
 import os
 import sys
 import urllib.parse
@@ -42,8 +43,15 @@ def main():
     for code in rest:
         row = rows[code]
         title = row[2]
-        # 政令市の区は「横浜市中区」の形でそのまま記事名になる。同名の市町村は記事名が「府中市 (東京都)」のようになるので、開けなければ都道府県名を付けて探す。
-        url = "https://ja.wikipedia.org/wiki/" + urllib.parse.quote(title)
+        # 同名の市町村は記事名が「伊達市 (北海道)」のようになる。開けなかった方は捨てる。
+        urls = [title]
+        ward = re.fullmatch(r"(.+?市)(.+区)", title)
+        if ward:
+            # 政令市の区の記事名は「中央区 (札幌市)」か「白石区」の形。
+            urls = [f"{ward.group(2)}_({ward.group(1)})", ward.group(2)]
+        else:
+            urls.append(f"{title}_({row[1]})")
+        url = " または ".join("https://ja.wikipedia.org/wiki/" + urllib.parse.quote(name) for name in urls)
         print(f"\n## {code} {row[1]} {row[2]}\n{url}\n[今の都市伝説] {row[7] or '(空)'}\n[今のみどころ] {row[8] or '(空)'}")
 
 
