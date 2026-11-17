@@ -15,6 +15,7 @@ import urllib.parse
 MASTER = "LocalGovernmentCodeJapan_Knowledge.csv"
 PLAN = "Trivia/plan.json"
 OUT = "Trivia/out"
+REDO = "Trivia/redo.json"
 
 
 def written_codes(batch):
@@ -28,14 +29,22 @@ def written_codes(batch):
 def main():
     with open(PLAN, encoding="utf-8") as file:
         plan = json.load(file)
+    redo = []
+    if os.path.exists(REDO):
+        with open(REDO, encoding="utf-8") as file:
+            redo = json.load(file)
     if len(sys.argv) > 1:
         target = next(entry for entry in plan if entry["batch"] == int(sys.argv[1]))
+    elif redo:
+        # 古い調べ方で作ったバッチを作り直す。bNN.json を上書きし、終わったら redo.json から番号を消す。
+        target = next(entry for entry in plan if entry["batch"] == redo[0])
+        print(f"作り直し: バッチ {target['batch']}(Trivia/out/b{target['batch']:02d}.json を上書きし、終わったら Trivia/redo.json から {target['batch']} を消す)")
     else:
         target = next((entry for entry in plan if set(entry["codes"]) - written_codes(entry["batch"])), None)
         if target is None:
             print("全バッチ完了")
             return
-    done = written_codes(target["batch"])
+    done = set() if target["batch"] in redo else written_codes(target["batch"])
     rest = [code for code in target["codes"] if code not in done]
     with open(MASTER, encoding="utf-8-sig", newline="") as file:
         rows = {row[0]: row for row in csv.reader(file)}
