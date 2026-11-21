@@ -57,6 +57,17 @@ struct FlightDetectorTests {
         #expect(!detector.evaluate(reading(altitude: 10_000, verticalAccuracy: -1), state: FlightDetector.State()).isFlying)
     }
 
+    @Test func 上昇中の高度と速さの組み合わせで飛行中() {
+        // 時速250km・高度2,000mは、速さだけ・高度だけではどちらも閾値に届かない。
+        #expect(detector.evaluate(
+            reading(speed: 70, speedAccuracy: 3, altitude: 2_000, verticalAccuracy: 30), state: FlightDetector.State()
+        ).isFlying)
+        // 軽井沢付近(約1,000m)を走る新幹線は地上。
+        #expect(!detector.evaluate(
+            reading(speed: 70, speedAccuracy: 3, altitude: 1_000, verticalAccuracy: 30), state: FlightDetector.State()
+        ).isFlying)
+    }
+
     @Test func 直前の位置から時速360km以上で移動していれば飛行中() {
         // 経度1度(約90km)を10分で移動 = 時速約540km。
         let previous = state(previous: reading())
