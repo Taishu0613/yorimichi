@@ -65,6 +65,13 @@ final class NewMunicipalityAlertMonitor: NSObject {
     /// 判定中に次の位置が届いても重ねて判定しない。大幅な位置の変化は数分おきにしか届かないため取りこぼしは小さい。
     @ObservationIgnored private var isChecking = false
     @ObservationIgnored private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+    /// 粗い位置の代わりに精度の良い位置を1回だけ求めている間、元の粗い位置を持つ(取れなかった時に使う)。
+    @ObservationIgnored private var coarseLocationAwaitingPrecision: CLLocation?
+    @ObservationIgnored private var precisionBackgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+    /// 大幅な位置の変化で届いた位置がこれより古い・粗いときは、判定の前に今の位置を1回だけ求め直す。
+    /// 基地局による粗い位置では自動記録の精度(`AutoRecordPolicy`)を満たさず、記録されないまま次の位置の変化
+    /// (数分後)を待つことになっていたため。
+    private static let maximumLocationAgeForCheck: TimeInterval = 30
 
     var isEnabled: Bool { mode != .off }
 
@@ -365,10 +372,46 @@ extension NewMunicipalityAlertMonitor: CLLocationManagerDelegate {
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
-        Task { await check(location) }
+        if coarseLocationAwaitingPrecision == nil, needsPreciseLocation(location) {
+            // 裏で起こされた直後は数秒で停止されることがあるため、求め直す間の実行時間を願い出る。
+            coarseLocationAwaitingPrecision = location
+            precisionBackgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "NewMunicipalityAlert.precise") { [weak self] in
+                self?.finishPreciseLocationRequest()
+            }
+            manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+            manager.requestLocation()
+            return
+        }
+        checkAfterPreciseLocationRequest(location)
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: any Error) {
         logger.error("大幅な位置の変化を受け取れませんでした: \(error.localizedDescription, privacy: .public)")
+        // 求め直しに失敗したら、元の粗い位置で判定する(通知だけは出せる)。
+        if let coarseLocation = coarseLocationAwaitingPrecision {
+            checkAfterPreciseLocationRequest(coarseLocation)
+        }
+    }
+
+    private func needsPreciseLocation(_ location: CLLocation) -> Bool {
+        location.horizontalAccuracy < 0
+            || location.horizontalAccuracy > AutoRecordPolicy.maximumHorizontalAccuracy
+            || Date.now.timeIntervalSince(location.timestamp) > Self.maximumLocationAgeForCheck
+    }
+
+    /// 求め直しの実行時間は、判定(住所の確認を含む)が自分の実行時間を願い出た後に返す。
+    private func checkAfterPreciseLocationRequest(_ location: CLLocation) {
+        coarseLocationAwaitingPrecision = nil
+        Task {
+            await check(location)
+            finishPreciseLocationRequest()
+        }
+    }
+
+    private func finishPreciseLocationRequest() {
+        coarseLocationAwaitingPrecision = nil
+        guard precisionBackgroundTaskID != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(precisionBackgroundTaskID)
+        precisionBackgroundTaskID = .invalid
     }
 }

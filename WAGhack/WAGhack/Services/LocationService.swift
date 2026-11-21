@@ -98,6 +98,8 @@ final class LocationService {
     ///   順に処理していくと、移動に対して判定がどんどん遅れていくため。
     /// - 許可が無い・取り消された場合は黙って終了する。ユーザーへの案内は現在地ボタン側の`currentLocation()`が担う。
     /// - 静止中はCore Locationが自動で更新を止めるため、止まっている間に電池を使い続けることはない。
+    /// - 古い位置(監視を始めた直後に届く前回の位置のキャッシュ)は捨てる。精度の値はキャッシュでも良いままなので、
+    ///   使うと前の市区町村で判定してしまい、次の判定まで(移動距離・間隔の条件を満たすまで)初訪問に気づけない。
     func accurateLocationUpdates(maximumHorizontalAccuracy: CLLocationAccuracy) -> AsyncStream<CLLocation> {
         AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
             let task = Task { [logger] in
@@ -108,7 +110,8 @@ final class LocationService {
                         }
                         guard let location = update.location,
                               location.horizontalAccuracy >= 0,
-                              location.horizontalAccuracy <= maximumHorizontalAccuracy
+                              location.horizontalAccuracy <= maximumHorizontalAccuracy,
+                              Date.now.timeIntervalSince(location.timestamp) <= Self.maximumLocationAge
                         else { continue }
                         continuation.yield(location)
                     }
