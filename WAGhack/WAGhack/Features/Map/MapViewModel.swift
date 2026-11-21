@@ -17,9 +17,10 @@ final class MapViewModel {
     /// 移動中の自動判定(`monitorMunicipalityChanges`)をやり直す最小の移動距離。
     /// 住所の確認(逆ジオコーディング)は通信を伴うため、位置が届くたびではなくこれだけ動いた時だけ行う。
     /// 市区町村の境界付近でGPSの揺れによって判定が行き来しないよう、下の精度の上限より十分大きくしてある。
-    private static let automaticCheckDistance: CLLocationDistance = 300
+    /// 300mでは歩いて4分ほど進むまで新しい市区町村に気づけず、初訪問の誘いが遅れていたため150mにした。
+    private static let automaticCheckDistance: CLLocationDistance = 150
     /// 自動判定どうしの最小間隔。車や電車で速く移動していても、住所の確認がこれより頻繁にならないようにする。
-    private static let automaticCheckInterval: Duration = .seconds(30)
+    private static let automaticCheckInterval: Duration = .seconds(15)
     /// 自動判定に使う位置の精度の上限(m)。これより粗い位置(屋内・地下など)では判定しない。
     private static let automaticCheckMaximumAccuracy: CLLocationAccuracy = 100
 
@@ -142,8 +143,16 @@ final class MapViewModel {
         let updates = locationService.accurateLocationUpdates(
             maximumHorizontalAccuracy: Self.automaticCheckMaximumAccuracy
         )
+        // 監視を始めた(アプリを前面に戻した・シートを閉じた)直後の1件は、距離・間隔の条件を見ずに判定する。
+        // 裏にいた間に別の市区町村へ移っていても、前回の判定から間がないと条件で弾かれ、気づくのが遅れるため。
+        var isFirstLocation = true
         for await location in updates {
-            guard shouldCheckAutomatically(at: location) else { continue }
+            if isFirstLocation {
+                isFirstLocation = false
+                guard !isBusy else { continue }
+            } else {
+                guard shouldCheckAutomatically(at: location) else { continue }
+            }
             await checkMunicipalitySilently(at: location, municipalities: municipalities)
         }
     }

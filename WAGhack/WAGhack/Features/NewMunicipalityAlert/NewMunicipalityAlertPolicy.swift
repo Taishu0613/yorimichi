@@ -67,7 +67,7 @@ enum NewMunicipalityAlertMessage {
 /// 開発者のサーバーは無く、SwiftDataはCloudKitで同期していないので、下の2文は実装と一致している。
 /// 通信先やデータの保存先を変えるときは、この文言も見直すこと。
 enum LocationUsageAssurance {
-    static let battery = "GPSを動かし続けず、大まかな位置の変化だけを受け取るので、電池への負担はわずかです。"
+    static let battery = "ふだんはGPSを動かし続けず、大まかな位置の変化だけを受け取るので、電池への負担はわずかです。新幹線など時速80km以上で移動している間だけ、1分に1回位置を確かめます。"
     static let privacy = "位置情報は開発者に送りません。記録はこのiPhoneの中だけに保存します。"
 }
 
