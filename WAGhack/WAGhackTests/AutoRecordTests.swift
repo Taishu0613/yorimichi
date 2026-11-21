@@ -13,11 +13,13 @@ struct FlightDetectorTests {
         latitude: CLLocationDegrees = 35.681, longitude: CLLocationDegrees = 139.767,
         at offset: TimeInterval = 0,
         speed: CLLocationSpeed = -1, speedAccuracy: CLLocationSpeedAccuracy = -1,
-        altitude: CLLocationDistance = 0, verticalAccuracy: CLLocationAccuracy = -1
+        altitude: CLLocationDistance = 0, verticalAccuracy: CLLocationAccuracy = -1,
+        horizontalAccuracy: CLLocationAccuracy = -1
     ) -> FlightDetector.Reading {
         FlightDetector.Reading(
             latitude: latitude, longitude: longitude, timestamp: now.addingTimeInterval(offset),
-            speed: speed, speedAccuracy: speedAccuracy, altitude: altitude, verticalAccuracy: verticalAccuracy
+            speed: speed, speedAccuracy: speedAccuracy, altitude: altitude, verticalAccuracy: verticalAccuracy,
+            horizontalAccuracy: horizontalAccuracy
         )
     }
 
@@ -66,6 +68,13 @@ struct FlightDetectorTests {
         // 経度0.1度(約9km)を2分で移動 = 時速約270km。
         let previous = state(previous: reading())
         let result = detector.evaluate(reading(longitude: 139.867, at: 120), state: previous)
+        #expect(!result.isFlying)
+    }
+
+    @Test func 粗い位置どうしなら誤差の分を差し引いて新幹線を飛行中とみなさない() {
+        // 経度0.072度(約6.5km)を1分で移動 = そのままなら時速約390km。新幹線(時速320km)に誤差1kmずつが乗った値。
+        let previous = state(previous: reading(horizontalAccuracy: 1_000))
+        let result = detector.evaluate(reading(longitude: 139.839, at: 60, horizontalAccuracy: 1_000), state: previous)
         #expect(!result.isFlying)
     }
 

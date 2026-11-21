@@ -10,6 +10,8 @@ import Foundation
 /// - 直前の位置からの移動の速さが時速360km以上。大幅な位置の変化では速度が測られない(-1)ことが多いため、
 ///   1〜30分の間隔で届いた2点から求める。間隔が短すぎると粗い位置の誤差で速く見え、
 ///   長すぎると「機内で位置が届かず着陸後にまとめて届いた」場合に着陸地まで飛行中と誤るため、範囲を絞る。
+///   2点の位置の誤差(精度)の分は動いていないとみなして距離から差し引く。大幅な位置の変化は基地局・Wi-Fiによる
+///   誤差1km近い位置で届くことがあり、新幹線(時速285〜320km)でも誤差の分だけ速く見えて飛行中と誤るため。
 /// - 上の根拠を最後に見てから20分以内。降下中は速度・高度が閾値を下回るため、着陸まで続けて飛行中とみなす。
 struct FlightDetector {
     /// 時速360km。
@@ -30,6 +32,8 @@ struct FlightDetector {
         var altitude: CLLocationDistance = 0
         /// 負の値なら高度は測れていない(`CLLocation.verticalAccuracy`と同じ)。
         var verticalAccuracy: CLLocationAccuracy = -1
+        /// 位置の誤差(m)。負の値なら分からない(`CLLocation.horizontalAccuracy`と同じ)。
+        var horizontalAccuracy: CLLocationAccuracy = -1
     }
 
     /// 起動をまたいで引き継ぐ判定の履歴。アプリは位置の変化で裏で起こされては終了されるため、呼び出し側が保存する。
@@ -38,6 +42,8 @@ struct FlightDetector {
             let latitude: CLLocationDegrees
             let longitude: CLLocationDegrees
             let timestamp: Date
+            /// 位置の誤差(m)。この項目が無かった版で保存した履歴ではnil。
+            var horizontalAccuracy: CLLocationAccuracy?
         }
 
         var lastSample: Sample?
@@ -53,7 +59,8 @@ struct FlightDetector {
     func evaluate(_ reading: Reading, state: State) -> Result {
         var updatedState = state
         updatedState.lastSample = State.Sample(
-            latitude: reading.latitude, longitude: reading.longitude, timestamp: reading.timestamp
+            latitude: reading.latitude, longitude: reading.longitude, timestamp: reading.timestamp,
+            horizontalAccuracy: reading.horizontalAccuracy
         )
 
         if hasFlightEvidence(reading, previous: state.lastSample) {
@@ -80,7 +87,9 @@ struct FlightDetector {
         guard Self.speedEstimationInterval.contains(interval) else { return false }
         let distance = CLLocation(latitude: reading.latitude, longitude: reading.longitude)
             .distance(from: CLLocation(latitude: previous.latitude, longitude: previous.longitude))
-        return distance / interval >= Self.minimumFlightSpeed
+        // 精度が分からない位置は差し引かない。
+        let uncertainty = max(reading.horizontalAccuracy, 0) + max(previous.horizontalAccuracy ?? 0, 0)
+        return (distance - uncertainty) / interval >= Self.minimumFlightSpeed
     }
 }
 
@@ -93,7 +102,8 @@ extension FlightDetector.Reading {
             speed: location.speed,
             speedAccuracy: location.speedAccuracy,
             altitude: location.altitude,
-            verticalAccuracy: location.verticalAccuracy
+            verticalAccuracy: location.verticalAccuracy,
+            horizontalAccuracy: location.horizontalAccuracy
         )
     }
 }
