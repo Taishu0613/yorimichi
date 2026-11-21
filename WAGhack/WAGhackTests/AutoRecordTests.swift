@@ -206,3 +206,21 @@ struct PremiumProductOrderTests {
         #expect(PremiumProduct.inDisplayOrder([String](), id: { $0 }).isEmpty)
     }
 }
+
+@MainActor
+struct HighSpeedTrackingPolicyTests {
+    private let policy = HighSpeedTrackingPolicy()
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    @Test func 時速80km以上で追い始め遅いまま10分続いたらやめる() {
+        let fast = policy.decide(isTracking: false, speed: 80 / 3.6, at: now, lastFastAt: nil)
+        #expect(fast == .init(shouldTrack: true, lastFastAt: now))
+        // 駅での停車(数分)では追い続ける。
+        let stopped = policy.decide(isTracking: true, speed: 0, at: now.addingTimeInterval(5 * 60), lastFastAt: now)
+        #expect(stopped.shouldTrack)
+        let slow = policy.decide(isTracking: true, speed: 10, at: now.addingTimeInterval(10 * 60), lastFastAt: now)
+        #expect(!slow.shouldTrack)
+        // 遅ければ追い始めない。
+        #expect(!policy.decide(isTracking: false, speed: 70 / 3.6, at: now, lastFastAt: nil).shouldTrack)
+    }
+}

@@ -104,6 +104,15 @@ struct FlightDetector {
         return false
     }
 
+    /// 端末が測った速度と、直前の位置から求めた速さ(m/s)の大きい方。どちらも分からなければnil。
+    /// 速く動いている間だけ位置を追い続けるか(`HighSpeedTrackingPolicy`)の判断にも使う。
+    func movingSpeed(_ reading: Reading, previous: State.Sample?) -> CLLocationSpeed? {
+        let measuredSpeed = reading.speed >= 0 && reading.speedAccuracy >= 0 ? reading.speed : nil
+        let estimatedSpeed = speedSincePrevious(reading, previous: previous)
+        guard measuredSpeed != nil || estimatedSpeed != nil else { return nil }
+        return max(measuredSpeed ?? 0, estimatedSpeed ?? 0)
+    }
+
     /// 直前の位置からの移動の速さ(m/s)。間隔が範囲外なら求めない。
     private func speedSincePrevious(_ reading: Reading, previous: State.Sample?) -> CLLocationSpeed? {
         guard let previous else { return nil }
