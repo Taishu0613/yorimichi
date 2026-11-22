@@ -17,7 +17,8 @@ import Foundation
 struct MunicipalityMasterSyncGate {
     /// CSVの中身は同じでも、読み込み・変換の仕方(列の対応やMunicipalityへの写し方)を変えた時は
     /// この値を上げること。上げないと、既存ユーザーの端末では同期が飛ばされて変更が反映されない。
-    static let formatVersion = 1
+    /// 2026-11: 既存の端末でマスタが8月版のまま更新されない事例があったため、2に上げて全端末で一度同期し直させる。
+    static let formatVersion = 2
 
     private static let syncedFingerprintKey = "municipalityMaster.syncedFingerprint"
 
