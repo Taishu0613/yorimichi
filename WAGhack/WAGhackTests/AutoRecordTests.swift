@@ -13,11 +13,13 @@ struct FlightDetectorTests {
         latitude: CLLocationDegrees = 35.681, longitude: CLLocationDegrees = 139.767,
         at offset: TimeInterval = 0,
         speed: CLLocationSpeed = -1, speedAccuracy: CLLocationSpeedAccuracy = -1,
-        altitude: CLLocationDistance = 0, verticalAccuracy: CLLocationAccuracy = -1
+        altitude: CLLocationDistance = 0, verticalAccuracy: CLLocationAccuracy = -1,
+        horizontalAccuracy: CLLocationAccuracy = -1
     ) -> FlightDetector.Reading {
         FlightDetector.Reading(
             latitude: latitude, longitude: longitude, timestamp: now.addingTimeInterval(offset),
-            speed: speed, speedAccuracy: speedAccuracy, altitude: altitude, verticalAccuracy: verticalAccuracy
+            speed: speed, speedAccuracy: speedAccuracy, altitude: altitude, verticalAccuracy: verticalAccuracy,
+            horizontalAccuracy: horizontalAccuracy
         )
     }
 
@@ -55,6 +57,17 @@ struct FlightDetectorTests {
         #expect(!detector.evaluate(reading(altitude: 10_000, verticalAccuracy: -1), state: FlightDetector.State()).isFlying)
     }
 
+    @Test func 上昇中の高度と速さの組み合わせで飛行中() {
+        // 時速250km・高度2,000mは、速さだけ・高度だけではどちらも閾値に届かない。
+        #expect(detector.evaluate(
+            reading(speed: 70, speedAccuracy: 3, altitude: 2_000, verticalAccuracy: 30), state: FlightDetector.State()
+        ).isFlying)
+        // 軽井沢付近(約1,000m)を走る新幹線は地上。
+        #expect(!detector.evaluate(
+            reading(speed: 70, speedAccuracy: 3, altitude: 1_000, verticalAccuracy: 30), state: FlightDetector.State()
+        ).isFlying)
+    }
+
     @Test func 直前の位置から時速360km以上で移動していれば飛行中() {
         // 経度1度(約90km)を10分で移動 = 時速約540km。
         let previous = state(previous: reading())
@@ -66,6 +79,13 @@ struct FlightDetectorTests {
         // 経度0.1度(約9km)を2分で移動 = 時速約270km。
         let previous = state(previous: reading())
         let result = detector.evaluate(reading(longitude: 139.867, at: 120), state: previous)
+        #expect(!result.isFlying)
+    }
+
+    @Test func 粗い位置どうしなら誤差の分を差し引いて新幹線を飛行中とみなさない() {
+        // 経度0.072度(約6.5km)を1分で移動 = そのままなら時速約390km。新幹線(時速320km)に誤差1kmずつが乗った値。
+        let previous = state(previous: reading(horizontalAccuracy: 1_000))
+        let result = detector.evaluate(reading(longitude: 139.839, at: 60, horizontalAccuracy: 1_000), state: previous)
         #expect(!result.isFlying)
     }
 
@@ -184,5 +204,23 @@ struct PremiumProductOrderTests {
 
     @Test func 商品が届かなければ空になる() {
         #expect(PremiumProduct.inDisplayOrder([String](), id: { $0 }).isEmpty)
+    }
+}
+
+@MainActor
+struct HighSpeedTrackingPolicyTests {
+    private let policy = HighSpeedTrackingPolicy()
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    @Test func 時速80km以上で追い始め遅いまま10分続いたらやめる() {
+        let fast = policy.decide(isTracking: false, speed: 80 / 3.6, at: now, lastFastAt: nil)
+        #expect(fast == .init(shouldTrack: true, lastFastAt: now))
+        // 駅での停車(数分)では追い続ける。
+        let stopped = policy.decide(isTracking: true, speed: 0, at: now.addingTimeInterval(5 * 60), lastFastAt: now)
+        #expect(stopped.shouldTrack)
+        let slow = policy.decide(isTracking: true, speed: 10, at: now.addingTimeInterval(10 * 60), lastFastAt: now)
+        #expect(!slow.shouldTrack)
+        // 遅ければ追い始めない。
+        #expect(!policy.decide(isTracking: false, speed: 70 / 3.6, at: now, lastFastAt: nil).shouldTrack)
     }
 }

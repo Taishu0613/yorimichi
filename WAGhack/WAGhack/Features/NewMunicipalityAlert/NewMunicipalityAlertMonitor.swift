@@ -16,6 +16,9 @@ import UserNotifications
 ///   監視を開始し直す必要があり、`WAGhackApp`の初期化で`startIfEnabled()`を呼ぶ。
 /// - 裏で位置を受け取るには位置情報の「常に」許可が要る。「使用中のみ」では前面にある間しか届かない。
 ///
+/// - ただし「大幅な位置の変化」はおおむね5分に1回までしか届かないため、時速80km以上で動いている間だけは
+///   GPSで位置を追い続け、1分に1回判定する(`HighSpeedTrackingPolicy`)。新幹線で通り抜けた市区町村を取りこぼさないため。
+///
 /// 却下した案: `CLBackgroundActivitySession`+`CLLocationUpdate.liveUpdates`による常時追跡は、GPSを動かし続け
 /// 電池を大きく使う割に、市区町村の判定には精度が過剰なため採らなかった。
 ///
@@ -65,6 +68,18 @@ final class NewMunicipalityAlertMonitor: NSObject {
     /// 判定中に次の位置が届いても重ねて判定しない。大幅な位置の変化は数分おきにしか届かないため取りこぼしは小さい。
     @ObservationIgnored private var isChecking = false
     @ObservationIgnored private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+    /// 粗い位置の代わりに精度の良い位置を1回だけ求めている間、元の粗い位置を持つ(取れなかった時に使う)。
+    @ObservationIgnored private var coarseLocationAwaitingPrecision: CLLocation?
+    @ObservationIgnored private var precisionBackgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+    /// 大幅な位置の変化で届いた位置がこれより古い・粗いときは、判定の前に今の位置を1回だけ求め直す。
+    /// 基地局による粗い位置では自動記録の精度(`AutoRecordPolicy`)を満たさず、記録されないまま次の位置の変化
+    /// (数分後)を待つことになっていたため。
+    private static let maximumLocationAgeForCheck: TimeInterval = 30
+    /// 時速80km以上で動いている間、GPSで位置を追い続けているか。
+    @ObservationIgnored private var isHighSpeedTracking = false
+    @ObservationIgnored private var lastFastAt: Date?
+    /// 追い続けている間に判定を1分に1回へ間引くため、最後に判定を始めた日時を持つ。
+    @ObservationIgnored private var lastCheckStartedAt: Date?
 
     var isEnabled: Bool { mode != .off }
 
@@ -111,6 +126,7 @@ final class NewMunicipalityAlertMonitor: NSObject {
         userDefaults.set(mode.rawValue, forKey: Self.modeKey)
         guard isEnabled else {
             locationManager.stopMonitoringSignificantLocationChanges()
+            stopHighSpeedTracking()
             return
         }
         Task {
@@ -161,14 +177,22 @@ final class NewMunicipalityAlertMonitor: NSObject {
         guard mode != .off, !isChecking,
               location.horizontalAccuracy >= 0, location.horizontalAccuracy <= Self.maximumHorizontalAccuracy
         else { return }
+        lastCheckStartedAt = .now
         // 住所の確認(通信あり)より先に判定し、上空では何もしない。通知の履歴も進めないので、
         // 着陸後に出発前と違う区域にいれば、改めて初訪問として扱われる。
-        let flight = FlightDetector().evaluate(FlightDetector.Reading(location), state: loadFlightState())
+        let reading = FlightDetector.Reading(location)
+        let flightState = loadFlightState()
+        let flight = FlightDetector().evaluate(reading, state: flightState)
         saveFlightState(flight.updatedState)
         guard !flight.isFlying else {
             logger.notice("飛行機に乗っているとみなし、初訪問の判定をしませんでした")
+            // 機内でGPSを追い続けても判定しないので、電池を使わないよう止める。
+            stopHighSpeedTracking()
             return
         }
+        updateHighSpeedTracking(
+            speed: FlightDetector().movingSpeed(reading, previous: flightState.lastSample), at: location.timestamp
+        )
 
         isChecking = true
         // 裏で起こされた場合、位置を渡された後すぐに停止されることがあるため、住所の確認(通信あり)を
@@ -342,6 +366,42 @@ final class NewMunicipalityAlertMonitor: NSObject {
         }
     }
 
+    private func updateHighSpeedTracking(speed: CLLocationSpeed?, at timestamp: Date) {
+        let decision = HighSpeedTrackingPolicy().decide(
+            isTracking: isHighSpeedTracking, speed: speed, at: timestamp, lastFastAt: lastFastAt
+        )
+        lastFastAt = decision.lastFastAt
+        if decision.shouldTrack {
+            startHighSpeedTracking()
+        } else {
+            stopHighSpeedTracking()
+        }
+    }
+
+    private func startHighSpeedTracking() {
+        // 裏で位置を追い続けられるのは「常に」許可のときだけ。
+        guard !isHighSpeedTracking, locationManager.authorizationStatus == .authorizedAlways else { return }
+        isHighSpeedTracking = true
+        logger.notice("速く移動しているため、位置を追い続けます")
+        locationManager.allowsBackgroundLocationUpdates = true
+        locationManager.activityType = .otherNavigation
+        locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+        // 判定は1分に1回(時速80kmで約1.3km)なので、それより細かい位置は要らない。
+        locationManager.distanceFilter = 500
+        // 長く止まっているとiOSが更新を止める(`locationManagerDidPauseLocationUpdates`で追うのをやめる)。
+        locationManager.pausesLocationUpdatesAutomatically = true
+        locationManager.startUpdatingLocation()
+    }
+
+    private func stopHighSpeedTracking() {
+        lastFastAt = nil
+        guard isHighSpeedTracking else { return }
+        isHighSpeedTracking = false
+        logger.notice("位置を追い続けるのをやめます")
+        locationManager.stopUpdatingLocation()
+        locationManager.allowsBackgroundLocationUpdates = false
+    }
+
     private func beginBackgroundTime() {
         backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "NewMunicipalityAlert") { [weak self] in
             // 時間切れ。判定の途中でも終えないとアプリが強制終了される。
@@ -365,10 +425,57 @@ extension NewMunicipalityAlertMonitor: CLLocationManagerDelegate {
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
-        Task { await check(location) }
+        // 速い間は位置が次々届くので、判定は1分に1回へ間引く。
+        if isHighSpeedTracking, let lastCheckStartedAt,
+           Date.now.timeIntervalSince(lastCheckStartedAt) < HighSpeedTrackingPolicy.checkInterval {
+            return
+        }
+        // 位置を追い続けている間は精度の良い位置が届く。求め直しは追跡と同時に使えないため行わない。
+        if !isHighSpeedTracking, coarseLocationAwaitingPrecision == nil, needsPreciseLocation(location) {
+            // 裏で起こされた直後は数秒で停止されることがあるため、求め直す間の実行時間を願い出る。
+            coarseLocationAwaitingPrecision = location
+            precisionBackgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "NewMunicipalityAlert.precise") { [weak self] in
+                self?.finishPreciseLocationRequest()
+            }
+            manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+            manager.requestLocation()
+            return
+        }
+        checkAfterPreciseLocationRequest(location)
+    }
+
+    func locationManagerDidPauseLocationUpdates(_ manager: CLLocationManager) {
+        // 止まっている(駅で長く停車した・降りた)。次に動けば「大幅な位置の変化」でまた起こされる。
+        stopHighSpeedTracking()
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: any Error) {
         logger.error("大幅な位置の変化を受け取れませんでした: \(error.localizedDescription, privacy: .public)")
+        // 求め直しに失敗したら、元の粗い位置で判定する(通知だけは出せる)。
+        if let coarseLocation = coarseLocationAwaitingPrecision {
+            checkAfterPreciseLocationRequest(coarseLocation)
+        }
+    }
+
+    private func needsPreciseLocation(_ location: CLLocation) -> Bool {
+        location.horizontalAccuracy < 0
+            || location.horizontalAccuracy > AutoRecordPolicy.maximumHorizontalAccuracy
+            || Date.now.timeIntervalSince(location.timestamp) > Self.maximumLocationAgeForCheck
+    }
+
+    /// 求め直しの実行時間は、判定(住所の確認を含む)が自分の実行時間を願い出た後に返す。
+    private func checkAfterPreciseLocationRequest(_ location: CLLocation) {
+        coarseLocationAwaitingPrecision = nil
+        Task {
+            await check(location)
+            finishPreciseLocationRequest()
+        }
+    }
+
+    private func finishPreciseLocationRequest() {
+        coarseLocationAwaitingPrecision = nil
+        guard precisionBackgroundTaskID != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(precisionBackgroundTaskID)
+        precisionBackgroundTaskID = .invalid
     }
 }

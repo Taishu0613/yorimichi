@@ -46,9 +46,22 @@
 		C0DEC0DE0000000000000014 /* municipalityLines */ = {isa = PBXFileReference; lastKnownFileType = folder; name = municipalityLines; path = ../BoundaryData/generated/BoundaryData/municipalityLines; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		C0DEC0DE0000000000000020 /* Exceptions for "WAGhack" folder in "WAGhack" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 94AD8098303A88710016FA7C /* WAGhack */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		94AD809B303A88720016FA7C /* WAGhack */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				C0DEC0DE0000000000000020 /* Exceptions for "WAGhack" folder in "WAGhack" target */,
+			);
 			path = WAGhack;
 			sourceTree = "<group>";
 		};
@@ -431,9 +444,10 @@
 				DEVELOPMENT_TEAM = X7PH6497P8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = WAGhack/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "よりみち";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "「初訪問の通知」や「自動で記録」をオンにしたとき、アプリを閉じている間も、まだ記録していない市区町村や都道府県に入ったかを判定するために使用します。GPSを動かし続けず大まかな位置だけを使うので、電池への負担はわずかです。位置情報は開発者に送らず、記録はこのiPhoneの中だけに保存します。";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "「初訪問の通知」や「自動で記録」をオンにしたとき、アプリを閉じている間も、まだ記録していない市区町村や都道府県に入ったかを判定するために使用します。ふだんはGPSを動かし続けず大まかな位置だけを使います。新幹線や高速道路など時速80km以上で移動している間だけGPSで細かく位置を確かめます。位置情報は開発者に送らず、記録はこのiPhoneの中だけに保存します。";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "現在地を地図に表示し、住所として保存するために使用します。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -468,9 +482,10 @@
 				DEVELOPMENT_TEAM = X7PH6497P8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = WAGhack/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "よりみち";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "「初訪問の通知」や「自動で記録」をオンにしたとき、アプリを閉じている間も、まだ記録していない市区町村や都道府県に入ったかを判定するために使用します。GPSを動かし続けず大まかな位置だけを使うので、電池への負担はわずかです。位置情報は開発者に送らず、記録はこのiPhoneの中だけに保存します。";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "「初訪問の通知」や「自動で記録」をオンにしたとき、アプリを閉じている間も、まだ記録していない市区町村や都道府県に入ったかを判定するために使用します。ふだんはGPSを動かし続けず大まかな位置だけを使います。新幹線や高速道路など時速80km以上で移動している間だけGPSで細かく位置を確かめます。位置情報は開発者に送らず、記録はこのiPhoneの中だけに保存します。";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "現在地を地図に表示し、住所として保存するために使用します。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
