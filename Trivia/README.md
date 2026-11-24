@@ -44,6 +44,15 @@
    - 調べものには上限がある(全エージェント共有で WebFetch は1時間100回、WebSearch は1ターン200回。WebSearch はタイトルとURLしか返さない)。1バッチ48市区町村で使い切らないよう、エージェントには「1市区町村につき WebSearch は4回まで、WebFetch は Wikipedia 1回+怪談・伝説のページ1回の計2回まで(48市区町村×2回で1時間100回にぎりぎり収まる。3回にすると途中で上限に当たる)。市区町村の伝説をまとめたページ(市の公式、観光協会、昔話のまとめ)を優先して読む。WebFetch が拒否されたり許可待ちになりそうなサイトは使わず、別のURLかタイトルだけで済ませる」と伝える。エージェントが許可待ちで3時間止まったことがあるので、次の回に止まったままなら止めて同じ市区町村で出し直す。
    - 上限で調べきれず「ありません」にした市区町村は `Trivia/legend_recheck.json` にコードを足す。全バッチが終わったら、ここに載った市区町村の都市伝説だけを調べ直す。
 
+### 全バッチのあとの調べ直し
+
+`next_batch.py` が「全バッチ完了」を出したら、1回につき48件ずつ都市伝説だけを調べ直す。
+
+1. `python3 Trivia/scripts/next_recheck.py` で次の48件を出す(「ありません」の街が先、出典が弱い街があと)。「調べ直し完了」なら何もしない。
+2. エージェント8つに6件ずつ頼む。回数は1市区町村につき WebSearch 5回まで、WebFetch は伝説ページ2回まで(Wikipediaは読まない)。旧町村名や大字での検索も試させる。
+3. 結果を `Trivia/out/cNN.json` に書く。みどころは今の文をそのまま入れ、都市伝説だけを新しくする。良い話が無ければ定型文のままでよい(その街もファイルに入れて、調べ直し済みにする)。
+4. `merge_trivia.py --check` → `merge_trivia.py` → コミットしてプッシュ。メッセージは `feat: 都市伝説を調べ直す(調べ直しNN)`。
+
 4. `Trivia/out/bNN.json`(NNはバッチ番号2桁)に `{"行政区域コード": {"highlight": "...", "legend": "..."}}` の形で書く。途中で止まってもよいように、10市区町村ほど書くごとに保存する。
 5. `python3 Trivia/scripts/merge_trivia.py --check` で確かめ、出た問題を直す。通ったら `python3 Trivia/scripts/merge_trivia.py` でマスタへ書き込む。
 6. 変更は `Trivia/out/bNN.json` と `LocalGovernmentCodeJapan_Knowledge.csv` だけ。コミットして `git push origin claude/project-thread-4nmqmc` する。押し出しが拒否されたら `git pull --rebase origin claude/project-thread-4nmqmc` してマージをやり直してからプッシュする(CSVがぶつかったら、相手側を取ってから `merge_trivia.py` をもう一度実行する)。メッセージは `feat: みどころ・都市伝説を書き直す(バッチNN <最初の都道府県>〜)`。
