@@ -2,8 +2,8 @@
 """全バッチのあとに、都市伝説を調べ直す市区町村を48件ずつ出す。
 
 使い方(リポジトリ直下で): python3 Trivia/scripts/next_recheck.py
-対象は Trivia/legend_recheck.json のコード。「ありません」の定型文になっている街を先に、
-出典が弱い街をあとに並べ、まだ Trivia/out/cNN.json に入っていないものから48件を出す。
+対象は Trivia/legend_recheck.json のコードのうち、「ありません」の定型文になっている街だけ
+(出典が弱い街は対象外、2026-11-25 ユーザーの選択)。まだ Trivia/out/cNN.json に入っていないものから48件を出す。
 結果は Trivia/out/cNN.json に {"コード": {"highlight": 今のみどころ, "legend": 新しい都市伝説}} の形で書く。
 merge_trivia.py はファイル名順に読むので、cNN.json の文が bNN.json の文より優先される。
 """
@@ -28,8 +28,10 @@ def main():
         codes = json.load(file)
     written = load("Trivia/out/b*.json")
     done = load("Trivia/out/c*.json")
-    rest = [code for code in codes if code not in done and code in written]
-    rest.sort(key=lambda code: (not written[code]["legend"].endswith(NONE_SUFFIX), code))
+    # 2026-11-25 ユーザーの選択: 調べ直すのは「ありません」の定型文の街だけ
+    rest = [code for code in codes if code not in done and code in written
+            and written[code]["legend"].endswith(NONE_SUFFIX)]
+    rest.sort()
     if not rest:
         print("調べ直し完了")
         return
