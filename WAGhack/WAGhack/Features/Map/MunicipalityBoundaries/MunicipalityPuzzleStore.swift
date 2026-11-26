@@ -96,6 +96,9 @@ final class MunicipalityPuzzleStore {
     @ObservationIgnored private var polylineCache: [String: MKPolyline] = [:]
     /// 区をつなぎ合わせた市の外周。LODが変わるまで使い回す(キーは`DesignatedCity.key`)。
     @ObservationIgnored private var designatedCityCache: [String: AdministrativeBoundary] = [:]
+    /// 長押しした場所の区域名を調べるための、読み込み済みの区域の形(市区町村モードなら市区町村、県境のみなら都道府県)。
+    /// 描画には使わないので観測しない(書き換えても地図の再評価が走らないように)。
+    @ObservationIgnored private var tappableAreas: [AdministrativeBoundary] = []
     @ObservationIgnored private let logger = Logger(subsystem: "com.wakasugi.yorimichi", category: "MunicipalityPuzzle")
 
     /// 画面の少し外側まで先に用意しておき、ドラッグ中に端が欠けて見えるのを減らす(上下左右それぞれ表示範囲の20%)。
@@ -187,6 +190,13 @@ final class MunicipalityPuzzleStore {
     // 市区町村のフォーカスは事前に用意した全域の範囲を優先する。
     // それ以外は描画用のピースを参照するため、画面外や小さい島は含まれない。
 
+    /// 地図を長押しした場所の区域名。市区町村モードなら市区町村、県境のみのモードなら都道府県を返す。
+    /// 読み込み済みの範囲(表示範囲の少し外まで)だけを調べる。区域の外(海など)や、小さすぎて読み込んでいない島ならnil。
+    func areaName(at coordinate: CLLocationCoordinate2D) -> PressedAreaName? {
+        guard let boundary = AreaHitTest.boundary(containing: coordinate, in: tappableAreas) else { return nil }
+        return PressedAreaName(code: boundary.code, name: boundary.name, coordinate: coordinate)
+    }
+
     /// 市区町村へ地図を寄せる範囲(`BoundaryFocusRect`参照)。記録時と現在地ボタンで使う。
     func focusRect(forMunicipality code: String, containing coordinate: CLLocationCoordinate2D) -> MKMapRect? {
         guard let bounds = municipalityFocusBounds[code] ?? boundingRect(forMunicipality: code) else { return nil }
@@ -249,6 +259,7 @@ final class MunicipalityPuzzleStore {
             municipalityPieces = []
             municipalityMeshLines = []
             designatedCityOutlines = []
+            tappableAreas = []
             updateLineWidths(for: scale)
             return
         }
@@ -311,6 +322,7 @@ final class MunicipalityPuzzleStore {
             designatedCityOutlines = makePieces(
                 "designatedCity", lod: lod, from: designatedCities(from: municipalities), within: searchBox, filter: drawFilter
             )
+            tappableAreas = mode == .municipalities ? municipalities : prefectures
             // 同じ値を書き戻しても観測している地図全体の再評価が走るため、変わったときだけ書き換える。
             if showsUnvisited != showsUnvisitedMunicipalities {
                 showsUnvisitedMunicipalities = showsUnvisited
