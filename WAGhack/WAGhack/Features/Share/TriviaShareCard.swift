@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// 豆知識のシェア用カードに載せるもの。市区町村の形と名前に、「みどころ」「怪奇・都市伝説」「この街でできること」の
 /// どれか1つを添える。「行った自慢」ではなく話のネタとして、旅をしていない人にも届くカードにする。
@@ -56,24 +57,35 @@ struct TriviaShareCardContent: Equatable {
     }
 }
 
-/// 豆知識のシェア用カード。上に市区町村の形(本物の地図を薄く敷く)と名前、下に話題のカード。
-/// 怪奇・都市伝説は図鑑と同じ夜色のカードにし、「諸説あり」を添える。
+/// 豆知識のシェア用カード。怪奇・都市伝説は図鑑と同じ夜色のカードにし、「諸説あり」を添える。
+///
+/// - 写真なし: 上に市区町村の形(本物の地図を薄く敷く)と名前、下に話題のカード。
+/// - 写真あり: 写真をカードいっぱいに敷き、名前と話題をほぼ不透明のパネルに載せる(どんな写真でも読めるように)。
+///   地図は出さないので、Appleマップの帰属表示も出ない。
 struct TriviaShareCardView: View {
     let content: TriviaShareCardContent
     let layout: ShareCardLayout
     let map: SilhouetteMap?
     let highlightedCodes: Set<String>
     var backdrop: ShareMapBackdrop? = nil
+    var photo: UIImage? = nil
 
     var body: some View {
-        Group {
-            switch layout {
-            case .story: storyLayout
-            case .square: squareLayout
+        ZStack {
+            if let photo {
+                ShareCardPhotoBackground(photo: photo, size: layout.pointSize)
+            } else {
+                ShareCardBackground()
+            }
+            switch (layout, photo != nil) {
+            case (.story, false): storyLayout
+            case (.square, false): squareLayout
+            case (.story, true): storyPhotoLayout
+            case (.square, true): squarePhotoLayout
             }
         }
         .frame(width: layout.pointSize.width, height: layout.pointSize.height)
-        .background(ShareCardBackground())
+        .clipped()
     }
 
     private var storyLayout: some View {
@@ -112,7 +124,44 @@ struct TriviaShareCardView: View {
         .padding(18)
     }
 
+    /// 写真ありの縦長。名前は上、話題は下に寄せて写真を真ん中に見せる。
+    /// ストーリーズの上下に重なるアプリの表示(上約60pt・下約83pt)には文字を掛けない。
+    private var storyPhotoLayout: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            namePanel(nameSize: 32, padding: 14)
+            Spacer(minLength: 0)
+            topicCard(fontSize: 14.5, headingSize: 20, iconSize: 32)
+            ShareCardAppMark(logoSize: 30, isOverPhoto: true)
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 64)
+        .padding(.bottom, 96)
+    }
+
+    private var squarePhotoLayout: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            namePanel(nameSize: 24, padding: 10)
+            Spacer(minLength: 0)
+            topicCard(fontSize: 11.5, headingSize: 15, iconSize: 24)
+            ShareCardAppMark(logoSize: 22, isOverPhoto: true)
+        }
+        .padding(18)
+    }
+
     // MARK: - 部品
+
+    /// 写真の上に置く、都道府県・訪問の印と名前のパネル。名前の長さに合わせて幅を決め、写真をなるべく隠さない。
+    private func namePanel(nameSize: CGFloat, padding: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: padding * 0.6) {
+            pills
+            MarkerHeading(content.municipalityName, size: nameSize)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+        }
+        .padding(padding)
+        // すりガラスは画像に書き出せないため、ほぼ白の半透明にする(初訪問のパネルと同じ)。
+        .popCard(fill: Color.white.opacity(0.9), shadow: Pop.theme.opacity(0.35), shadowOffset: 3)
+    }
 
     private func mapCanvas(box: ShareCardMapBox) -> some View {
         ShareMapCanvas(
@@ -191,7 +240,8 @@ struct TriviaShareCardView: View {
         .padding(fontSize * 1.1)
         .frame(maxWidth: .infinity, alignment: .leading)
         .popCard(
-            fill: isLegend ? Pop.night : Color.white,
+            // 写真の上では写真の色が少し透けるようにする。文字が読める濃さは残す。
+            fill: (isLegend ? Pop.night : Color.white).opacity(photo == nil ? 1 : 0.93),
             shadow: isLegend ? Pop.legend.opacity(0.6) : Pop.yellow.opacity(0.8),
             shadowOffset: 4
         )
@@ -211,100 +261,5 @@ struct TriviaShareCardView: View {
             .lineSpacing(fontSize * 0.3)
             .minimumScaleFactor(0.75)
             .fixedSize(horizontal: false, vertical: true)
-    }
-}
-
-/// 豆知識をシェアする画面。市区町村の図鑑の各項目(みどころ・怪奇・都市伝説・この街でできること)から開く。
-struct TriviaShareSheet: View {
-    let target: ShareMunicipalityTarget
-    let isVisited: Bool
-    /// 選べる話題。この街でできることはスポットの数だけあり、どれを載せるか選べる。
-    let topics: [TriviaShareCardContent.Topic]
-
-    @Environment(SilhouetteMapStore.self) private var environmentStore: SilhouetteMapStore?
-    @State private var fallbackStore = SilhouetteMapStore()
-    @State private var snapshotStore = ShareMapSnapshotStore()
-    @State private var topicIndex: Int
-    @State private var layout: ShareCardLayout = .story
-    @State private var isMapLoaded = false
-    @State private var rendered: RenderedShareCard?
-
-    init(target: ShareMunicipalityTarget, isVisited: Bool, topics: [TriviaShareCardContent.Topic], initialTopic: TriviaShareCardContent.Topic? = nil) {
-        self.target = target
-        self.isVisited = isVisited
-        self.topics = topics
-        _topicIndex = State(initialValue: initialTopic.flatMap { topics.firstIndex(of: $0) } ?? 0)
-    }
-
-    private var store: SilhouetteMapStore { environmentStore ?? fallbackStore }
-
-    private var content: TriviaShareCardContent? {
-        guard topics.indices.contains(topicIndex) else { return nil }
-        return TriviaShareCardContent(
-            municipalityName: target.name, prefectureName: target.prefectureName, isVisited: isVisited, topic: topics[topicIndex]
-        )
-    }
-
-    private var snapshotKey: ShareMapSnapshotStore.Key {
-        ShareMapSnapshotStore.Key(id: target.snapshotID, box: layout == .story ? .triviaStory : .triviaSquare)
-    }
-
-    var body: some View {
-        ShareCardSheetScaffold(
-            navigationTitle: "豆知識をシェア",
-            footnote: "画像には街の形と名前、豆知識だけが入ります。訪れた日時や場所は入りません。",
-            rendered: rendered,
-            layout: $layout
-        ) {
-            if topics.count > 1 {
-                ShareCardLabeledControl("載せるスポット") {
-                    Picker("載せるスポット", selection: $topicIndex) {
-                        ForEach(Array(topics.enumerated()), id: \.offset) { index, topic in
-                            if case .spot(let name, _) = topic {
-                                Text(name).tag(index)
-                            }
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .tint(Pop.theme)
-                }
-            }
-        }
-        .task(id: target) {
-            await target.loadMap(in: store)
-            isMapLoaded = true
-        }
-        .task(id: BackdropRequest(layout: layout, isMapLoaded: isMapLoaded)) {
-            guard let map = target.map(in: store) else { return }
-            await snapshotStore.loadBackdropIfNeeded(for: snapshotKey, map: map)
-        }
-        .task(id: RenderKey(topicIndex: topicIndex, layout: layout, isMapLoaded: isMapLoaded, hasBackdrop: snapshotStore.backdrop(for: snapshotKey) != nil)) {
-            rendered = render()
-        }
-    }
-
-    private struct BackdropRequest: Hashable {
-        let layout: ShareCardLayout
-        let isMapLoaded: Bool
-    }
-
-    private struct RenderKey: Hashable {
-        let topicIndex: Int
-        let layout: ShareCardLayout
-        let isMapLoaded: Bool
-        let hasBackdrop: Bool
-    }
-
-    /// 形を読み込み終えてから描く(読み込めなかったときはアイコンだけのカードにする)。
-    private func render() -> RenderedShareCard? {
-        guard isMapLoaded, let content else { return nil }
-        let map = target.map(in: store)
-        let view = TriviaShareCardView(
-            content: content, layout: layout, map: map,
-            highlightedCodes: map.map(target.highlightedCodes(in:)) ?? [],
-            backdrop: snapshotStore.backdrop(for: snapshotKey)
-        )
-        return ShareCardRenderer.render(view, layout: layout)
-            .map { RenderedShareCard(image: $0, message: content.shareText, title: "\(target.name)の\(content.title)") }
     }
 }

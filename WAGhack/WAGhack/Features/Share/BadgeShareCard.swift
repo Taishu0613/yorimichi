@@ -1,6 +1,10 @@
 import SwiftUI
 
-/// バッジのシェア用カードに載せるもの。バッジの絵・名前・ひとこと、取った日(記録があれば)。
+/// バッジのシェア用カードに載せるもの。バッジの絵・名前・ひとこと・入手条件、取った日(記録があれば)。
+///
+/// 入手条件を載せるのは、バッジを自慢したくてシェアする人が「何をして取ったか」を伝えられるようにするため。
+/// アプリには条件を伏せたバッジが無く(詳細画面で全バッジの達成条件を見せている)、シェアできるのは獲得済みだけなので、
+/// 伏せる扱いは要らない。条件を伏せるバッジを足すときは、ここで獲得前に見せないようにすること。
 ///
 /// 地図のカードと同じく、どこで取ったか(ピン・座標・住所・訪問日時)は載せない。日付は「獲得した日」だけで、時刻は持たない。
 struct BadgeShareCardContent {
@@ -10,11 +14,14 @@ struct BadgeShareCardContent {
     let rankName: String?
     /// 「2026年11月27日に獲得」。記録が無い(バッジ機能の導入前に満たした)ときはnil。
     let achievedDateText: String?
+    /// 入手条件(「市区町村を100か所訪れる」など)。
+    let conditionText: String
 
     init(status: BadgeStatus, calendar: Calendar = .current) {
         definition = status.definition
         earnedTierCount = status.earnedTierCount
         rankName = status.rank?.name
+        conditionText = Self.conditionText(definition: status.definition, earnedTierCount: status.earnedTierCount)
         // 詳細画面と同じく、段階式は今のランクに上がった日、それ以外は獲得した日。
         let date = status.definition.isTiered ? status.achievement?.tierAchievedAt : status.achievement?.achievedAt
         achievedDateText = date.map { date in
@@ -27,11 +34,24 @@ struct BadgeShareCardContent {
 
     /// 画像と一緒に共有する文。
     var shareText: String {
-        Self.shareText(badgeName: definition.name)
+        Self.shareText(badgeName: definition.name, condition: conditionText)
     }
 
-    static func shareText(badgeName: String) -> String {
-        "バッジ「\(badgeName)」を獲得しました #よりみち\n\(ShareCardContent.appStoreURL.absoluteString)"
+    static func shareText(badgeName: String, condition: String) -> String {
+        "バッジ「\(badgeName)」を獲得しました(\(condition)) #よりみち\n\(ShareCardContent.appStoreURL.absoluteString)"
+    }
+
+    /// 入手条件の文。詳細画面の「達成条件」と同じ`BadgeDefinition.conditionText`から作る。
+    ///
+    /// - 段階式は獲得したランクの閾値の条件にする(ゴールドなら、ゴールドに上がった条件)。未獲得なら最初の段階。
+    /// - 詳細画面の条件には「それぞれの区のどこかを記録すれば…」のような補足が続くことがあるので、
+    ///   カードと共有文には最初の一文(「。」まで)だけを使う。
+    static func conditionText(definition: BadgeDefinition, earnedTierCount: Int) -> String {
+        guard !definition.tiers.isEmpty else { return "" }
+        let tierIndex = min(max(earnedTierCount, 1), definition.tiers.count) - 1
+        let full = definition.conditionText(definition.tiers[tierIndex])
+        let firstSentence = full.split(separator: "。", maxSplits: 1, omittingEmptySubsequences: true).first.map(String.init) ?? full
+        return firstSentence.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
@@ -61,7 +81,7 @@ struct BadgeShareCardView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            stampBoard(size: 200)
+            stampBoard(size: 150)
             VStack(spacing: 10) {
                 MarkerHeading(content.name, size: 30)
                     .lineLimit(1)
@@ -73,6 +93,7 @@ struct BadgeShareCardView: View {
                     .lineSpacing(4)
                     .lineLimit(3)
                     .minimumScaleFactor(0.8)
+                conditionBox(fontSize: 15)
                 pills
             }
             .padding(18)
@@ -102,11 +123,8 @@ struct BadgeShareCardView: View {
                         .foregroundStyle(Pop.ink)
                         .lineLimit(2)
                         .minimumScaleFactor(0.7)
-                    Text(content.definition.summary)
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(Pop.muted)
-                        .lineLimit(4)
-                        .minimumScaleFactor(0.8)
+                    // 正方形は狭いので、ひとこと(summary)より自慢の中身になる入手条件を優先して載せる。
+                    conditionBox(fontSize: 12.5, fill: Color.white)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -116,6 +134,27 @@ struct BadgeShareCardView: View {
             ShareCardAppMark(logoSize: 26)
         }
         .padding(20)
+    }
+
+    /// 入手条件。「入手条件」の見出しを付けて、ひとことと見分けられるようにする。
+    /// 縦長は白いカードの中なので薄い水色、正方形はカードの地(水色)の上なので白で囲む。
+    private func conditionBox(fontSize: CGFloat, fill: Color = Pop.themeTint) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Label("入手条件", systemImage: "flag.checkered")
+                .font(.system(size: fontSize * 0.8, weight: .heavy))
+                .foregroundStyle(Pop.muted)
+            Text(content.conditionText)
+                .font(.system(size: fontSize, weight: .heavy))
+                .foregroundStyle(Pop.ink)
+                .lineSpacing(3)
+                .lineLimit(3)
+                .minimumScaleFactor(0.75)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, fontSize * 0.8)
+        .padding(.vertical, fontSize * 0.6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(fill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     /// 詳細画面の見出しと同じ、点線の台紙に押したスタンプ。
@@ -154,7 +193,7 @@ struct BadgeShareSheet: View {
     var body: some View {
         ShareCardSheetScaffold(
             navigationTitle: "バッジをシェア",
-            footnote: "画像にはバッジと獲得した日だけが入ります。訪れた場所や時刻は入りません。",
+            footnote: "画像にはバッジと入手条件、獲得した日だけが入ります。訪れた場所や時刻は入りません。",
             rendered: rendered,
             layout: $layout
         ) {

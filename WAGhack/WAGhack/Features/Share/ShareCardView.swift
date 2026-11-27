@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// SNSでシェアする画像の中身。`ShareCardRenderer`が`layout.pointSize`の大きさで組み、3倍で書き出す。
 ///
@@ -216,17 +217,43 @@ struct ShareCardBackground: View {
 /// 右下に添えるアプリの印。
 struct ShareCardAppMark: View {
     let logoSize: CGFloat
+    /// 写真の上に置くとき。どんな色の写真でも読めるよう、白い札に載せる。
+    var isOverPhoto = false
 
     var body: some View {
         HStack(spacing: 8) {
             Spacer(minLength: 0)
-            Image("LaunchLogo")
-                .resizable()
-                .scaledToFit()
-                .frame(width: logoSize, height: logoSize)
-            Text("よりみち")
-                .font(.system(size: logoSize * 0.55, weight: .black, design: .rounded))
-                .foregroundStyle(Pop.ink)
+            HStack(spacing: 8) {
+                Image("LaunchLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: logoSize, height: logoSize)
+                Text("よりみち")
+                    .font(.system(size: logoSize * 0.55, weight: .black, design: .rounded))
+                    .foregroundStyle(Pop.ink)
+            }
+            .padding(.vertical, isOverPhoto ? logoSize * 0.15 : 0)
+            .padding(.leading, isOverPhoto ? logoSize * 0.2 : 0)
+            .padding(.trailing, isOverPhoto ? logoSize * 0.4 : 0)
+            .background {
+                if isOverPhoto {
+                    Capsule().fill(Color.white.opacity(0.88))
+                }
+            }
         }
+    }
+}
+
+/// 写真をカードいっぱいに敷く。初訪問・豆知識のカードで共通。
+struct ShareCardPhotoBackground: View {
+    let photo: UIImage
+    let size: CGSize
+
+    var body: some View {
+        Image(uiImage: photo)
+            .resizable()
+            .scaledToFill()
+            .frame(width: size.width, height: size.height)
+            .clipped()
     }
 }

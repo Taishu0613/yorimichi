@@ -1150,12 +1150,14 @@ struct MunicipalityFirstVisitSheet: View {
         return municipality != nil
     }
 
-    /// 記録後の「シェアする」(初訪問のカード)に描く街。記録前や市区町村が分からないときはnilでボタンを出さない。
-    private var shareTarget: ShareMunicipalityTarget? {
+    /// 記録後の「シェアする」で開く市区町村のシェア画面の材料。初訪問のカードを選んで開き、豆知識にも切り替えられる。
+    /// 記録前や市区町村が分からないときはnilでボタンを出さない。
+    private var shareSubject: MunicipalityShareSubject? {
         guard case .celebration(let result, let municipality?, _) = mode, result.isFirstVisit else { return nil }
-        return ShareMunicipalityTarget(
+        let target = ShareMunicipalityTarget(
             code: municipality.code, name: municipality.municipalityName, prefectureName: municipality.prefectureName
         )
+        return MunicipalityShareSubject(target: target, isVisited: true, municipality: municipality)
     }
 
     private var title: String {
@@ -1230,7 +1232,7 @@ struct MunicipalityFirstVisitSheet: View {
                 if showsDetailLink {
                     // 主役は「みどころを見る」(primaryButton)なので、閉じる・シェアは控えめな二番手に並べる。
                     HStack(spacing: 10) {
-                        if shareTarget != nil {
+                        if shareSubject != nil {
                             Button { isPresentingShare = true } label: {
                                 Label("シェアする", systemImage: "square.and.arrow.up")
                                     .frame(maxWidth: .infinity)
@@ -1265,8 +1267,8 @@ struct MunicipalityFirstVisitSheet: View {
             withAnimation(.spring(response: 0.4, dampingFraction: 0.75).delay(0.4)) { showsButtons = true }
         }
         .sheet(isPresented: $isPresentingShare) {
-            if let shareTarget {
-                FirstVisitShareSheet(target: shareTarget)
+            if let shareSubject {
+                MunicipalityShareSheet(subject: shareSubject, initialKind: .firstVisit)
             }
         }
         .task(id: municipality?.code) {

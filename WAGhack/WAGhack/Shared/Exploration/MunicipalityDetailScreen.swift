@@ -48,15 +48,13 @@ struct MunicipalityDetailScreen: View {
     private enum DetailShare: Identifiable {
         /// 政令指定都市の区めぐりの地図。
         case cityMap(code: String)
-        case firstVisit
-        /// 豆知識。`initialTopic`は押した項目(この街でできることは、押した時点で先頭のスポット)。
-        case trivia(topics: [TriviaShareCardContent.Topic], initialTopic: TriviaShareCardContent.Topic)
+        /// 市区町村のカード(初訪問・みどころ・都市伝説・この街でできること)。押した入口の種類を選んで開く。
+        case municipality(initialKind: MunicipalityShareKind)
 
         var id: String {
             switch self {
             case .cityMap: "cityMap"
-            case .firstVisit: "firstVisit"
-            case .trivia(_, let topic): "trivia-\(topic.hashValue)"
+            case .municipality(let kind): "municipality-\(kind.rawValue)"
             }
         }
     }
@@ -72,25 +70,16 @@ struct MunicipalityDetailScreen: View {
         )
     }
 
-    /// みどころのシェアの操作。シェアできない(空欄・街が分からない)ときはnilでボタンを出さない。
-    private var highlightsShare: (() -> Void)? {
-        let text = municipality?.famousThingsTrivia ?? ""
-        guard shareTarget != nil, TriviaShareCardContent.isShareableHighlights(text) else { return nil }
-        return { presentedShare = .trivia(topics: [.highlights(text)], initialTopic: .highlights(text)) }
+    /// 市区町村のシェア画面に渡す材料。街が分からない(住所だけの記録)ときはnil。
+    private var shareSubject: MunicipalityShareSubject? {
+        guard let municipality, let shareTarget else { return nil }
+        return MunicipalityShareSubject(target: shareTarget, isVisited: isVisited, municipality: municipality)
     }
 
-    /// 怪奇・都市伝説のシェアの操作。「特に有名な怪談・都市伝説はありません」の街では出さない。
-    private var legendShare: (() -> Void)? {
-        let text = municipality?.historyTrivia ?? ""
-        guard shareTarget != nil, TriviaShareCardContent.isShareableLegend(text) else { return nil }
-        return { presentedShare = .trivia(topics: [.legend(text)], initialTopic: .legend(text)) }
-    }
-
-    /// この街でできることのシェアの操作。スポットが無ければnil。シェア画面でどのスポットを載せるか選べる。
-    private var spotShare: (() -> Void)? {
-        guard shareTarget != nil, case .loaded(let spots) = viewModel.spotState, let first = spots.first else { return nil }
-        let topics = spots.map(TriviaShareCardContent.spotTopic)
-        return { presentedShare = .trivia(topics: topics, initialTopic: TriviaShareCardContent.spotTopic(first)) }
+    /// 見出しの共有ボタンの操作。その種類のカードを出せない(空欄・決まり文句・スポット無し)ときはnilでボタンを出さない。
+    private func municipalityShare(_ kind: MunicipalityShareKind) -> (() -> Void)? {
+        guard let shareSubject, shareSubject.availableKinds.contains(kind) else { return nil }
+        return { presentedShare = .municipality(initialKind: kind) }
     }
 
     private var isVisited: Bool {
@@ -120,12 +109,12 @@ struct MunicipalityDetailScreen: View {
                         photos: viewModel.spotPhotos,
                         areaName: target.areaName,
                         isShowingAll: $viewModel.isShowingAllSpots,
-                        share: spotShare
+                        share: municipalityShare(.spots)
                     )
                 }
 
-                TriviaCard(style: .highlights, content: municipality?.famousThingsTrivia ?? "", share: highlightsShare)
-                TriviaCard(style: .legend, content: municipality?.historyTrivia ?? "", share: legendShare)
+                TriviaCard(style: .highlights, content: municipality?.famousThingsTrivia ?? "", share: municipalityShare(.highlights))
+                TriviaCard(style: .legend, content: municipality?.historyTrivia ?? "", share: municipalityShare(.legend))
 
                 if let designatedCity {
                     WardsCard(city: designatedCity)
@@ -158,13 +147,9 @@ struct MunicipalityDetailScreen: View {
             switch share {
             case .cityMap(let code):
                 ShareMapSheet(initialScope: .designatedCity(code: code), silhouetteStore: silhouetteStore)
-            case .firstVisit:
-                if let shareTarget {
-                    FirstVisitShareSheet(target: shareTarget)
-                }
-            case .trivia(let topics, let initialTopic):
-                if let shareTarget {
-                    TriviaShareSheet(target: shareTarget, isVisited: isVisited, topics: topics, initialTopic: initialTopic)
+            case .municipality(let initialKind):
+                if let shareSubject {
+                    MunicipalityShareSheet(subject: shareSubject, initialKind: initialKind)
                 }
             }
         }
@@ -182,18 +167,25 @@ struct MunicipalityDetailScreen: View {
         }
     }
 
-    /// ツールバーの共有ボタン。訪れた街は初訪問のカード、政令指定都市は区めぐりの地図をシェアできる。
-    /// 両方あるときはメニューで選ぶ。豆知識のシェアは各項目のボタンから。
+    /// ツールバーの共有ボタン。市区町村のカード(訪れた街は初訪問、まだなら出せる最初の豆知識を選んで開く)と、
+    /// 政令指定都市は区めぐりの地図をシェアできる。両方あるときはメニューで選ぶ。
     @ViewBuilder
     private var toolbarShareButton: some View {
-        let canShareFirstVisit = isVisited && shareTarget != nil
-        if canShareFirstVisit, let designatedCity {
+        let initialKind = shareSubject?.initialKind(preferred: .firstVisit)
+        if let initialKind, let designatedCity {
             Menu("シェア", systemImage: "square.and.arrow.up") {
-                Button("初訪問のカード", systemImage: "sparkles") { presentedShare = .firstVisit }
+                Button(
+                    initialKind == .firstVisit ? "初訪問のカード" : "\(designatedCity.name)のカード",
+                    systemImage: initialKind == .firstVisit ? "sparkles" : "rectangle.portrait.on.rectangle.portrait"
+                ) {
+                    presentedShare = .municipality(initialKind: initialKind)
+                }
                 Button("\(designatedCity.name)の地図", systemImage: "map") { presentedShare = .cityMap(code: designatedCity.code) }
             }
-        } else if canShareFirstVisit {
-            Button("初訪問をシェア", systemImage: "square.and.arrow.up") { presentedShare = .firstVisit }
+        } else if let initialKind {
+            Button("\(displayName)をシェア", systemImage: "square.and.arrow.up") {
+                presentedShare = .municipality(initialKind: initialKind)
+            }
         } else if let designatedCity {
             // 区めぐりの進み具合を見ている政令指定都市の画面にだけ、その市の地図をシェアする入口を置く。
             Button("\(designatedCity.name)の地図をシェア", systemImage: "square.and.arrow.up") {

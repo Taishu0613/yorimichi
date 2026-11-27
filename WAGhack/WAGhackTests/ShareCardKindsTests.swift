@@ -12,8 +12,93 @@ struct ShareCardKindsTests {
 
     // MARK: - 共有する文
 
-    @Test func バッジの共有文はバッジ名とハッシュタグとストアのリンク() {
-        #expect(BadgeShareCardContent.shareText(badgeName: "はじめの一歩") == "バッジ「はじめの一歩」を獲得しました #よりみち\n\(url)")
+    @Test func バッジの共有文はバッジ名と入手条件とハッシュタグとストアのリンク() {
+        #expect(
+            BadgeShareCardContent.shareText(badgeName: "はじめの足あと", condition: "市区町村をひとつ訪れる")
+                == "バッジ「はじめの足あと」を獲得しました(市区町村をひとつ訪れる) #よりみち\n\(url)"
+        )
+    }
+
+    // MARK: - バッジの入手条件
+
+    private func condition(_ id: BadgeID, earnedTierCount: Int) throws -> String {
+        let definition = try #require(BadgeCatalog.all.first { $0.id == id })
+        return BadgeShareCardContent.conditionText(definition: definition, earnedTierCount: earnedTierCount)
+    }
+
+    @Test func 入手条件は判定の種類ごとに達成条件の文から作る() throws {
+        // 訪れた市区町村の数
+        #expect(try condition(.firstStep, earnedTierCount: 1) == "市区町村をひとつ訪れる")
+        // 訪れた都道府県の数
+        #expect(try condition(.prefectureTraveler, earnedTierCount: 4) == "47都道府県すべてを訪れる")
+        // 1つの都道府県の市区町村の数
+        #expect(try condition(.localExplorer, earnedTierCount: 1) == "同じ都道府県の市区町村を10か所訪れる")
+        // 名前の付いた目的地(補足の二文目は落とす)
+        #expect(try condition(.helloMetropolis, earnedTierCount: 1) == "池袋(豊島区)・新宿(新宿区)・渋谷(渋谷区)の3か所を訪れる")
+        // 対象の市区町村
+        #expect(try condition(.tokyo23, earnedTierCount: 3) == "東京23区をすべて訪れる")
+        // 同じ名前の組
+        #expect(try condition(.twinTowns, earnedTierCount: 1) == "ちがう都道府県にある同じ名前の市区町村を1組訪れる")
+        // 数字の種類
+        #expect(try condition(.numberTraveler, earnedTierCount: 1) == "名前に入っている数字を3種類集める")
+        // 近くに集まる市区町村
+        #expect(try condition(.quadrupleBoundary, earnedTierCount: 1) == "記録した場所がおたがい1km以内にある、4つの市区町村を訪れる")
+        // 地域ごとに1つ以上
+        #expect(try condition(.threeCapitals, earnedTierCount: 1) == "東京23区・京都市・大阪市の区を、それぞれ1つ以上訪れる")
+    }
+
+    @Test func 段階式の入手条件は獲得したランクの閾値で_未獲得なら最初の段階() throws {
+        #expect(try condition(.footprintCollector, earnedTierCount: 0) == "市区町村を10か所訪れる")
+        #expect(try condition(.footprintCollector, earnedTierCount: 1) == "市区町村を10か所訪れる")
+        #expect(try condition(.footprintCollector, earnedTierCount: 3) == "市区町村を100か所訪れる")
+        #expect(try condition(.footprintCollector, earnedTierCount: 9) == "市区町村を500か所訪れる")
+    }
+
+    @Test func 判定のあるバッジはどれも一文の入手条件を持つ() {
+        for definition in BadgeCatalog.all where definition.isAvailable {
+            for tierCount in 1...definition.tiers.count {
+                let text = BadgeShareCardContent.conditionText(definition: definition, earnedTierCount: tierCount)
+                #expect(!text.isEmpty, "\(definition.name)")
+                #expect(!text.contains("。"), "\(definition.name): \(text)")
+            }
+        }
+    }
+
+    // MARK: - 市区町村のシェア画面で出せるカード
+
+    @Test func 訪れた街は初訪問とみどころと都市伝説とできることを出す() {
+        let kinds = MunicipalityShareSubject.availableKinds(
+            isVisited: true, highlightsText: "名古屋市は…", legendText: "金鯱は…", hasSpots: true
+        )
+        #expect(kinds == [.firstVisit, .highlights, .legend, .spots])
+    }
+
+    @Test func まだ行っていない街は初訪問を出さない() {
+        let kinds = MunicipalityShareSubject.availableKinds(
+            isVisited: false, highlightsText: "名古屋市は…", legendText: "金鯱は…", hasSpots: true
+        )
+        #expect(kinds == [.highlights, .legend, .spots])
+    }
+
+    @Test func 都市伝説が決まり文句の街とスポットが無い街はその種類を出さない() {
+        let kinds = MunicipalityShareSubject.availableKinds(
+            isVisited: true, highlightsText: "白石区は…", legendText: "札幌市白石区には、特に有名な怪談・都市伝説はありません。", hasSpots: false
+        )
+        #expect(kinds == [.firstVisit, .highlights])
+        let nothing = MunicipalityShareSubject.availableKinds(isVisited: false, highlightsText: " ", legendText: "", hasSpots: false)
+        #expect(nothing.isEmpty)
+    }
+
+    @Test func 押した入口の種類が出せなければ出せる最初の種類で開く() {
+        let target = ShareMunicipalityTarget(code: "01104", name: "札幌市白石区", prefectureName: "北海道")
+        let subject = MunicipalityShareSubject(
+            target: target, isVisited: false, highlightsText: "白石区は…",
+            legendText: "札幌市白石区には、特に有名な怪談・都市伝説はありません。", spots: []
+        )
+        #expect(subject.initialKind(preferred: .legend) == .highlights)
+        #expect(subject.initialKind(preferred: .firstVisit) == .highlights)
+        #expect(subject.initialKind(preferred: .highlights) == .highlights)
+        #expect(subject.canShare)
     }
 
     @Test func 豆知識の共有文は市区町村名とハッシュタグとストアのリンク() {
@@ -124,16 +209,7 @@ struct ShareCardKindsSampleRenderer {
         }
 
         // 豆知識(名古屋市のみどころ)と初訪問(名古屋市、写真なし)。名古屋市は区を集めた地図になる。
-        let store = SilhouetteMapStore()
-        let repository = BoundaryRepository.bundled()
-        let manifest = try await repository.loadManifest()
-        let wards = try await repository.boundaries(
-            in: manifest.files(in: .municipalities, lod: 2, prefectureCode: "23"),
-            pieceFilter: BoundaryPieceFilter(visibleWidthMeters: 100_000)
-        ).map(\.code).filter { $0.hasPrefix("231") && $0 != "23100" }
-        let target = ShareMunicipalityTarget(code: "23100", name: "名古屋市", prefectureName: "愛知県", wardCodes: Set(wards))
-        await target.loadMap(in: store)
-        let map = try #require(target.map(in: store))
+        let (target, map) = try await Self.loadNagoya()
         let snapshots = ShareMapSnapshotStore()
 
         let trivia = TriviaShareCardContent(
@@ -164,6 +240,75 @@ struct ShareCardKindsSampleRenderer {
                 backdrop: snapshots.backdrop(for: firstVisitKey)
             ), layout: layout, name: "first-visit-nagoya", in: directory)
         }
+    }
+
+    /// 市区町村のシェア画面のカード(みどころ・都市伝説・この街でできること、写真あり・なし)と、入手条件入りのバッジ。
+    /// 写真は`SHARE_CARD_SAMPLE_PHOTO`(画像のパス)で渡す。渡さなければ写真ありの見本は作らない。
+    @Test(.enabled(if: outputDirectory != nil))
+    func 市区町村の切り替えカードと入手条件入りのバッジの見本の画像を書き出す() async throws {
+        let directory = URL(fileURLWithPath: try #require(Self.outputDirectory))
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let photo = ProcessInfo.processInfo.environment["SHARE_CARD_SAMPLE_PHOTO"].flatMap { UIImage(contentsOfFile: $0) }
+
+        // バッジ: 足あとコレクターをゴールドで獲得した架空の記録と、補足付きの条件を持つ都会にこんにちは。
+        for (id, tierCount) in [(BadgeID.footprintCollector, 3), (.helloMetropolis, 1)] {
+            let definition = try #require(BadgeCatalog.all.first { $0.id == id })
+            let achievedAt = Calendar(identifier: .gregorian).date(from: DateComponents(year: 2026, month: 11, day: 20))
+            let status = BadgeStatus(
+                progress: BadgeProgress(definition: definition, value: definition.tiers[tierCount - 1]),
+                achievement: BadgeAchievement(tierCount: tierCount, achievedAt: achievedAt, tierAchievedAt: achievedAt, announcedTierCount: tierCount)
+            )
+            let badge = BadgeShareCardContent(status: status)
+            for layout in ShareCardLayout.allCases {
+                try write(BadgeShareCardView(content: badge, layout: layout), layout: layout, name: "badge-condition-\(id.rawValue)", in: directory)
+            }
+        }
+
+        let (target, map) = try await Self.loadNagoya()
+        let snapshots = ShareMapSnapshotStore()
+        let topics: [(String, TriviaShareCardContent.Topic)] = [
+            ("highlights", .highlights("名古屋市は、愛知県の県庁所在地で、中部地方の中心となる大都市だ。1610年に徳川家康が名古屋城を築き、清須の町をまるごと移した「清須越し」で町ができた。久屋大通と若宮大通は、幅100mの広い道路だ。熱田神宮には、三種の神器の一つ、草薙剣が祀られている。")),
+            ("legend", .legend("名古屋城の天守の金鯱は、何度も盗難にあった。1876年には鱗3枚がはがされ、1937年には北の鯱の鱗58枚から金が盗まれた。江戸時代には、盗賊の柿木金助が大凧に乗って天守に近づき、鯱の鱗を盗んだという話が作られた。")),
+            ("spots", .spot(name: "名古屋城", line: "金の鯱がのる天守と、復元された本丸御殿の豪華なふすま絵を見られる。")),
+        ]
+        for layout in ShareCardLayout.allCases {
+            let key = ShareMapSnapshotStore.Key(id: target.snapshotID, box: layout == .story ? .triviaStory : .triviaSquare)
+            await snapshots.loadBackdropIfNeeded(for: key, map: map)
+            for (name, topic) in topics {
+                let content = TriviaShareCardContent(municipalityName: "名古屋市", prefectureName: "愛知県", isVisited: true, topic: topic)
+                try write(TriviaShareCardView(
+                    content: content, layout: layout, map: map, highlightedCodes: target.highlightedCodes(in: map),
+                    backdrop: snapshots.backdrop(for: key)
+                ), layout: layout, name: "municipality-nagoya-\(name)", in: directory)
+                if let photo {
+                    try write(TriviaShareCardView(
+                        content: content, layout: layout, map: nil, highlightedCodes: [], photo: photo
+                    ), layout: layout, name: "municipality-nagoya-\(name)-photo", in: directory)
+                }
+            }
+            if let photo {
+                let firstVisit = FirstVisitShareCardContent(
+                    municipalityName: "名古屋市", prefectureName: "愛知県", progress: ExplorationCount(visited: 124, total: 1_918)
+                )
+                try write(FirstVisitShareCardView(
+                    content: firstVisit, layout: layout, photo: photo, map: nil, highlightedCodes: []
+                ), layout: layout, name: "municipality-nagoya-first-visit-photo", in: directory)
+            }
+        }
+    }
+
+    /// 名古屋市(区を集めた地図)を読み込む。
+    private static func loadNagoya() async throws -> (ShareMunicipalityTarget, SilhouetteMap) {
+        let store = SilhouetteMapStore()
+        let repository = BoundaryRepository.bundled()
+        let manifest = try await repository.loadManifest()
+        let wards = try await repository.boundaries(
+            in: manifest.files(in: .municipalities, lod: 2, prefectureCode: "23"),
+            pieceFilter: BoundaryPieceFilter(visibleWidthMeters: 100_000)
+        ).map(\.code).filter { $0.hasPrefix("231") && $0 != "23100" }
+        let target = ShareMunicipalityTarget(code: "23100", name: "名古屋市", prefectureName: "愛知県", wardCodes: Set(wards))
+        await target.loadMap(in: store)
+        return (target, try #require(target.map(in: store)))
     }
 
     private func write(_ view: some View, layout: ShareCardLayout, name: String, in directory: URL) throws {
