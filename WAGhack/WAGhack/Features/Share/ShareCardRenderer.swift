@@ -8,7 +8,16 @@ enum ShareCardRenderer {
     /// カードを画像にする。`ImageRenderer`はメインスレッドで使う必要がある。
     /// 描けなかった場合はnil(実際には起きない想定だが、`ImageRenderer`の戻り値がOptionalのため)。
     static func render(content: ShareCardContent, layout: ShareCardLayout, fill: ShareCardFill, maps: ShareCardMaps) -> UIImage? {
-        let card = ShareCardView(content: content, layout: layout, fill: fill, maps: maps)
+        render(ShareCardView(content: content, layout: layout, fill: fill, maps: maps), layout: layout)
+    }
+
+    /// 都道府県・政令指定都市のカードを画像にする。
+    static func render(content: RegionShareCardContent, layout: ShareCardLayout, map: SilhouetteMap?) -> UIImage? {
+        render(RegionShareCardView(content: content, layout: layout, map: map), layout: layout)
+    }
+
+    private static func render(_ view: some View, layout: ShareCardLayout) -> UIImage? {
+        let card = view
             // 端末の外観・文字サイズによらず同じ画像になるよう固定する(理由は`ShareCardView`の説明)。
             .environment(\.colorScheme, .light)
             .dynamicTypeSize(.large)

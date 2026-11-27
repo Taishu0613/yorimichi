@@ -17,6 +17,7 @@ struct MunicipalityDetailScreen: View {
     @Environment(SilhouetteMapStore.self) private var silhouetteStore: SilhouetteMapStore?
     @Query private var savedPlaces: [SavedPlace]
     @State private var viewModel = MunicipalityDetailViewModel()
+    @State private var isPresentingShare = false
 
     /// 画面の左右の余白。カードのずらした影が端で切れないよう、影の分も含めて広めに取る。
     private static let horizontalPadding: CGFloat = 20
@@ -99,6 +100,19 @@ struct MunicipalityDetailScreen: View {
         .background(Pop.paper.ignoresSafeArea())
         .navigationTitle(displayName)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            // 区めぐりの進み具合を見ている政令指定都市の画面にだけ、その市の地図をシェアする入口を置く。
+            if let designatedCity {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("\(designatedCity.name)の地図をシェア", systemImage: "square.and.arrow.up") { isPresentingShare = true }
+                }
+            }
+        }
+        .sheet(isPresented: $isPresentingShare) {
+            if let designatedCity {
+                ShareMapSheet(initialScope: .designatedCity(code: designatedCity.code), silhouetteStore: silhouetteStore)
+            }
+        }
         .task(id: silhouetteCode) {
             guard let silhouetteCode else { return }
             await silhouetteStore?.loadMunicipalityMapIfNeeded(code: silhouetteCode)

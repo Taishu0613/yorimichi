@@ -22,6 +22,11 @@ final class SilhouetteMapStore {
     /// シェア用のカードに大きく描く日本地図。旅の記録の「地図をシェア」を開いたときにだけ読む。
     private(set) var shareCardMaps: ShareCardMaps?
 
+    /// シェア用のカードに大きく描く、都道府県(区画=市区町村)の地図。都道府県コード(2桁)ごと。
+    private(set) var sharePrefectureMaps: [String: SilhouetteMap] = [:]
+    /// シェア用のカードに大きく描く、政令指定都市(区画=区)の地図。市そのものの行政区域コード(5桁)ごと。
+    private(set) var shareDesignatedCityMaps: [String: SilhouetteMap] = [:]
+
     @ObservationIgnored private var loadingKeys: Set<String> = []
     @ObservationIgnored private let logger = Logger(subsystem: "com.wakasugi.yorimichi", category: "SilhouetteMap")
 
@@ -93,6 +98,67 @@ final class SilhouetteMapStore {
             self.shareCardMaps = maps
         }
     }
+
+    /// シェア用のカードに大きく描く都道府県の地図を用意する。読み込み済み・読み込み中なら何もしない。
+    ///
+    /// 進捗の隣の地図(96pt基準・LOD1)を引き伸ばすと角張るため、カードの大きさ(360pt基準)で作り直す。
+    /// 最も小さい県(約100km)を横360ptに描くと1pt≒300mなので、150m間引きのLOD2を使う。1県1ファイルで最大でも数MB。
+    func loadSharePrefectureMapIfNeeded(code: String) async {
+        guard sharePrefectureMaps[code] == nil else { return }
+        await load(key: "share-prefecture-\(code)") { repository, manifest in
+            // 1km未満の島は描かない(横360ptの最も小さい県でも約3pt。小さな島は`prefectureMap`がさらに省く)。
+            let loadFilter = BoundaryPieceFilter(visibleWidthMeters: 100_000)
+            let prefecture = try await repository.boundaries(
+                in: manifest.files(in: .prefectures, lod: Self.shareRegionLOD, prefectureCode: code),
+                pieceFilter: loadFilter
+            ).first
+            let municipalities = try await repository.boundaries(
+                in: manifest.files(in: .municipalities, lod: Self.shareRegionLOD, prefectureCode: code),
+                pieceFilter: loadFilter
+            )
+            guard let prefecture else {
+                self.logger.error("都道府県\(code, privacy: .public)の境界ファイルが見つかりません")
+                return
+            }
+            let builder = BoundarySilhouetteBuilder(targetPoints: Self.shareCardMapResolution)
+            let map = await Task.detached(priority: .userInitiated) {
+                builder.prefectureMap(of: prefecture, municipalities: municipalities)
+            }.value
+            try Task.checkCancellation()
+            self.sharePrefectureMaps[code] = map
+        }
+    }
+
+    /// シェア用のカードに大きく描く政令指定都市の地図(区ごとに分けたもの)を用意する。読み込み済み・読み込み中なら何もしない。
+    ///
+    /// 政令指定都市(約20〜50km)を横360ptに描くと1pt≒60〜140mなので、50m間引きのLOD3を使う。
+    /// - Parameters:
+    ///   - cityCode: 市そのものの行政区域コード。地図の保存のキーに使う。
+    ///   - wardCodes: 描く区の行政区域コード。境界データには市の形が無く区の形だけがあるため、区を集めて地図にする。
+    func loadShareDesignatedCityMapIfNeeded(cityCode: String, wardCodes: Set<String>) async {
+        guard shareDesignatedCityMaps[cityCode] == nil, !wardCodes.isEmpty else { return }
+        let prefectureCode = String(cityCode.prefix(2))
+        await load(key: "share-city-\(cityCode)") { repository, manifest in
+            // 県のファイルごと読むが、この市の区以外はすぐ捨てる。300m未満の岩礁は描かない(横360ptで約2〜5pt)。
+            let wards = try await repository.boundaries(
+                in: manifest.files(in: .municipalities, lod: Self.shareDesignatedCityLOD, prefectureCode: prefectureCode),
+                pieceFilter: BoundaryPieceFilter(visibleWidthMeters: 30_000)
+            ).filter { wardCodes.contains($0.code) }
+            let builder = BoundarySilhouetteBuilder(targetPoints: Self.shareCardMapResolution)
+            let map = await Task.detached(priority: .userInitiated) { builder.designatedCityMap(of: wards) }.value
+            try Task.checkCancellation()
+            guard let map else {
+                self.logger.error("政令指定都市\(cityCode, privacy: .public)の区の境界が見つかりません")
+                return
+            }
+            self.shareDesignatedCityMaps[cityCode] = map
+        }
+    }
+
+    /// シェア用の都道府県の地図に使うLOD(150m間引き)。
+    private static let shareRegionLOD = 2
+    /// シェア用の政令指定都市の地図に使うLOD(50m間引き)。
+    private static let shareDesignatedCityLOD = 3
 
     /// 都道府県の地図を用意する。読み込み済み・読み込み中なら何もしない。
     func loadPrefectureMapIfNeeded(code: String) async {

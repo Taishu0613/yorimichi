@@ -83,6 +83,92 @@ struct ShareCardContentTests {
     }
 }
 
+/// 都道府県・政令指定都市のカードの中身と共有文。
+struct RegionShareCardContentTests {
+    private let calculator = ExplorationProgressCalculator()
+    private let date = Date(timeIntervalSince1970: 1_795_000_000)
+
+    /// 愛知県の4市区町村(名古屋市の2区＋豊橋市・岡崎市)のうち3つを訪れた集計。
+    private var aichi: ExplorationSummary {
+        calculator.summarize(
+            municipalities: [
+                entry("23100", "名古屋市"), entry("23101", "名古屋市千種区"), entry("23102", "名古屋市東区"),
+                entry("23201", "豊橋市"), entry("23202", "岡崎市"),
+            ],
+            visitedCodes: ["23101", "23201", "23202"]
+        )
+    }
+
+    @Test func 都道府県のカードは市区町村の件数と制覇率と称号を載せる() throws {
+        let prefecture = try #require(aichi.prefectures.first)
+
+        let content = RegionShareCardContent(prefecture: prefecture, date: date)
+
+        #expect(content.headline == "わたしの愛知県")
+        #expect(content.visitedCount == 3)
+        #expect(content.totalCount == 4)
+        #expect(content.unit == "市区町村")
+        #expect(content.achievementText == "75%達成")
+        #expect(content.nextGoalText == "あと1市区町村で100%達成")
+        #expect(content.visitedCodes == ["23101", "23201", "23202"])
+    }
+
+    @Test func 都道府県の共有文は件数と割合とApp_Storeのリンク() throws {
+        let content = RegionShareCardContent(prefecture: try #require(aichi.prefectures.first), date: date)
+
+        #expect(content.shareText == "愛知県の3/4市区町村を訪れました(\(content.percentageText)) #よりみち\nhttps://apps.apple.com/jp/app/id6805073599")
+    }
+
+    @Test func 政令指定都市のカードは区を単位に数え区だけを塗る() throws {
+        let city = try #require(aichi.designatedCities.first)
+
+        let content = RegionShareCardContent(city: city, date: date)
+
+        #expect(content.headline == "名古屋市の区めぐり")
+        #expect(content.visitedCount == 1)
+        #expect(content.totalCount == 2)
+        #expect(content.unit == "区")
+        #expect(content.visitedCodes == ["23101"])
+        #expect(content.shareText == "名古屋市の1/2区を訪れました(\(content.percentageText)) #よりみち\nhttps://apps.apple.com/jp/app/id6805073599")
+    }
+
+    @Test func 都道府県単独の記録だけなら0件とは書かずはじまりの文にする() throws {
+        let summary = calculator.summarize(
+            municipalities: [entry("23201", "豊橋市")], visitedCodes: [], explicitlyVisitedPrefectureCodes: ["23"]
+        )
+
+        let content = RegionShareCardContent(prefecture: try #require(summary.prefectures.first), date: date)
+
+        #expect(content.shareText.hasPrefix("よりみちで愛知県の市区町村めぐりをはじめました #よりみち"))
+    }
+
+    @Test func シェアの候補は訪れたものだけを制覇率の高い順に並べる() {
+        let summary = calculator.summarize(
+            municipalities: [
+                entry("23201", "豊橋市"), entry("23202", "岡崎市"),
+                entry("37201", "高松市"),
+                entry("13101", "千代田区"), entry("13102", "中央区"),
+            ],
+            visitedCodes: ["23201", "37201"]
+        )
+
+        let candidates = ShareScopeCandidates(summary: summary)
+
+        // 香川(100%) → 愛知(50%)。東京は訪れていないので出さない。
+        #expect(candidates.prefectures.map(\.code) == ["37", "23"])
+        #expect(candidates.availableKinds == [.japan, .prefecture])
+        // 開いた画面の県は、訪れていなくても候補に入れる。
+        #expect(ShareScopeCandidates(summary: summary, including: .prefecture(code: "13")).prefectures.map(\.code) == ["37", "23", "13"])
+    }
+
+    private func entry(_ code: String, _ name: String) -> ExplorationMunicipality {
+        ExplorationMunicipality(
+            code: code, name: name, prefectureCode: String(code.prefix(2)),
+            prefectureName: "愛知県", isPrefecture: false
+        )
+    }
+}
+
 /// シェア用カードの見本の画像を書き出す。ふだんのテストでは動かさない。
 ///
 /// 書き出すときは、環境変数でフォルダを渡して実行する:
@@ -133,6 +219,52 @@ struct ShareCardSampleRenderer {
                 #expect(image.size.width * image.scale == layout.pixelSize.width)
                 #expect(image.size.height * image.scale == layout.pixelSize.height)
                 try data.write(to: directory.appendingPathComponent("share-card-\(layout.rawValue)-\(fill.rawValue).png"))
+            }
+        }
+    }
+
+    /// 架空の旅: 愛知県の市区町村の約55%、そのうち名古屋市は16区のうち10区。
+    @Test(.enabled(if: outputDirectory != nil))
+    func 都道府県と政令指定都市の見本の画像を書き出す() async throws {
+        let directory = URL(fileURLWithPath: try #require(Self.outputDirectory))
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        let repository = BoundaryRepository.bundled()
+        let manifest = try await repository.loadManifest()
+        let boundaries = try await repository.boundaries(
+            in: manifest.files(in: .municipalities, lod: 2, prefectureCode: "23"),
+            pieceFilter: BoundaryPieceFilter(visibleWidthMeters: 100_000)
+        )
+        // 「所属未定地」(末尾000)はマスタに無いので除く。マスタと同じく名古屋市そのものの行も足す。
+        var entries = boundaries.filter { !$0.code.hasSuffix("000") }.map {
+            ExplorationMunicipality(code: $0.code, name: $0.name, prefectureCode: "23", prefectureName: "愛知県", isPrefecture: false)
+        }
+        entries.append(ExplorationMunicipality(code: "23100", name: "名古屋市", prefectureCode: "23", prefectureName: "愛知県", isPrefecture: false))
+        let wardCodes = entries.map(\.code).filter { $0.hasPrefix("231") && $0 != "23100" }.sorted()
+        let otherCodes = entries.map(\.code).filter { !$0.hasPrefix("231") }.sorted()
+        var visited = Set(wardCodes.prefix(10))
+        let target = Int((Double(wardCodes.count + otherCodes.count) * 0.55).rounded(.up))
+        visited.formUnion(otherCodes.enumerated().filter { $0.offset.isMultiple(of: 2) || $0.offset < 6 }.map(\.element).prefix(target - visited.count))
+        let summary = ExplorationProgressCalculator().summarize(municipalities: entries, visitedCodes: visited)
+        let prefecture = try #require(summary.prefectures.first)
+        let city = try #require(summary.designatedCities.first)
+
+        let store = SilhouetteMapStore()
+        await store.loadSharePrefectureMapIfNeeded(code: "23")
+        await store.loadShareDesignatedCityMapIfNeeded(cityCode: city.code, wardCodes: Set(city.wards.map(\.code)))
+        let prefectureMap = try #require(store.sharePrefectureMaps["23"])
+        let cityMap = try #require(store.shareDesignatedCityMaps[city.code])
+
+        let cards: [(name: String, content: RegionShareCardContent, map: SilhouetteMap)] = [
+            ("prefecture-aichi", RegionShareCardContent(prefecture: prefecture, date: .now), prefectureMap),
+            ("city-nagoya", RegionShareCardContent(city: city, date: .now), cityMap),
+        ]
+        for card in cards {
+            for layout in ShareCardLayout.allCases {
+                let image = try #require(ShareCardRenderer.render(content: card.content, layout: layout, map: card.map))
+                #expect(image.size.width * image.scale == layout.pixelSize.width)
+                let data = try #require(image.pngData())
+                try data.write(to: directory.appendingPathComponent("share-card-\(card.name)-\(layout.rawValue).png"))
             }
         }
     }

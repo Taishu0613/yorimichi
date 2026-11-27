@@ -117,6 +117,27 @@ nonisolated struct BoundarySilhouetteBuilder: Sendable {
         return SilhouetteMap(areas: areas, aspectRatio: projection.aspectRatio, insetFrame: nil)
     }
 
+    /// 政令指定都市を区ごとに分けた地図(シェア用のカードで、訪れた区を塗るのに使う)。区が無ければnil。
+    ///
+    /// 境界データに市そのものの形は無いので、枠は全区の最も大きいピースをまとめて囲む範囲にする。
+    /// 区の飛び地や小島は、枠に掛かる大きさのものだけを描く(日本地図と同じ大きさの規則)。
+    func designatedCityMap(of wards: [AdministrativeBoundary]) -> SilhouetteMap? {
+        let boxes = wards.compactMap { $0.polygons.first?.boundingBox }
+        guard let first = boxes.first else { return nil }
+        let frame = boxes.dropFirst().reduce(first) { box, other in
+            GeoBoundingBox(
+                minLongitude: min(box.minLongitude, other.minLongitude),
+                minLatitude: min(box.minLatitude, other.minLatitude),
+                maxLongitude: max(box.maxLongitude, other.maxLongitude),
+                maxLatitude: max(box.maxLatitude, other.maxLatitude)
+            )
+        }
+        let projection = SilhouetteProjection(frame: frame, targetPoints: targetPoints)
+        let areas = wards.compactMap { area(of: $0, with: projection, keeping: Self.keepsPieceBySize) }
+        guard !areas.isEmpty else { return nil }
+        return SilhouetteMap(areas: areas, aspectRatio: projection.aspectRatio, insetFrame: nil)
+    }
+
     /// 1つの市区町村だけの地図。枠はその市区町村の最も大きいピースに合わせ、枠に掛からない離島は描かない。
     func municipalityMap(of municipality: AdministrativeBoundary) -> SilhouetteMap? {
         guard let largest = municipality.polygons.first else { return nil }

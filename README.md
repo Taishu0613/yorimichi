@@ -476,3 +476,16 @@ MapKitはポリゴン1枚ごとに描画を持つため、枚数がそのまま�
 - **地図**: `SilhouetteMapStore.loadShareCardMapsIfNeeded()`がシートを開いたときに1回だけ、LOD0の全国ファイル（都道府県・市区町村）から横360pt基準で間引いた2枚の日本地図（`ShareCardMaps`）を作って保持する。枠と沖縄の小窓は既存の日本地図と同じで、小窓には沖縄本島に掛かる市町村だけが入る。読み込み中はプレビューの位置に`ProgressView`を出す。
 - 「画像を保存」のため`NSPhotoLibraryAddUsageDescription`を追加した。
 - 見本の画像は`TEST_RUNNER_SHARE_CARD_SAMPLE_DIR=<フォルダ> xcodebuild test -only-testing:WAGhackTests/ShareCardSampleRenderer ...`で書き出せる（環境変数が無いときは動かない）。
+
+### 都道府県・政令指定都市のシェアと節目の知らせ（1.8.0 (2)）
+
+全国の地図だけでは進み具合が見えにくく、日本全体を塗り終えるまでシェアする機会が無いというTestFlightの声を受けて、都道府県・政令指定都市の単位でもシェアできるようにした。
+
+- **範囲**（`ShareScope`）: シートに「範囲」（全国／都道府県／政令指定都市）を足し、都道府県・政令指定都市ではメニューでどれをシェアするかを選ぶ。候補は訪れたものだけを制覇率の高い順に並べる（`ShareScopeCandidates`）。開いた場所で始まる範囲が決まる（旅の記録→全国、都道府県の画面→その県、政令指定都市の画面→その市）。「塗り」は全国のときだけ出す。集計はシート自身が訪問記録から求める（どこから開いても同じ候補・数字になるように）。
+- **入口**: 都道府県の画面（`PrefectureExplorationScreen`）と政令指定都市の画面（`MunicipalityDetailScreen`に`designatedCity`が渡されたとき）のツールバーの共有ボタン、節目の知らせの「シェアする」。
+- **カード**（`RegionShareCardView`／`RegionShareCardContent`）: 区画（都道府県は市区町村、政令指定都市は区）を塗った地図を大きく描き、制覇率（%）を主役の数字にして、件数・称号（`achievementText`）・次の節目（`nextGoalText`）・日付・アプリの印を載せる。共有文は「{名前}の{n}/{total}{市区町村|区}を訪れました({%}) #よりみち」＋App StoreのURL。全国のカードと同じく位置が分かる情報は載せない。
+- **地図**: `SilhouetteMapStore.loadSharePrefectureMapIfNeeded`（LOD2・150m間引き）と`loadShareDesignatedCityMapIfNeeded`（LOD3・50m間引き。境界データに市の形は無いので区を集めて作る。`BoundarySilhouetteBuilder.designatedCityMap`）が、カードの大きさ（360pt基準）で作って保持する。読み込めなかったときは地図の枠にアイコンだけを出して描く。
+- **節目の知らせ**（`ShareMilestone`／`ShareMilestoneStore`／`ShareMilestoneBanner`）: 都道府県の制覇率が25/50/75/100%に届いたとき、政令指定都市の区をすべて訪れたときに、バッジの知らせと同じ場所に小さな知らせ（「愛知県 50%達成!」「名古屋市 全区制覇!」）を出し、「シェアする」でその範囲のシェア画面を開く。5秒で自分で消え（VoiceOver中は消さない）、音は鳴らさない（節目は地図の演出が既に鳴らしているため）。
+  - `MapScreen`が持ち、集計が変わったときだけ評価する。出すのはバッジの知らせと同じ落ち着いた時で、バッジの知らせが待っていればそちらを先に出す。チュートリアル中は`MapScreen`が有効でないので出ない。
+  - 知らせ済みの節目はUserDefaults（`shareMilestones.ledger`）に保存し、節目ごとに一度だけ知らせる。記録が無い（このバージョンではじめての評価）ときは、届いている節目を知らせずに記録だけする。一度に同じ県の節目を複数越えたら高い方だけを知らせる。
+- 見本の画像は全国のものと同じテスト（`ShareCardSampleRenderer`）で、愛知県（約55%）と名古屋市（16区中10区）の縦長・正方形も書き出す。

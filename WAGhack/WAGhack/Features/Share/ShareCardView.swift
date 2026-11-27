@@ -86,25 +86,8 @@ struct ShareCardView: View {
 
     // MARK: - 部品
 
-    /// 薄いテーマ色の地に、水玉を散らしてPOPに見せる。
     private var background: some View {
-        Pop.themeSoft
-            .overlay {
-                Canvas { context, size in
-                    let spacing: CGFloat = 22
-                    var row = 0
-                    var y: CGFloat = 0
-                    while y < size.height + spacing {
-                        var x: CGFloat = row.isMultiple(of: 2) ? 0 : spacing / 2
-                        while x < size.width + spacing {
-                            context.fill(Path(ellipseIn: CGRect(x: x - 1.5, y: y - 1.5, width: 3, height: 3)), with: .color(.white.opacity(0.8)))
-                            x += spacing
-                        }
-                        y += spacing * 0.87
-                        row += 1
-                    }
-                }
-            }
+        ShareCardBackground()
     }
 
     private func dateLabel(size: CGFloat) -> some View {
@@ -195,8 +178,41 @@ struct ShareCardView: View {
         .lineLimit(1)
     }
 
-    /// 右下に添えるアプリの印。
     private func appMark(logoSize: CGFloat) -> some View {
+        ShareCardAppMark(logoSize: logoSize)
+    }
+}
+
+// MARK: - 全国・都道府県・政令指定都市のカードで共通の部品
+
+/// カードの地。薄いテーマ色に、水玉を散らしてPOPに見せる。
+struct ShareCardBackground: View {
+    var body: some View {
+        Pop.themeSoft
+            .overlay {
+                Canvas { context, size in
+                    let spacing: CGFloat = 22
+                    var row = 0
+                    var y: CGFloat = 0
+                    while y < size.height + spacing {
+                        var x: CGFloat = row.isMultiple(of: 2) ? 0 : spacing / 2
+                        while x < size.width + spacing {
+                            context.fill(Path(ellipseIn: CGRect(x: x - 1.5, y: y - 1.5, width: 3, height: 3)), with: .color(.white.opacity(0.8)))
+                            x += spacing
+                        }
+                        y += spacing * 0.87
+                        row += 1
+                    }
+                }
+            }
+    }
+}
+
+/// 右下に添えるアプリの印。
+struct ShareCardAppMark: View {
+    let logoSize: CGFloat
+
+    var body: some View {
         HStack(spacing: 8) {
             Spacer(minLength: 0)
             Image("LaunchLogo")

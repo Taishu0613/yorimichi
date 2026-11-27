@@ -92,6 +92,12 @@ struct MapScreen: View {
     @State private var badgeStore = BadgeStore()
     /// 地図の上に出しているバッジ獲得の知らせ。nilなら出していない。
     @State private var badgeAnnouncement: BadgeAnnouncement?
+    /// 都道府県・政令指定都市の節目(25/50/75/100%・全区制覇)の知らせ。summaryと同じ時だけ評価し直す。
+    @State private var shareMilestoneStore = ShareMilestoneStore()
+    /// 地図の上に出している節目の知らせ。nilなら出していない。
+    @State private var shareMilestone: ShareMilestone?
+    /// 節目の知らせの「シェアする」から開いたシェア画面の範囲。nilなら開いていない。
+    @State private var shareMilestoneScope: ShareScope?
 
     /// フッターと画面下端(セーフエリア)の間の余白。
     /// フッターは「旅の記録」の1行(MapRecordsSummaryRow)の高さで、現在地の取得中・取得失敗の行
@@ -292,10 +298,16 @@ struct MapScreen: View {
     /// 見ている間は待ち、地図だけが見えている落ち着いた時に出す。シートの下に重ねても見えないためでもある。
     private var canPresentBadgeAnnouncement: Bool {
         isActive && hasRecordedJapan && badgeAnnouncement == nil
+            && shareMilestone == nil && shareMilestoneScope == nil
             && !isSheetExpanded && !isSettingsPresented
             && !isMunicipalityInvitationPresented && !isMunicipalityCelebrationPresented
             && !isPrefectureIntroPresented && !isJapanIntroPresented
             && areaEffect.phase != .placing && !viewModel.isBusy
+    }
+
+    /// 節目の知らせを出してよいか。バッジの知らせと同じ落ち着いた時で、バッジの知らせが待っていればそちらを先に出す。
+    private var canPresentShareMilestone: Bool {
+        canPresentBadgeAnnouncement && badgeStore.pendingAnnouncement == nil
     }
 
     var body: some View {
@@ -357,6 +369,14 @@ struct MapScreen: View {
             )) {
                 await presentBadgeAnnouncementWhenCalm()
             }
+            .modifier(ShareMilestonePresentation(
+                store: shareMilestoneStore,
+                canPresent: canPresentShareMilestone,
+                bottomPadding: footerHeight + Self.footerBottomPadding + 12,
+                silhouetteStore: silhouetteStore,
+                milestone: $shareMilestone,
+                shareScope: $shareMilestoneScope
+            ))
             .sheet(isPresented: $isSheetExpanded) {
                 sheetContent()
             }
@@ -880,6 +900,7 @@ struct MapScreen: View {
             models: municipalities, savedPlaces: savedPlaces, visitedPrefectures: visitedPrefectures
         )
         designatedCityMapState = DesignatedCityMapState(summary.designatedCities)
+        shareMilestoneStore.update(summary: summary)
         badgeStore.update(summary: summary, visitPoints: savedPlaces.compactMap { place in
             place.municipality.map {
                 BadgeVisitPoint(code: $0.code, latitude: place.latitude, longitude: place.longitude, recordedAt: place.savedAt)
