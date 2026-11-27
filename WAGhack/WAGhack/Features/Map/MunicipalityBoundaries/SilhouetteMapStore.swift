@@ -19,6 +19,9 @@ final class SilhouetteMapStore {
     /// 行政区域コード(5桁)ごとの、市区町村単体の地図。
     private(set) var municipalityMaps: [String: SilhouetteMap] = [:]
 
+    /// シェア用のカードに大きく描く日本地図。旅の記録の「地図をシェア」を開いたときにだけ読む。
+    private(set) var shareCardMaps: ShareCardMaps?
+
     @ObservationIgnored private var loadingKeys: Set<String> = []
     @ObservationIgnored private let logger = Logger(subsystem: "com.wakasugi.yorimichi", category: "SilhouetteMap")
 
@@ -30,6 +33,8 @@ final class SilhouetteMapStore {
     private static let areaMapResolution = progressMapSize
     /// 市区町村の詳細画面で大きく描くときの基準の大きさ(pt)。画面幅いっぱいに描いても粗く見えない細かさ。
     private static let municipalityMapResolution: CGFloat = 320
+    /// シェア用のカードの地図を間引く基準の大きさ(pt)。カードは横360pt(3倍で1080px)で描き、地図はほぼ横幅いっぱいになる。
+    static let shareCardMapResolution: CGFloat = 360
 
     /// 都道府県の地図に使うLOD。LOD0(2km間引き)では小さな県の市区町村が潰れるため、1段細かいLOD1(500m)にする。
     /// 1県1ファイルで最大でも約1MB。
@@ -51,6 +56,41 @@ final class SilhouetteMapStore {
             let map = await Task.detached(priority: .utility) { builder.japanMap(of: prefectures) }.value
             try Task.checkCancellation()
             self.japanMap = map
+        }
+    }
+
+    /// シェア用のカードに大きく描く日本地図を用意する(都道府県を区画にした地図と、全国の市区町村を区画にした地図)。
+    /// 読み込み済み・読み込み中なら何もしない。
+    ///
+    /// 市区町村の地図には、最も粗いLOD0(2km間引き)の全国1ファイル(約1,900区画・約700KB)を使う。
+    /// カードの地図は横360pt(書き出しで1080px)ほどで、1pt≒5kmなので2km間引きで十分に滑らか。
+    /// 都道府県の地図は進捗の隣の`japanMap`(96pt基準)を引き伸ばすと角張るため、カードの大きさで作り直す。
+    func loadShareCardMapsIfNeeded() async {
+        guard shareCardMaps == nil else { return }
+        await load(key: "share-card") { repository, manifest in
+            let selector = BoundaryLODSelector(transitions: manifest.lodTransitions)
+            let lod = selector.coarsestLOD
+            // 横360ptの日本地図で約1.5pt(約7km)未満の島は描かないので、デコード直後に捨ててメモリを抑える。
+            let pieceFilter = BoundaryPieceFilter(visibleWidthMeters: 700_000)
+            let prefectures = try await repository.boundaries(
+                in: manifest.files(in: .prefectures, lod: lod, intersecting: Self.wholeWorld), pieceFilter: pieceFilter
+            )
+            let municipalities = try await repository.boundaries(
+                in: manifest.files(in: .municipalities, lod: lod, intersecting: Self.wholeWorld), pieceFilter: pieceFilter
+            )
+            let builder = BoundarySilhouetteBuilder(targetPoints: Self.shareCardMapResolution)
+            let okinawaMainIsland = prefectures
+                .first { $0.code == BoundarySilhouetteBuilder.japanInsetPrefectureCode }?
+                .polygons.first?.boundingBox
+            // 全国の市区町村で数万頂点を間引くので、メインスレッドの外で行う。
+            let maps = await Task.detached(priority: .userInitiated) {
+                ShareCardMaps(
+                    prefectureMap: builder.japanMap(of: prefectures),
+                    municipalityMap: builder.japanMunicipalityMap(of: municipalities, okinawaMainIsland: okinawaMainIsland)
+                )
+            }.value
+            try Task.checkCancellation()
+            self.shareCardMaps = maps
         }
     }
 
@@ -131,4 +171,12 @@ final class SilhouetteMapStore {
     }
 
     private static let wholeWorld = GeoBoundingBox(minLongitude: -180, minLatitude: -90, maxLongitude: 180, maxLatitude: 90)
+}
+
+/// シェア用のカードに描く2種類の日本地図。同じ枠・同じ縮尺で作るので、塗りを切り替えても地図の位置は動かない。
+nonisolated struct ShareCardMaps: Sendable {
+    /// 区画=都道府県(コード2桁)。
+    let prefectureMap: SilhouetteMap
+    /// 区画=市区町村(行政区域コード5桁。政令指定都市は区)。
+    let municipalityMap: SilhouetteMap
 }

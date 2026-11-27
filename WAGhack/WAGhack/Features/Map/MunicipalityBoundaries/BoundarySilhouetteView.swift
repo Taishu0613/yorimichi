@@ -6,6 +6,8 @@ struct SilhouetteMapView: View {
     let map: SilhouetteMap
     /// 塗る区画のコード。
     let visitedCodes: Set<String>
+    /// 区画の隙間を埋める縁取りの太さ(pt)。シェア用のカードのように大きく描くときは、小さな区画が太って見えないよう細くする。
+    var outlineWidth: CGFloat = 0.8
 
     var body: some View {
         // 区画ごとにShapeを分けると数十〜百数十個の描画になるため、未訪問・訪問済みの2枚にまとめる。
@@ -31,7 +33,7 @@ struct SilhouetteMapView: View {
         shape
             .fill(color)
             .overlay {
-                shape.stroke(color, style: StrokeStyle(lineWidth: 0.8, lineJoin: .round))
+                shape.stroke(color, style: StrokeStyle(lineWidth: outlineWidth, lineJoin: .round))
             }
     }
 }

@@ -138,6 +138,22 @@ struct BoundarySilhouetteBuilderTests {
         #expect(points.allSatisfy { insetFrame?.contains($0) == true })
     }
 
+    @Test func 市区町村の日本地図では沖縄本島の市町村を小窓に描き先島の町村は描かない() {
+        let honshu = makeMunicipality("13101", minLongitude: 135, maxLongitude: 140, minLatitude: 34, maxLatitude: 38)
+        let naha = makeMunicipality("47201", minLongitude: 127.6, maxLongitude: 127.8, minLatitude: 26.1, maxLatitude: 26.3)
+        let nago = makeMunicipality("47209", minLongitude: 127.8, maxLongitude: 128.3, minLatitude: 26.5, maxLatitude: 26.9)
+        // 石垣市のように、沖縄本島の範囲にも本体の範囲にも掛からない島。
+        let ishigaki = makeMunicipality("47207", minLongitude: 124.0, maxLongitude: 124.4, minLatitude: 24.3, maxLatitude: 24.6)
+        let okinawaMainIsland = GeoBoundingBox(minLongitude: 127.6, minLatitude: 26.1, maxLongitude: 128.3, maxLatitude: 26.9)
+
+        let map = builder.japanMunicipalityMap(of: [honshu, naha, nago, ishigaki], okinawaMainIsland: okinawaMainIsland)
+
+        #expect(map.areas.map(\.code) == ["13101", "47201", "47209"])
+        let insetFrame = try? #require(map.insetFrame)
+        let okinawaPoints = map.areas.filter { $0.code.hasPrefix("47") }.flatMap(\.rings).flatMap { $0 }
+        #expect(okinawaPoints.allSatisfy { insetFrame?.contains($0) == true })
+    }
+
     private func makeMunicipality(
         _ code: String, minLongitude: Double, maxLongitude: Double, minLatitude: Double, maxLatitude: Double
     ) -> AdministrativeBoundary {

@@ -49,22 +49,40 @@ nonisolated struct BoundarySilhouetteBuilder: Sendable {
 
     /// 日本地図。沖縄県は左上の小窓に、沖縄本島を枠いっぱいに描く(左上は日本海で本体と重ならない)。
     func japanMap(of prefectures: [AdministrativeBoundary]) -> SilhouetteMap {
+        let okinawaMainIsland = prefectures.first { $0.code == Self.japanInsetPrefectureCode }?.polygons.first?.boundingBox
+        return japanMap(of: prefectures, okinawaMainIsland: okinawaMainIsland)
+    }
+
+    /// 全国の市区町村を区画にした日本地図(シェア用のカードで、訪れた市区町村を塗るのに使う)。
+    /// 枠と沖縄の小窓は都道府県の日本地図と同じ。小窓に入るのは沖縄本島に掛かる市町村だけになる。
+    ///
+    /// - Parameter okinawaMainIsland: 沖縄本島を囲む範囲。市区町村の形からは本島の範囲が分からないので、
+    ///   都道府県の境界(沖縄県の最大のピース)から渡す。nilなら小窓を作らない。
+    func japanMunicipalityMap(of municipalities: [AdministrativeBoundary], okinawaMainIsland: GeoBoundingBox?) -> SilhouetteMap {
+        japanMap(of: municipalities, okinawaMainIsland: okinawaMainIsland)
+    }
+
+    /// 都道府県・市区町村の日本地図の共通部分。沖縄県(`prefectureCode`で判定)の区画は小窓に、それ以外は本体に描く。
+    private func japanMap(of boundaries: [AdministrativeBoundary], okinawaMainIsland: GeoBoundingBox?) -> SilhouetteMap {
         let projection = SilhouetteProjection(frame: Self.japanMainlandFrame, targetPoints: targetPoints)
-        var areas = prefectures
-            .filter { $0.code != Self.japanInsetPrefectureCode }
+        var areas = boundaries
+            .filter { $0.prefectureCode != Self.japanInsetPrefectureCode }
             .compactMap { area(of: $0, with: projection, keeping: Self.keepsPieceBySize) }
 
         var insetFrame: CGRect?
-        if let okinawa = prefectures.first(where: { $0.code == Self.japanInsetPrefectureCode }),
-           let mainIsland = okinawa.polygons.first {
-            let insetProjection = SilhouetteProjection(frame: mainIsland.boundingBox, targetPoints: targetPoints * Self.japanInsetScale)
-            // 小窓の囲みと本体の端の間に少し余白を取る。
-            let margin: CGFloat = 1.5
-            let rings = projectedRings(of: okinawa, with: insetProjection, keeping: Self.keepsPieceBySize).map { ring in
-                ring.map { projection.normalized(CGPoint(x: $0.x + margin * 2, y: $0.y + margin * 2)) }
+        let insetBoundaries = boundaries.filter { $0.prefectureCode == Self.japanInsetPrefectureCode }
+        if let okinawaMainIsland, !insetBoundaries.isEmpty {
+            let insetProjection = SilhouetteProjection(frame: okinawaMainIsland, targetPoints: targetPoints * Self.japanInsetScale)
+            // 小窓の囲みと本体の端の間に少し余白を取る。進捗の隣・ヘッダーの小さな地図では1.5pt。
+            let margin: CGFloat = max(1.5, 1.5 * targetPoints / Self.referenceTargetPoints)
+            let insetAreas = insetBoundaries.compactMap { boundary -> SilhouetteMap.Area? in
+                let rings = projectedRings(of: boundary, with: insetProjection, keeping: Self.keepsPieceBySize).map { ring in
+                    ring.map { projection.normalized(CGPoint(x: $0.x + margin * 2, y: $0.y + margin * 2)) }
+                }
+                return rings.isEmpty ? nil : SilhouetteMap.Area(code: boundary.code, rings: rings)
             }
-            if !rings.isEmpty {
-                areas.append(SilhouetteMap.Area(code: okinawa.code, rings: rings))
+            if !insetAreas.isEmpty {
+                areas += insetAreas
                 let origin = projection.normalized(CGPoint(x: margin, y: margin))
                 let end = projection.normalized(CGPoint(
                     x: insetProjection.width + margin * 3,
@@ -75,6 +93,9 @@ nonisolated struct BoundarySilhouetteBuilder: Sendable {
         }
         return SilhouetteMap(areas: areas, aspectRatio: projection.aspectRatio, insetFrame: insetFrame)
     }
+
+    /// 小窓の余白を決めたときの描画サイズ(旅の記録の進捗の隣、96pt)。大きく描く地図では余白も同じ比率で広げる。
+    private static let referenceTargetPoints: CGFloat = 96
 
     /// 1つの都道府県を市区町村ごとに分けた地図。都道府県の形が無ければnil。
     ///

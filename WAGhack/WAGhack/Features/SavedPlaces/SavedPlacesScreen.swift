@@ -14,6 +14,7 @@ struct SavedPlacesScreen: View {
     @State private var store = SavedPlacesStore()
     /// マップのシート内でだけ渡される。プレビューなど渡されない場所では地図を出さない。
     @Environment(SilhouetteMapStore.self) private var silhouetteStore: SilhouetteMapStore?
+    @State private var isPresentingShare = false
 
     var body: some View {
         let excludedPlaces = store.excludedPlaces(savedPlaces, summary: summary)
@@ -56,6 +57,8 @@ struct SavedPlacesScreen: View {
                 }
                 .padding(16)
                 .popCard(shadow: Pop.yellow.opacity(0.7))
+
+                ShareMapEntryCard { isPresentingShare = true }
 
                 PopFootnote("都道府県を記録するか、1つでも市区町村を訪れると制覇としてカウントします。政令指定都市は区単位で数え、区を1つ訪れると市も訪問済みになります。")
 
@@ -108,6 +111,16 @@ struct SavedPlacesScreen: View {
         .task { await silhouetteStore?.loadJapanMapIfNeeded() }
         .navigationTitle("旅の記録")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("地図をシェア", systemImage: "square.and.arrow.up") { isPresentingShare = true }
+            }
+        }
+        .sheet(isPresented: $isPresentingShare) {
+            // 開いた時点の集計でカードを作る。シートを開いている間に記録が増えることはほぼ無く、
+            // 増えても次に開いたときに反映されれば十分なため。
+            ShareMapSheet(content: ShareCardContent(summary: summary, date: .now), silhouetteStore: silhouetteStore)
+        }
         .alert("削除できませんでした", isPresented: Binding(
             get: { store.deletionErrorMessage != nil },
             set: { if !$0 { store.deletionErrorMessage = nil } }
@@ -116,6 +129,37 @@ struct SavedPlacesScreen: View {
         } message: {
             Text(store.deletionErrorMessage ?? "不明なエラーが発生しました。")
         }
+    }
+}
+
+/// 旅の記録の進捗カードのすぐ下に置く「地図をシェア」の入り口。ツールバーの共有ボタンと同じシートを開く。
+/// ツールバーのボタンだけでは気づかれにくいため、塗った地図を見ているこの位置にも置く。
+private struct ShareMapEntryCard: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                PopIconBadge(systemImage: "square.and.arrow.up", fill: Pop.themeSoft, size: 30)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("地図をシェア")
+                        .font(.headline.weight(.heavy))
+                        .foregroundStyle(Pop.ink)
+                    Text("訪れた市区町村を塗った日本地図を画像にできます")
+                        .font(.caption)
+                        .foregroundStyle(Pop.muted)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.heavy))
+                    .foregroundStyle(Pop.muted)
+                    .accessibilityHidden(true)
+            }
+            .padding(14)
+            .popCard(shadow: Pop.theme.opacity(0.3))
+            .contentShape(RoundedRectangle(cornerRadius: Pop.cornerRadius, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 }
 
