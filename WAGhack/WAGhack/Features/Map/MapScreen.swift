@@ -92,6 +92,8 @@ struct MapScreen: View {
     @State private var badgeStore = BadgeStore()
     /// 地図の上に出しているバッジ獲得の知らせ。nilなら出していない。
     @State private var badgeAnnouncement: BadgeAnnouncement?
+    /// 知らせの「シェアする」から開いたバッジのシェア画面。知らせは数秒で消えるので、シェア画面はここで持つ。
+    @State private var sharingBadge: BadgeShareRequest?
     /// 都道府県・政令指定都市の節目(25/50/75/100%・全区制覇)の知らせ。summaryと同じ時だけ評価し直す。
     @State private var shareMilestoneStore = ShareMilestoneStore()
     /// 地図の上に出している節目の知らせ。nilなら出していない。
@@ -297,7 +299,7 @@ struct MapScreen: View {
     /// バッジ獲得の知らせを出してよいか。記録の流れ(保存中・地図の演出・儀式や誘いのシート)と旅の記録・設定を
     /// 見ている間は待ち、地図だけが見えている落ち着いた時に出す。シートの下に重ねても見えないためでもある。
     private var canPresentBadgeAnnouncement: Bool {
-        isActive && hasRecordedJapan && badgeAnnouncement == nil
+        isActive && hasRecordedJapan && badgeAnnouncement == nil && sharingBadge == nil
             && shareMilestone == nil && shareMilestoneScope == nil
             && !isSheetExpanded && !isSettingsPresented
             && !isMunicipalityInvitationPresented && !isMunicipalityCelebrationPresented
@@ -357,7 +359,8 @@ struct MapScreen: View {
                         announcement: badgeAnnouncement,
                         statuses: badgeStore.statuses,
                         showBadges: showBadgesFromAnnouncement,
-                        dismiss: dismissBadgeAnnouncement
+                        dismiss: dismissBadgeAnnouncement,
+                        share: shareBadgeFromAnnouncement
                     )
                     .padding(.horizontal, 16)
                     .padding(.bottom, footerHeight + Self.footerBottomPadding + 12)
@@ -368,6 +371,11 @@ struct MapScreen: View {
                 canPresent: canPresentBadgeAnnouncement, pending: badgeStore.pendingAnnouncement
             )) {
                 await presentBadgeAnnouncementWhenCalm()
+            }
+            .sheet(item: $sharingBadge) { request in
+                if let status = badgeStore.status(for: request.id) {
+                    BadgeShareSheet(status: status)
+                }
             }
             .modifier(ShareMilestonePresentation(
                 store: shareMilestoneStore,
@@ -930,6 +938,12 @@ struct MapScreen: View {
         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
             badgeAnnouncement = nil
         }
+    }
+
+    /// 知らせの「シェアする」。知らせを閉じてから、そのバッジのシェア画面を開く。
+    private func shareBadgeFromAnnouncement(_ id: BadgeID) {
+        badgeAnnouncement = nil
+        sharingBadge = BadgeShareRequest(id: id)
     }
 
     /// 知らせの「詳しく見る」。1種類ならその詳細を、まとめての知らせならバッジ図鑑を、旅の記録のシートで開く。
@@ -1519,4 +1533,9 @@ private extension View {
 
 #Preview {
     MapScreen().modelContainer(for: [SavedPlace.self, Municipality.self, VisitedPrefecture.self], inMemory: true)
+}
+
+/// 知らせから開くバッジのシェア画面。`sheet(item:)`に渡すための入れ物。
+private struct BadgeShareRequest: Identifiable {
+    let id: BadgeID
 }

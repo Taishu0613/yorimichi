@@ -11,6 +11,8 @@ struct ShareCardView: View {
     let layout: ShareCardLayout
     let fill: ShareCardFill
     let maps: ShareCardMaps
+    /// 地図の下に薄く敷く本物の地図。撮れるまで・撮れなかったときはnilで、図形だけの地図にする。
+    var backdrop: ShareMapBackdrop? = nil
 
     var body: some View {
         Group {
@@ -32,16 +34,19 @@ struct ShareCardView: View {
                 MarkerHeading("わたしの日本地図", size: 28)
                 dateLabel(size: 13)
             }
-            map
-                .padding(12)
-                .frame(maxWidth: .infinity)
-                .frame(height: 290)
+            map(box: .japanStory)
                 .popCard(shadow: Pop.theme.opacity(0.35), shadowOffset: 5)
             VStack(alignment: .leading, spacing: 10) {
                 municipalityCount(countSize: 40)
                 PopProgressBar(fraction: content.fraction)
-                HStack(spacing: 14) {
-                    statChips(fontSize: 14)
+                // 2つの数が横に収まらないとき(完全踏破が出る時)は、「完全…」と切れないよう2行にする。
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 14) {
+                        statChips(fontSize: 14)
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        statChips(fontSize: 14)
+                    }
                 }
                 PopPill(text: content.achievementText, systemImage: "seal.fill", fill: Pop.yellow)
             }
@@ -64,9 +69,7 @@ struct ShareCardView: View {
                 dateLabel(size: 11)
             }
             HStack(alignment: .top, spacing: 12) {
-                map
-                    .padding(8)
-                    .frame(width: 176, height: 236)
+                map(box: .japanSquare)
                     .popCard(shadow: Pop.theme.opacity(0.35))
                 VStack(alignment: .leading, spacing: 8) {
                     compactMunicipalityCount
@@ -98,14 +101,16 @@ struct ShareCardView: View {
             .fixedSize()
     }
 
-    private var map: some View {
+    /// 塗った日本地図。2種類の地図(`ShareCardMaps`)は同じ枠で作ってあるので、本物の地図はどちらにも同じものを敷ける。
+    private func map(box: ShareCardMapBox) -> some View {
         let silhouette = switch fill {
         case .municipalities: maps.municipalityMap
         case .prefectures: maps.prefectureMap
         }
         // 書き出すと3倍になるので、区画の隙間を埋める縁取りは0.4pt(1.2px)で足りる。太いと小さな町村が膨らんで見える。
-        return SilhouetteMapView(map: silhouette, visitedCodes: content.visitedCodes(for: fill), outlineWidth: 0.4)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        return ShareMapCanvas(
+            map: silhouette, visitedCodes: content.visitedCodes(for: fill), box: box, backdrop: backdrop, outlineWidth: 0.4
+        )
     }
 
     private func municipalityCount(countSize: CGFloat) -> some View {

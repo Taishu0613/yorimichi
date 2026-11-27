@@ -12,6 +12,8 @@ struct BadgeUnlockBanner: View {
     let statuses: [BadgeStatus]
     let showBadges: () -> Void
     let dismiss: () -> Void
+    /// 獲得したバッジをシェアする。シェア画面は消える知らせの外(`MapScreen`)で開くので、押されたバッジだけを渡す。
+    var share: ((BadgeID) -> Void)? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
@@ -59,6 +61,13 @@ struct BadgeUnlockBanner: View {
         }
     }
 
+    /// シェアするバッジ。新しく獲得したときだけで、複数なら先頭(知らせのスタンプの一番手前)。
+    /// はじめての評価のまとめは「これまでの旅」の一覧なのでシェアは出さない。
+    private var shareableBadgeID: BadgeID? {
+        guard case .newlyEarned(let unlocks) = announcement else { return nil }
+        return unlocks.first?.id
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             stamp
@@ -72,6 +81,17 @@ struct BadgeUnlockBanner: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 4)
+            if let share, let shareableBadgeID {
+                Button {
+                    share(shareableBadgeID)
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.footnote.weight(.bold))
+                }
+                .buttonStyle(.glass)
+                .tint(Pop.theme)
+                .accessibilityLabel("シェアする")
+            }
             Button("詳しく見る", action: showBadges)
                 .buttonStyle(.glassProminent)
                 .tint(Pop.theme)

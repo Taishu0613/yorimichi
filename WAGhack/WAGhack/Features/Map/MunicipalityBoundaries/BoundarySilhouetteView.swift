@@ -8,20 +8,41 @@ struct SilhouetteMapView: View {
     let visitedCodes: Set<String>
     /// 区画の隙間を埋める縁取りの太さ(pt)。シェア用のカードのように大きく描くときは、小さな区画が太って見えないよう細くする。
     var outlineWidth: CGFloat = 0.8
+    var style: Style = .solid
+
+    enum Style {
+        /// 未訪問を灰色で塗る(これまでの見た目)。
+        case solid
+        /// 本物の地図の上に重ねる(シェア用のカード)。未訪問は細い線とごく薄い色だけにして、下の地図を透かす。
+        case overMap
+    }
 
     var body: some View {
         // 区画ごとにShapeを分けると数十〜百数十個の描画になるため、未訪問・訪問済みの2枚にまとめる。
-        let visited = map.areas.filter { visitedCodes.contains($0.code) }.flatMap(\.rings)
-        let unvisited = map.areas.filter { !visitedCodes.contains($0.code) }.flatMap(\.rings)
+        let visited = SilhouetteShape(rings: map.areas.filter { visitedCodes.contains($0.code) }.flatMap(\.rings), aspectRatio: map.aspectRatio)
+        let unvisited = SilhouetteShape(rings: map.areas.filter { !visitedCodes.contains($0.code) }.flatMap(\.rings), aspectRatio: map.aspectRatio)
         ZStack {
-            // `.secondary`は色自体が半透明で、塗りと縁取りが重なる縁だけ濃くなるため、不透明な灰色で描いてからまとめて薄くする。
-            outlined(SilhouetteShape(rings: unvisited, aspectRatio: map.aspectRatio), color: .gray)
-                .compositingGroup()
-                .opacity(0.45)
-            outlined(SilhouetteShape(rings: visited, aspectRatio: map.aspectRatio), color: .teal)
+            switch style {
+            case .solid:
+                // `.secondary`は色自体が半透明で、塗りと縁取りが重なる縁だけ濃くなるため、不透明な灰色で描いてからまとめて薄くする。
+                outlined(unvisited, color: .gray)
+                    .compositingGroup()
+                    .opacity(0.45)
+                outlined(visited, color: .teal)
+            case .overMap:
+                unvisited
+                    .fill(Color.gray.opacity(0.08))
+                    .overlay {
+                        unvisited.stroke(Color.gray.opacity(0.55), style: StrokeStyle(lineWidth: max(outlineWidth, 0.4), lineJoin: .round))
+                    }
+                // 地名がうっすら透けるよう少しだけ透かす。重なる縁が濃くならないよう、まとめてから薄くする。
+                outlined(visited, color: .teal)
+                    .compositingGroup()
+                    .opacity(0.82)
+            }
             if let insetFrame = map.insetFrame {
                 InsetFrameShape(frame: insetFrame, aspectRatio: map.aspectRatio)
-                    .stroke(.secondary, lineWidth: 0.5)
+                    .stroke(style == .solid ? AnyShapeStyle(.secondary) : AnyShapeStyle(Pop.border), lineWidth: style == .solid ? 0.5 : 1)
             }
         }
         .accessibilityHidden(true)
@@ -109,19 +130,5 @@ struct SilhouetteShape: Shape {
             path.addQuadCurve(to: midpoint(index), control: vertices[index])
         }
         path.closeSubpath()
-    }
-}
-
-private extension CGRect {
-    /// 縦横比を保ったまま、この矩形の中央に収まる最大の矩形。
-    func fitted(aspectRatio: CGFloat) -> CGRect {
-        guard aspectRatio > 0, height > 0 else { return self }
-        if width / height > aspectRatio {
-            let fittedWidth = height * aspectRatio
-            return CGRect(x: midX - fittedWidth / 2, y: minY, width: fittedWidth, height: height)
-        } else {
-            let fittedHeight = width / aspectRatio
-            return CGRect(x: minX, y: midY - fittedHeight / 2, width: width, height: fittedHeight)
-        }
     }
 }

@@ -7,8 +7,8 @@ import SwiftUI
 /// 集計は開いた場所から受け取らず、この画面で訪問記録から求める。どこから開いても同じ候補・同じ数字になるようにするため
 /// (件数が変わらない限り`SavedPlacesStore`がキャッシュするので、範囲や形を変えても数え直さない)。
 ///
-/// プレビューには共有するのと同じ画像(`ShareCardRenderer`の結果)を縮めて出す。
-/// 画面用に別のViewを組むと、書き出した画像と見た目がずれることがあるため。
+/// 地図の下には本物の地図(Appleマップのスナップショット)を薄く敷く(1.8.0 (3))。撮れるまでは図形だけのカードを出し、
+/// 撮れたら描き直す。プレビューと共有する画像はいつも同じもの(`ShareCardSheetScaffold`)。
 struct ShareMapSheet: View {
     /// 開いたときの範囲。
     let initialScope: ShareScope
@@ -29,9 +29,10 @@ struct ShareMapSheet: View {
     /// 地図の読み込みを終えた範囲。読み込みに失敗した都道府県・政令指定都市も含む(地図なしのカードで描く)。
     @State private var loadedScopes: Set<ShareScope> = []
     /// 選んだ範囲・形・塗りで描いたカード。変えるたびに描き直す。
-    @State private var rendered: RenderedCard?
+    @State private var rendered: RenderedShareCard?
     @State private var fallbackStore = SilhouetteMapStore()
-    @Environment(\.dismiss) private var dismiss
+    /// 地図の下に敷く本物の地図。この画面を開いている間だけ持つ。
+    @State private var snapshotStore = ShareMapSnapshotStore()
 
     init(initialScope: ShareScope = .japan, silhouetteStore: SilhouetteMapStore?) {
         self.initialScope = initialScope
@@ -47,46 +48,34 @@ struct ShareMapSheet: View {
         let summary = summaryStore.summary(municipalities: municipalities, savedPlaces: savedPlaces, visitedPrefectures: visitedPrefectures)
         let candidates = ShareScopeCandidates(summary: summary, including: initialScope)
         let scope = selectedScope(in: candidates)
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
-                    preview
-                    VStack(alignment: .leading, spacing: 14) {
-                        scopePickers(candidates)
-                        labeled("形") {
-                            Picker("形", selection: $layout) {
-                                ForEach(ShareCardLayout.allCases) { Text($0.title).tag($0) }
-                            }
-                            .pickerStyle(.segmented)
-                        }
-                        // 塗りの単位を選べるのは全国だけ。都道府県・政令指定都市は区画がそのまま市区町村・区になる。
-                        if scope == .japan {
-                            labeled("塗り") {
-                                Picker("塗り", selection: $fill) {
-                                    ForEach(ShareCardFill.allCases) { Text($0.title).tag($0) }
-                                }
-                                .pickerStyle(.segmented)
-                            }
-                        }
+        ShareCardSheetScaffold(
+            navigationTitle: "地図をシェア",
+            footnote: "画像には塗った地図と件数だけが入ります。ピン・住所・訪れた日時は入りません。",
+            rendered: rendered,
+            layout: $layout
+        ) {
+            scopePickers(candidates)
+            // 塗りの単位を選べるのは全国だけ。都道府県・政令指定都市は区画がそのまま市区町村・区になる。
+            if scope == .japan {
+                ShareCardLabeledControl("塗り") {
+                    Picker("塗り", selection: $fill) {
+                        ForEach(ShareCardFill.allCases) { Text($0.title).tag($0) }
                     }
-                    PopFootnote("画像には塗った地図と件数だけが入ります。ピン・住所・訪れた日時は入りません。")
-                    shareButton
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 16)
-            }
-            .background(Pop.paper.ignoresSafeArea())
-            .navigationTitle("地図をシェア")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("閉じる", systemImage: "xmark") { dismiss() }
+                    .pickerStyle(.segmented)
                 }
             }
         }
         .task(id: scope) { await loadMap(for: scope, summary: summary) }
-        // 地図の読み込みが終わったとき・範囲や形や塗りを変えたときに描き直す。
-        .task(id: RenderKey(scope: scope, layout: layout, fill: fill, isMapReady: isMapReady(for: scope))) {
+        // 地図ができたら、その範囲と形の本物の地図を撮る。
+        .task(id: BackdropRequest(scope: scope, layout: layout, isMapReady: isMapReady(for: scope))) {
+            guard let map = silhouetteMap(for: scope) else { return }
+            await snapshotStore.loadBackdropIfNeeded(for: backdropKey(scope: scope, layout: layout), map: map)
+        }
+        // 地図の読み込みが終わったとき・本物の地図が届いたとき・範囲や形や塗りを変えたときに描き直す。
+        .task(id: RenderKey(
+            scope: scope, layout: layout, fill: fill, isMapReady: isMapReady(for: scope),
+            hasBackdrop: snapshotStore.backdrop(for: backdropKey(scope: scope, layout: layout)) != nil
+        )) {
             rendered = render(scope: scope, summary: summary)
         }
     }
@@ -111,7 +100,7 @@ struct ShareMapSheet: View {
         let kinds = candidates.availableKinds
         // まだどこも訪れていないときは全国しか無いので、範囲の選択は出さない。
         if kinds.count > 1 {
-            labeled("範囲") {
+            ShareCardLabeledControl("範囲") {
                 Picker("範囲", selection: $kind) {
                     ForEach(kinds) { Text($0.title).tag($0) }
                 }
@@ -185,93 +174,57 @@ struct ShareMapSheet: View {
         let layout: ShareCardLayout
         let fill: ShareCardFill
         let isMapReady: Bool
+        let hasBackdrop: Bool
     }
 
-    /// 共有するカード。画像と、一緒に共有する文・共有シートの見出し。
-    private struct RenderedCard {
-        let image: UIImage
-        let message: String
-        let title: String
+    private struct BackdropRequest: Hashable {
+        let scope: ShareScope
+        let layout: ShareCardLayout
+        let isMapReady: Bool
+    }
+
+    /// 本物の地図を重ねるシルエット。全国は2種類の地図が同じ枠なので、市区町村の地図で範囲を決める。
+    private func silhouetteMap(for scope: ShareScope) -> SilhouetteMap? {
+        switch scope {
+        case .japan: store.shareCardMaps?.municipalityMap
+        case .prefecture(let code): store.sharePrefectureMaps[code]
+        case .designatedCity(let code): store.shareDesignatedCityMaps[code]
+        }
+    }
+
+    /// 本物の地図は範囲とカードの地図の枠(形で変わる)ごとに撮る。
+    private func backdropKey(scope: ShareScope, layout: ShareCardLayout) -> ShareMapSnapshotStore.Key {
+        switch scope {
+        case .japan:
+            ShareMapSnapshotStore.Key(id: "japan", box: layout == .story ? .japanStory : .japanSquare)
+        case .prefecture(let code):
+            ShareMapSnapshotStore.Key(id: "prefecture-\(code)", box: layout == .story ? .regionStory : .regionSquare)
+        case .designatedCity(let code):
+            ShareMapSnapshotStore.Key(id: "city-\(code)", box: layout == .story ? .regionStory : .regionSquare)
+        }
     }
 
     /// カードの日付は描いた時点の日にする(訪問日ではない)。
-    private func render(scope: ShareScope, summary: ExplorationSummary) -> RenderedCard? {
+    private func render(scope: ShareScope, summary: ExplorationSummary) -> RenderedShareCard? {
         guard isMapReady(for: scope) else { return nil }
+        let backdrop = snapshotStore.backdrop(for: backdropKey(scope: scope, layout: layout))
         switch scope {
         case .japan:
             // 全国の地図は読み込めないとカードの主役が無くなるので、地図ができるまでは描かない(1.8.0 (1)と同じ)。
             guard let maps = store.shareCardMaps else { return nil }
             let content = ShareCardContent(summary: summary, date: .now)
-            return ShareCardRenderer.render(content: content, layout: layout, fill: fill, maps: maps)
-                .map { RenderedCard(image: $0, message: content.shareText, title: "わたしの日本地図") }
+            return ShareCardRenderer.render(content: content, layout: layout, fill: fill, maps: maps, backdrop: backdrop)
+                .map { RenderedShareCard(image: $0, message: content.shareText, title: "わたしの日本地図") }
         case .prefecture(let code):
             guard let prefecture = summary.prefectures.first(where: { $0.code == code }) else { return nil }
             let content = RegionShareCardContent(prefecture: prefecture, date: .now)
-            return ShareCardRenderer.render(content: content, layout: layout, map: store.sharePrefectureMaps[code])
-                .map { RenderedCard(image: $0, message: content.shareText, title: content.headline) }
+            return ShareCardRenderer.render(content: content, layout: layout, map: store.sharePrefectureMaps[code], backdrop: backdrop)
+                .map { RenderedShareCard(image: $0, message: content.shareText, title: content.headline) }
         case .designatedCity(let code):
             guard let city = summary.designatedCities.first(where: { $0.code == code }) else { return nil }
             let content = RegionShareCardContent(city: city, date: .now)
-            return ShareCardRenderer.render(content: content, layout: layout, map: store.shareDesignatedCityMaps[code])
-                .map { RenderedCard(image: $0, message: content.shareText, title: content.headline) }
-        }
-    }
-
-    // MARK: - 画面の部品
-
-    /// 縦長でも画面に収まるよう高さを抑え、形の違いは縦横比で見せる。
-    private var preview: some View {
-        let size = layout.pixelSize
-        return Group {
-            if let rendered {
-                Image(uiImage: rendered.image)
-                    .resizable()
-                    .scaledToFit()
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Pop.border, lineWidth: 1))
-                    .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
-                    .accessibilityLabel("シェアする画像のプレビュー")
-            } else {
-                ProgressView("地図を準備しています")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Pop.themeTint, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            }
-        }
-        .aspectRatio(size.width / size.height, contentMode: .fit)
-        .frame(maxHeight: 440)
-        .frame(maxWidth: .infinity)
-        .animation(.easeOut(duration: 0.2), value: layout)
-    }
-
-    private func labeled(_ title: String, @ViewBuilder picker: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.subheadline.weight(.heavy))
-                .foregroundStyle(Pop.ink)
-            picker()
-        }
-    }
-
-    @ViewBuilder
-    private var shareButton: some View {
-        if let rendered {
-            ShareLink(
-                item: ShareCardImage(image: rendered.image),
-                message: Text(rendered.message),
-                preview: SharePreview(rendered.title, image: Image(uiImage: rendered.image))
-            ) {
-                Label("シェアする", systemImage: "square.and.arrow.up")
-                    .frame(maxWidth: .infinity)
-            }
-            .popPrimaryButton()
-        } else {
-            // 画像ができるまでは押せない同じ形のボタンを置き、読み込み後にレイアウトが跳ねないようにする。
-            Button {} label: {
-                Label("シェアする", systemImage: "square.and.arrow.up")
-                    .frame(maxWidth: .infinity)
-            }
-            .popPrimaryButton()
-            .disabled(true)
+            return ShareCardRenderer.render(content: content, layout: layout, map: store.shareDesignatedCityMaps[code], backdrop: backdrop)
+                .map { RenderedShareCard(image: $0, message: content.shareText, title: content.headline) }
         }
     }
 }

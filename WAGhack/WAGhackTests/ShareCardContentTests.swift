@@ -212,9 +212,14 @@ struct ShareCardSampleRenderer {
         let summary = ExplorationProgressCalculator().summarize(municipalities: entries, visitedCodes: visited)
         let content = ShareCardContent(summary: summary, date: .now)
 
+        // 本物の地図(MapKitのスナップショット)はネットワークが要る。撮れなければ図形だけのカードになる。
+        let snapshots = ShareMapSnapshotStore()
         for layout in ShareCardLayout.allCases {
+            let key = ShareMapSnapshotStore.Key(id: "japan", box: layout == .story ? .japanStory : .japanSquare)
+            await snapshots.loadBackdropIfNeeded(for: key, map: maps.municipalityMap)
+            let backdrop = snapshots.backdrop(for: key)
             for fill in ShareCardFill.allCases {
-                let image = try #require(ShareCardRenderer.render(content: content, layout: layout, fill: fill, maps: maps))
+                let image = try #require(ShareCardRenderer.render(content: content, layout: layout, fill: fill, maps: maps, backdrop: backdrop))
                 let data = try #require(image.pngData())
                 #expect(image.size.width * image.scale == layout.pixelSize.width)
                 #expect(image.size.height * image.scale == layout.pixelSize.height)
@@ -259,9 +264,14 @@ struct ShareCardSampleRenderer {
             ("prefecture-aichi", RegionShareCardContent(prefecture: prefecture, date: .now), prefectureMap),
             ("city-nagoya", RegionShareCardContent(city: city, date: .now), cityMap),
         ]
+        let snapshots = ShareMapSnapshotStore()
         for card in cards {
             for layout in ShareCardLayout.allCases {
-                let image = try #require(ShareCardRenderer.render(content: card.content, layout: layout, map: card.map))
+                let key = ShareMapSnapshotStore.Key(id: card.name, box: layout == .story ? .regionStory : .regionSquare)
+                await snapshots.loadBackdropIfNeeded(for: key, map: card.map)
+                let image = try #require(ShareCardRenderer.render(
+                    content: card.content, layout: layout, map: card.map, backdrop: snapshots.backdrop(for: key)
+                ))
                 #expect(image.size.width * image.scale == layout.pixelSize.width)
                 let data = try #require(image.pngData())
                 try data.write(to: directory.appendingPathComponent("share-card-\(card.name)-\(layout.rawValue).png"))

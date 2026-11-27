@@ -9,6 +9,8 @@ struct RegionShareCardView: View {
     let layout: ShareCardLayout
     /// 区画に分けた地図。読み込めなかったときはnilで、地図の枠にアイコンだけを出す(数字だけでもシェアできるようにする)。
     let map: SilhouetteMap?
+    /// 地図の下に薄く敷く本物の地図。撮れるまで・撮れなかったときはnilで、図形だけの地図にする。
+    var backdrop: ShareMapBackdrop? = nil
 
     var body: some View {
         Group {
@@ -30,10 +32,7 @@ struct RegionShareCardView: View {
                 heading(size: 28)
                 dateLabel(size: 13)
             }
-            mapView
-                .padding(14)
-                .frame(maxWidth: .infinity)
-                .frame(height: 300)
+            mapView(box: .regionStory)
                 .popCard(shadow: Pop.theme.opacity(0.35), shadowOffset: 5)
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -69,9 +68,7 @@ struct RegionShareCardView: View {
                 dateLabel(size: 11)
             }
             HStack(alignment: .top, spacing: 12) {
-                mapView
-                    .padding(10)
-                    .frame(width: 186, height: 236)
+                mapView(box: .regionSquare)
                     .popCard(shadow: Pop.theme.opacity(0.35))
                 VStack(alignment: .leading, spacing: 8) {
                     VStack(alignment: .leading, spacing: 0) {
@@ -107,18 +104,13 @@ struct RegionShareCardView: View {
             .fixedSize()
     }
 
-    @ViewBuilder
-    private var mapView: some View {
-        if let map {
-            // 全国のカードより区画が大きいので、隙間を埋める縁取りは少し太くてもよい。
-            SilhouetteMapView(map: map, visitedCodes: content.visitedCodes, outlineWidth: 0.6)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            Image(systemName: content.kind == .prefecture ? "map.fill" : "building.columns.fill")
-                .font(.system(size: 56, weight: .bold))
-                .foregroundStyle(Pop.theme.opacity(0.5))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
+    /// 区画を塗った地図。読み込めなかったときは地図の枠にアイコンだけを出す。
+    /// 全国のカードより区画が大きいので、隙間を埋める縁取りは少し太くてもよい。
+    private func mapView(box: ShareCardMapBox) -> some View {
+        ShareMapCanvas(
+            map: map, visitedCodes: content.visitedCodes, box: box, backdrop: backdrop, outlineWidth: 0.6,
+            placeholderSystemImage: content.kind == .prefecture ? "map.fill" : "building.columns.fill"
+        )
     }
 
     private func caption(_ text: String) -> some View {

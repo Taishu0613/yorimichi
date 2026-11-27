@@ -1115,6 +1115,7 @@ struct MunicipalityFirstVisitSheet: View {
     @State private var showsButtons = false
     /// Wikipediaの代表画像。取得は本体の`.task`で非同期に行い、揃ったときだけ帯を差し込む。
     @State private var imageURLs: [URL] = []
+    @State private var isPresentingShare = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var isMilestone: Bool {
@@ -1147,6 +1148,14 @@ struct MunicipalityFirstVisitSheet: View {
     private var showsDetailLink: Bool {
         guard case .celebration = mode else { return false }
         return municipality != nil
+    }
+
+    /// 記録後の「シェアする」(初訪問のカード)に描く街。記録前や市区町村が分からないときはnilでボタンを出さない。
+    private var shareTarget: ShareMunicipalityTarget? {
+        guard case .celebration(let result, let municipality?, _) = mode, result.isFirstVisit else { return nil }
+        return ShareMunicipalityTarget(
+            code: municipality.code, name: municipality.municipalityName, prefectureName: municipality.prefectureName
+        )
     }
 
     private var title: String {
@@ -1219,12 +1228,21 @@ struct MunicipalityFirstVisitSheet: View {
             VStack(spacing: 10) {
                 primaryButton
                 if showsDetailLink {
-                    // 主役は「みどころを見る」(primaryButton)なので、閉じるは控えめな二番手に置く。
-                    Button(action: dismiss) {
-                        Label("閉じる", systemImage: "checkmark")
-                            .frame(maxWidth: .infinity)
+                    // 主役は「みどころを見る」(primaryButton)なので、閉じる・シェアは控えめな二番手に並べる。
+                    HStack(spacing: 10) {
+                        if shareTarget != nil {
+                            Button { isPresentingShare = true } label: {
+                                Label("シェアする", systemImage: "square.and.arrow.up")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .popSecondaryButton()
+                        }
+                        Button(action: dismiss) {
+                            Label("閉じる", systemImage: "checkmark")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .popSecondaryButton()
                     }
-                    .popSecondaryButton()
                 }
             }
             .opacity(showsButtons ? 1 : 0)
@@ -1245,6 +1263,11 @@ struct MunicipalityFirstVisitSheet: View {
             withAnimation(.spring(response: 0.4, dampingFraction: 0.7).delay(0.18)) { showsTitle = true }
             withAnimation(.easeOut(duration: 0.3).delay(0.3)) { showsSubtitle = true }
             withAnimation(.spring(response: 0.4, dampingFraction: 0.75).delay(0.4)) { showsButtons = true }
+        }
+        .sheet(isPresented: $isPresentingShare) {
+            if let shareTarget {
+                FirstVisitShareSheet(target: shareTarget)
+            }
         }
         .task(id: municipality?.code) {
             guard let municipality else { return }

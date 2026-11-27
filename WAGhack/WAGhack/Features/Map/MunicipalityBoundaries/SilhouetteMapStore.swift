@@ -26,6 +26,8 @@ final class SilhouetteMapStore {
     private(set) var sharePrefectureMaps: [String: SilhouetteMap] = [:]
     /// シェア用のカードに大きく描く、政令指定都市(区画=区)の地図。市そのものの行政区域コード(5桁)ごと。
     private(set) var shareDesignatedCityMaps: [String: SilhouetteMap] = [:]
+    /// シェア用のカード(豆知識・初訪問)に描く、市区町村単体の地図。行政区域コード(5桁)ごと。
+    private(set) var shareMunicipalityMaps: [String: SilhouetteMap] = [:]
 
     @ObservationIgnored private var loadingKeys: Set<String> = []
     @ObservationIgnored private let logger = Logger(subsystem: "com.wakasugi.yorimichi", category: "SilhouetteMap")
@@ -83,7 +85,7 @@ final class SilhouetteMapStore {
             let municipalities = try await repository.boundaries(
                 in: manifest.files(in: .municipalities, lod: lod, intersecting: Self.wholeWorld), pieceFilter: pieceFilter
             )
-            let builder = BoundarySilhouetteBuilder(targetPoints: Self.shareCardMapResolution)
+            let builder = BoundarySilhouetteBuilder(targetPoints: Self.shareCardMapResolution, projectionKind: .mercator)
             let okinawaMainIsland = prefectures
                 .first { $0.code == BoundarySilhouetteBuilder.japanInsetPrefectureCode }?
                 .polygons.first?.boundingBox
@@ -120,7 +122,7 @@ final class SilhouetteMapStore {
                 self.logger.error("都道府県\(code, privacy: .public)の境界ファイルが見つかりません")
                 return
             }
-            let builder = BoundarySilhouetteBuilder(targetPoints: Self.shareCardMapResolution)
+            let builder = BoundarySilhouetteBuilder(targetPoints: Self.shareCardMapResolution, projectionKind: .mercator)
             let map = await Task.detached(priority: .userInitiated) {
                 builder.prefectureMap(of: prefecture, municipalities: municipalities)
             }.value
@@ -144,7 +146,7 @@ final class SilhouetteMapStore {
                 in: manifest.files(in: .municipalities, lod: Self.shareDesignatedCityLOD, prefectureCode: prefectureCode),
                 pieceFilter: BoundaryPieceFilter(visibleWidthMeters: 30_000)
             ).filter { wardCodes.contains($0.code) }
-            let builder = BoundarySilhouetteBuilder(targetPoints: Self.shareCardMapResolution)
+            let builder = BoundarySilhouetteBuilder(targetPoints: Self.shareCardMapResolution, projectionKind: .mercator)
             let map = await Task.detached(priority: .userInitiated) { builder.designatedCityMap(of: wards) }.value
             try Task.checkCancellation()
             guard let map else {
@@ -152,6 +154,29 @@ final class SilhouetteMapStore {
                 return
             }
             self.shareDesignatedCityMaps[cityCode] = map
+        }
+    }
+
+    /// シェア用のカード(豆知識・初訪問)に描く市区町村単体の地図を用意する。読み込み済み・読み込み中なら何もしない。
+    ///
+    /// 詳細画面の形(`municipalityMaps`)と同じ最も細かいLODから作るが、本物の地図に重ねるためメルカトル図法で作り直す。
+    func loadShareMunicipalityMapIfNeeded(code: String) async {
+        guard shareMunicipalityMaps[code] == nil else { return }
+        let prefectureCode = String(code.prefix(2))
+        await load(key: "share-municipality-\(code)") { repository, manifest in
+            guard let lod = manifest.lods.map(\.id).max() else { return }
+            let municipality = try await repository.boundaries(
+                in: manifest.files(in: .municipalities, lod: lod, prefectureCode: prefectureCode),
+                pieceFilter: BoundaryPieceFilter(visibleWidthMeters: 5_000)
+            ).first { $0.code == code }
+            guard let municipality else {
+                self.logger.error("市区町村\(code, privacy: .public)の境界が見つかりません")
+                return
+            }
+            let builder = BoundarySilhouetteBuilder(targetPoints: Self.shareCardMapResolution, projectionKind: .mercator)
+            let map = await Task.detached(priority: .userInitiated) { builder.municipalityMap(of: municipality) }.value
+            try Task.checkCancellation()
+            self.shareMunicipalityMaps[code] = map
         }
     }
 

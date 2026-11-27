@@ -20,6 +20,7 @@ struct BadgeDetailView: View {
     @State private var showsAllTargets = false
     /// 「街の情報を見る」で開いている街。
     @State private var infoItem: BadgeChecklistItem?
+    @State private var isPresentingShare = false
 
     /// 対象の街を最初に見せる件数。
     private static let collapsedTargetCount = 8
@@ -55,6 +56,19 @@ struct BadgeDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $infoItem) { item in
             BadgeMunicipalityInfoScreen(item: item)
+        }
+        .toolbar {
+            // シェアできるのは獲得したバッジだけ(まだのバッジは「取った」と言えないため)。
+            if badgeStore?.status(for: badgeID)?.isEarned == true {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("バッジをシェア", systemImage: "square.and.arrow.up") { isPresentingShare = true }
+                }
+            }
+        }
+        .sheet(isPresented: $isPresentingShare) {
+            if let status = badgeStore?.status(for: badgeID) {
+                BadgeShareSheet(status: status)
+            }
         }
     }
 

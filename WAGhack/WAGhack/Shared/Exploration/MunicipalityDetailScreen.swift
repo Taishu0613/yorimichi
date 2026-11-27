@@ -17,7 +17,8 @@ struct MunicipalityDetailScreen: View {
     @Environment(SilhouetteMapStore.self) private var silhouetteStore: SilhouetteMapStore?
     @Query private var savedPlaces: [SavedPlace]
     @State private var viewModel = MunicipalityDetailViewModel()
-    @State private var isPresentingShare = false
+    /// 開いているシェア画面。
+    @State private var presentedShare: DetailShare?
 
     /// 画面の左右の余白。カードのずらした影が端で切れないよう、影の分も含めて広めに取る。
     private static let horizontalPadding: CGFloat = 20
@@ -41,6 +42,55 @@ struct MunicipalityDetailScreen: View {
             municipalityName: municipality.municipalityName,
             spotsJSON: municipality.spotsJSON
         )
+    }
+
+    /// この画面から開けるシェア画面。
+    private enum DetailShare: Identifiable {
+        /// 政令指定都市の区めぐりの地図。
+        case cityMap(code: String)
+        case firstVisit
+        /// 豆知識。`initialTopic`は押した項目(この街でできることは、押した時点で先頭のスポット)。
+        case trivia(topics: [TriviaShareCardContent.Topic], initialTopic: TriviaShareCardContent.Topic)
+
+        var id: String {
+            switch self {
+            case .cityMap: "cityMap"
+            case .firstVisit: "firstVisit"
+            case .trivia(_, let topic): "trivia-\(topic.hashValue)"
+            }
+        }
+    }
+
+    /// 豆知識・初訪問のカードに描く街。政令指定都市そのものは区を集めた地図にする。
+    private var shareTarget: ShareMunicipalityTarget? {
+        guard let municipality else { return nil }
+        return ShareMunicipalityTarget(
+            code: municipality.code,
+            name: municipality.municipalityName,
+            prefectureName: municipality.prefectureName,
+            wardCodes: designatedCity.map { Set($0.wards.map(\.code)) }
+        )
+    }
+
+    /// みどころのシェアの操作。シェアできない(空欄・街が分からない)ときはnilでボタンを出さない。
+    private var highlightsShare: (() -> Void)? {
+        let text = municipality?.famousThingsTrivia ?? ""
+        guard shareTarget != nil, TriviaShareCardContent.isShareableHighlights(text) else { return nil }
+        return { presentedShare = .trivia(topics: [.highlights(text)], initialTopic: .highlights(text)) }
+    }
+
+    /// 怪奇・都市伝説のシェアの操作。「特に有名な怪談・都市伝説はありません」の街では出さない。
+    private var legendShare: (() -> Void)? {
+        let text = municipality?.historyTrivia ?? ""
+        guard shareTarget != nil, TriviaShareCardContent.isShareableLegend(text) else { return nil }
+        return { presentedShare = .trivia(topics: [.legend(text)], initialTopic: .legend(text)) }
+    }
+
+    /// この街でできることのシェアの操作。スポットが無ければnil。シェア画面でどのスポットを載せるか選べる。
+    private var spotShare: (() -> Void)? {
+        guard shareTarget != nil, case .loaded(let spots) = viewModel.spotState, let first = spots.first else { return nil }
+        let topics = spots.map(TriviaShareCardContent.spotTopic)
+        return { presentedShare = .trivia(topics: topics, initialTopic: TriviaShareCardContent.spotTopic(first)) }
     }
 
     private var isVisited: Bool {
@@ -69,12 +119,13 @@ struct MunicipalityDetailScreen: View {
                         hiddenSpotCount: viewModel.hiddenSpotCount,
                         photos: viewModel.spotPhotos,
                         areaName: target.areaName,
-                        isShowingAll: $viewModel.isShowingAllSpots
+                        isShowingAll: $viewModel.isShowingAllSpots,
+                        share: spotShare
                     )
                 }
 
-                TriviaCard(style: .highlights, content: municipality?.famousThingsTrivia ?? "")
-                TriviaCard(style: .legend, content: municipality?.historyTrivia ?? "")
+                TriviaCard(style: .highlights, content: municipality?.famousThingsTrivia ?? "", share: highlightsShare)
+                TriviaCard(style: .legend, content: municipality?.historyTrivia ?? "", share: legendShare)
 
                 if let designatedCity {
                     WardsCard(city: designatedCity)
@@ -101,16 +152,20 @@ struct MunicipalityDetailScreen: View {
         .navigationTitle(displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            // 区めぐりの進み具合を見ている政令指定都市の画面にだけ、その市の地図をシェアする入口を置く。
-            if let designatedCity {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("\(designatedCity.name)の地図をシェア", systemImage: "square.and.arrow.up") { isPresentingShare = true }
-                }
-            }
+            ToolbarItem(placement: .topBarTrailing) { toolbarShareButton }
         }
-        .sheet(isPresented: $isPresentingShare) {
-            if let designatedCity {
-                ShareMapSheet(initialScope: .designatedCity(code: designatedCity.code), silhouetteStore: silhouetteStore)
+        .sheet(item: $presentedShare) { share in
+            switch share {
+            case .cityMap(let code):
+                ShareMapSheet(initialScope: .designatedCity(code: code), silhouetteStore: silhouetteStore)
+            case .firstVisit:
+                if let shareTarget {
+                    FirstVisitShareSheet(target: shareTarget)
+                }
+            case .trivia(let topics, let initialTopic):
+                if let shareTarget {
+                    TriviaShareSheet(target: shareTarget, isVisited: isVisited, topics: topics, initialTopic: initialTopic)
+                }
             }
         }
         .task(id: silhouetteCode) {
@@ -124,6 +179,26 @@ struct MunicipalityDetailScreen: View {
         // 「もっと見る」で増えた行の写真を取る。閉じたときに走っても、取得済みは飛ばすので問い合わせは増えない。
         .task(id: viewModel.isShowingAllSpots) {
             await viewModel.loadVisibleSpotPhotos()
+        }
+    }
+
+    /// ツールバーの共有ボタン。訪れた街は初訪問のカード、政令指定都市は区めぐりの地図をシェアできる。
+    /// 両方あるときはメニューで選ぶ。豆知識のシェアは各項目のボタンから。
+    @ViewBuilder
+    private var toolbarShareButton: some View {
+        let canShareFirstVisit = isVisited && shareTarget != nil
+        if canShareFirstVisit, let designatedCity {
+            Menu("シェア", systemImage: "square.and.arrow.up") {
+                Button("初訪問のカード", systemImage: "sparkles") { presentedShare = .firstVisit }
+                Button("\(designatedCity.name)の地図", systemImage: "map") { presentedShare = .cityMap(code: designatedCity.code) }
+            }
+        } else if canShareFirstVisit {
+            Button("初訪問をシェア", systemImage: "square.and.arrow.up") { presentedShare = .firstVisit }
+        } else if let designatedCity {
+            // 区めぐりの進み具合を見ている政令指定都市の画面にだけ、その市の地図をシェアする入口を置く。
+            Button("\(designatedCity.name)の地図をシェア", systemImage: "square.and.arrow.up") {
+                presentedShare = .cityMap(code: designatedCity.code)
+            }
         }
     }
 
@@ -217,6 +292,8 @@ struct TriviaCard: View {
     let content: String
     /// シートの中に置くときの小さめの見た目。シート全体が画面に収まるよう、文字と余白を詰める。
     var isCompact = false
+    /// 押すとこの項目をカードにしてシェアする。nilならボタンを出さない(誘いシート・シェアできない文)。
+    var share: (() -> Void)? = nil
 
     @State private var isExpanded = false
 
@@ -236,6 +313,10 @@ struct TriviaCard: View {
             HStack(spacing: 10) {
                 PopIconBadge(systemImage: style.systemImage, fill: style.iconFill, foreground: style.iconForeground, size: isCompact ? 30 : 36)
                 MarkerHeading(style.title, size: isCompact ? 18 : 21, marker: style.marker, foreground: style.text)
+                if let share {
+                    Spacer(minLength: 8)
+                    ShareSectionButton(title: "\(style.title)をシェア", color: style.text, action: share)
+                }
             }
             // マスタが空欄の場合も「情報なし」へ置き換えず、空欄のまま表示する。元の文章は書き換えず、行数だけを絞る。
             Text(content)
@@ -319,5 +400,24 @@ private struct WardChip: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityValue(isVisited ? "訪問済み" : "未訪問")
+    }
+}
+
+/// 図鑑の各項目の見出しの右に置く、小さな共有ボタン。
+struct ShareSectionButton: View {
+    let title: String
+    var color: Color = Pop.ink
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "square.and.arrow.up")
+                .font(.body.weight(.bold))
+                .foregroundStyle(color)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
     }
 }

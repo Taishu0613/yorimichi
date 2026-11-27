@@ -7,16 +7,22 @@ import UniformTypeIdentifiers
 enum ShareCardRenderer {
     /// カードを画像にする。`ImageRenderer`はメインスレッドで使う必要がある。
     /// 描けなかった場合はnil(実際には起きない想定だが、`ImageRenderer`の戻り値がOptionalのため)。
-    static func render(content: ShareCardContent, layout: ShareCardLayout, fill: ShareCardFill, maps: ShareCardMaps) -> UIImage? {
-        render(ShareCardView(content: content, layout: layout, fill: fill, maps: maps), layout: layout)
+    static func render(
+        content: ShareCardContent, layout: ShareCardLayout, fill: ShareCardFill, maps: ShareCardMaps, backdrop: ShareMapBackdrop? = nil
+    ) -> UIImage? {
+        render(ShareCardView(content: content, layout: layout, fill: fill, maps: maps, backdrop: backdrop), layout: layout)
     }
 
     /// 都道府県・政令指定都市のカードを画像にする。
-    static func render(content: RegionShareCardContent, layout: ShareCardLayout, map: SilhouetteMap?) -> UIImage? {
-        render(RegionShareCardView(content: content, layout: layout, map: map), layout: layout)
+    static func render(
+        content: RegionShareCardContent, layout: ShareCardLayout, map: SilhouetteMap?, backdrop: ShareMapBackdrop? = nil
+    ) -> UIImage? {
+        render(RegionShareCardView(content: content, layout: layout, map: map, backdrop: backdrop), layout: layout)
     }
 
-    private static func render(_ view: some View, layout: ShareCardLayout) -> UIImage? {
+    /// どのカードも、この共通の書き出しを通す(バッジ・豆知識・初訪問のカードは各シートから直接呼ぶ)。
+    /// `view`は`layout.pointSize`の大きさで組んである前提。
+    static func render(_ view: some View, layout: ShareCardLayout) -> UIImage? {
         let card = view
             // 端末の外観・文字サイズによらず同じ画像になるよう固定する(理由は`ShareCardView`の説明)。
             .environment(\.colorScheme, .light)
@@ -44,6 +50,6 @@ nonisolated struct ShareCardImage: Transferable {
             guard let data = item.image.pngData() else { throw ExportError.encodingFailed }
             return data
         }
-        .suggestedFileName("yorimichi-map.png")
+        .suggestedFileName("yorimichi.png")
     }
 }
