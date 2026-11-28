@@ -169,6 +169,18 @@ enum BadgeCatalog {
             conditionText: { _ in "東京23区・京都市・大阪市の区を、それぞれ1つ以上訪れる" },
             hint: "東京・京都・大阪は新幹線でつながっています。旅の途中で区をひとつ記録するだけで達成できます。"
         ),
+        BadgeDefinition(
+            id: .tripSharer,
+            name: "旅のおすそわけ",
+            summary: "旅のカードをみんなに届けよう",
+            category: .sharing,
+            criterion: .completedShareCount,
+            tiers: [1, 5, 20],
+            unit: "回",
+            artwork: BadgeArtwork(symbolName: "photo.on.rectangle.angled", secondarySymbolName: "heart.fill", primary: Color(red: 0.93, green: 0.42, blue: 0.52), accent: Pop.yellow),
+            conditionText: { "旅のカードを\($0)回シェアする" },
+            hint: "図鑑の右上のカードのボタンや、旅の記録の「地図をシェア」から画像を作れます。共有を終えたとき(画像を保存したときも)に1回と数えます。"
+        ),
     ]
 
     static func definition(for id: BadgeID) -> BadgeDefinition? {

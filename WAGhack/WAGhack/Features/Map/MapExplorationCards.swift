@@ -1150,8 +1150,8 @@ struct MunicipalityFirstVisitSheet: View {
         return municipality != nil
     }
 
-    /// 記録後の「シェアする」で開く市区町村のシェア画面の材料。初訪問のカードを選んで開き、豆知識にも切り替えられる。
-    /// 記録前や市区町村が分からないときはnilでボタンを出さない。
+    /// 記録後に見せる初訪問のカードと、それを押して開くシェア画面の材料。シェア画面は初訪問のカードを選んで開き、
+    /// 豆知識・県・全国にも切り替えられる。記録前や市区町村が分からないときはnilでカードを出さない。
     private var shareSubject: MunicipalityShareSubject? {
         guard case .celebration(let result, let municipality?, _) = mode, result.isFirstVisit else { return nil }
         let target = ShareMunicipalityTarget(
@@ -1227,24 +1227,20 @@ struct MunicipalityFirstVisitSheet: View {
             if !imageURLs.isEmpty {
                 WikipediaImageStrip(urls: imageURLs)
             }
+            if let shareSubject {
+                // できあがる初訪問のカードを見せ、そのままシェアできるようにする(1.8.0 (6))。押すとシェア画面で写真などを変えられる。
+                FirstVisitCardPreview(subject: shareSubject) { isPresentingShare = true }
+                    .opacity(showsButtons ? 1 : 0)
+            }
             VStack(spacing: 10) {
                 primaryButton
                 if showsDetailLink {
-                    // 主役は「みどころを見る」(primaryButton)なので、閉じる・シェアは控えめな二番手に並べる。
-                    HStack(spacing: 10) {
-                        if shareSubject != nil {
-                            Button { isPresentingShare = true } label: {
-                                Label("シェアする", systemImage: "square.and.arrow.up")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .popSecondaryButton()
-                        }
-                        Button(action: dismiss) {
-                            Label("閉じる", systemImage: "checkmark")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .popSecondaryButton()
+                    // 主役は「みどころを見る」(primaryButton)なので、閉じるは控えめな二番手にする。
+                    Button(action: dismiss) {
+                        Label("閉じる", systemImage: "checkmark")
+                            .frame(maxWidth: .infinity)
                     }
+                    .popSecondaryButton()
                 }
             }
             .opacity(showsButtons ? 1 : 0)

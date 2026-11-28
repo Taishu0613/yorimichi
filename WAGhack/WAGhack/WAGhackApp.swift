@@ -7,6 +7,8 @@
 
 import SwiftUI
 import SwiftData
+import TipKit
+import os
 
 @main
 struct WAGhackApp: App {
@@ -44,6 +46,18 @@ struct WAGhackApp: App {
         monitor.startIfEnabled()
         _premiumStore = State(initialValue: premiumStore)
         _newMunicipalityAlert = State(initialValue: monitor)
+        Self.configureTips()
+    }
+
+    /// 初めての案内(TipKit。図鑑の「カードにしてシェア」など)。案内は1つずつしか無いので、出す間隔は空けない。
+    /// 準備に失敗しても案内が出ないだけなので、記録して続ける。
+    private static func configureTips() {
+        do {
+            try Tips.configure([.displayFrequency(.immediate)])
+        } catch {
+            Logger(subsystem: "com.wakasugi.yorimichi", category: "Tips")
+                .error("案内(TipKit)を準備できませんでした: \(String(describing: error), privacy: .public)")
+        }
     }
 
     var body: some Scene {

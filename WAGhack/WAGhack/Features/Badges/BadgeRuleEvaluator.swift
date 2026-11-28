@@ -94,23 +94,31 @@ struct BadgeProgress {
 /// 数え方は旅の記録の踏破率と同じ集計をそのまま使う。政令指定都市は区で数え、市そのものの記録(区を特定できない記録)は
 /// 数えない。東京23区はそれぞれ1つの市区町村として数える。同じ市区町村の再訪は1回として数える。
 struct BadgeRuleEvaluator {
-    /// - Parameter visitPoints: 記録した場所。距離で判定するバッジ(超・境目！)と、記録した日の表示にだけ使う。
+    /// - Parameters:
+    ///   - visitPoints: 記録した場所。距離で判定するバッジ(超・境目！)と、記録した日の表示にだけ使う。
+    ///   - completedShareCount: シェアし終えた回数(旅のおすそわけ)。
     func evaluate(
         _ summary: ExplorationSummary,
         visitPoints: [BadgeVisitPoint] = [],
+        completedShareCount: Int = 0,
         definitions: [BadgeDefinition] = BadgeCatalog.all
     ) -> [BadgeProgress] {
         let lookup = MunicipalityLookup(summary, visitPoints: visitPoints)
-        return definitions.map { evaluate($0, summary: summary, lookup: lookup, visitPoints: visitPoints) }
+        return definitions.map {
+            evaluate($0, summary: summary, lookup: lookup, visitPoints: visitPoints, completedShareCount: completedShareCount)
+        }
     }
 
     private func evaluate(
         _ definition: BadgeDefinition,
         summary: ExplorationSummary,
         lookup: MunicipalityLookup,
-        visitPoints: [BadgeVisitPoint]
+        visitPoints: [BadgeVisitPoint],
+        completedShareCount: Int
     ) -> BadgeProgress {
         switch definition.criterion {
+        case .completedShareCount:
+            return BadgeProgress(definition: definition, value: completedShareCount)
         case .visitedMunicipalityCount:
             return BadgeProgress(definition: definition, value: summary.progress.visited)
         case .visitedPrefectureCount:

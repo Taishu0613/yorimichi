@@ -10,18 +10,12 @@ struct YorimichiSpotSection: View {
     /// マップアプリで検索するときに名前へ添える地名。
     let areaName: String
     @Binding var isShowingAll: Bool
-    /// 押すとスポットをカードにしてシェアする。nilならボタンを出さない。
-    var share: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 PopIconBadge(systemImage: "figure.walk", fill: Pop.themeSoft)
                 MarkerHeading("この街でできること", marker: Pop.themeSoft)
-                if let share {
-                    Spacer(minLength: 8)
-                    ShareSectionButton(title: "この街でできることをシェア", action: share)
-                }
             }
             switch state {
             case .loading:

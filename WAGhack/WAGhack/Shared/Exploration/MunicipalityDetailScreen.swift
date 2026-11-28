@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import TipKit
 
 /// 市区町村の図鑑の1ページ。「その街の小さな旅行ガイド」として、街の写真→この街でできること→
 /// 読みものの「みどころ」「怪奇・都市伝説」の順に並べる。見た目はRakugakiSNSと同じPOPな見た目(`Pop`)。
@@ -19,6 +20,10 @@ struct MunicipalityDetailScreen: View {
     @State private var viewModel = MunicipalityDetailViewModel()
     /// 開いているシェア画面。
     @State private var presentedShare: DetailShare?
+    /// ツールバーの「カードにしてシェア」を初めて見たときの案内。押すか閉じるかしたら二度と出さない(TipKitが覚える)。
+    private let shareCardTip = MunicipalityShareCardTip()
+    /// 案内を出すときに、ボタンの絵を一度だけ弾ませる。
+    @State private var shareButtonBounce = 0
 
     /// 画面の左右の余白。カードのずらした影が端で切れないよう、影の分も含めて広めに取る。
     private static let horizontalPadding: CGFloat = 20
@@ -76,12 +81,6 @@ struct MunicipalityDetailScreen: View {
         return MunicipalityShareSubject(target: shareTarget, isVisited: isVisited, municipality: municipality)
     }
 
-    /// 見出しの共有ボタンの操作。その種類のカードを出せない(空欄・決まり文句・スポット無し)ときはnilでボタンを出さない。
-    private func municipalityShare(_ kind: MunicipalityShareKind) -> (() -> Void)? {
-        guard let shareSubject, shareSubject.availableKinds.contains(kind) else { return nil }
-        return { presentedShare = .municipality(initialKind: kind) }
-    }
-
     private var isVisited: Bool {
         if let designatedCity { return designatedCity.isVisited }
         guard let code = municipality?.code else { return false }
@@ -108,13 +107,12 @@ struct MunicipalityDetailScreen: View {
                         hiddenSpotCount: viewModel.hiddenSpotCount,
                         photos: viewModel.spotPhotos,
                         areaName: target.areaName,
-                        isShowingAll: $viewModel.isShowingAllSpots,
-                        share: municipalityShare(.spots)
+                        isShowingAll: $viewModel.isShowingAllSpots
                     )
                 }
 
-                TriviaCard(style: .highlights, content: municipality?.famousThingsTrivia ?? "", share: municipalityShare(.highlights))
-                TriviaCard(style: .legend, content: municipality?.historyTrivia ?? "", share: municipalityShare(.legend))
+                TriviaCard(style: .highlights, content: municipality?.famousThingsTrivia ?? "")
+                TriviaCard(style: .legend, content: municipality?.historyTrivia ?? "")
 
                 if let designatedCity {
                     WardsCard(city: designatedCity)
@@ -167,31 +165,57 @@ struct MunicipalityDetailScreen: View {
         }
     }
 
-    /// ツールバーの共有ボタン。市区町村のカード(訪れた街は初訪問、まだなら出せる最初の豆知識を選んで開く)と、
+    /// ツールバーの共有ボタン(図鑑のシェアの入口はここ1つ。1.8.0 (6)で見出しごとのボタンは無くした)。
+    /// 市区町村のカード(訪れた街は初訪問、まだなら出せる最初の豆知識を選んで開く。種類はシェア画面で切り替えられる)と、
     /// 政令指定都市は区めぐりの地図をシェアできる。両方あるときはメニューで選ぶ。
+    ///
+    /// 「画像のカードを作る」ことが伝わるよう、共有の矢印ではなくカードの絵にする。初めて見たときだけ案内を出す。
     @ViewBuilder
     private var toolbarShareButton: some View {
         let initialKind = shareSubject?.initialKind(preferred: .firstVisit)
         if let initialKind, let designatedCity {
-            Menu("シェア", systemImage: "square.and.arrow.up") {
+            Menu {
                 Button(
                     initialKind == .firstVisit ? "初訪問のカード" : "\(designatedCity.name)のカード",
                     systemImage: initialKind == .firstVisit ? "sparkles" : "rectangle.portrait.on.rectangle.portrait"
                 ) {
-                    presentedShare = .municipality(initialKind: initialKind)
+                    presentShare(.municipality(initialKind: initialKind))
                 }
-                Button("\(designatedCity.name)の地図", systemImage: "map") { presentedShare = .cityMap(code: designatedCity.code) }
+                Button("\(designatedCity.name)の地図", systemImage: "map") { presentShare(.cityMap(code: designatedCity.code)) }
+            } label: {
+                shareCardLabel
             }
+            .popoverTip(shareCardTip)
+            .onAppear(perform: bounceIfTipShows)
         } else if let initialKind {
-            Button("\(displayName)をシェア", systemImage: "square.and.arrow.up") {
-                presentedShare = .municipality(initialKind: initialKind)
+            Button {
+                presentShare(.municipality(initialKind: initialKind))
+            } label: {
+                shareCardLabel
             }
+            .popoverTip(shareCardTip)
+            .onAppear(perform: bounceIfTipShows)
         } else if let designatedCity {
             // 区めぐりの進み具合を見ている政令指定都市の画面にだけ、その市の地図をシェアする入口を置く。
             Button("\(designatedCity.name)の地図をシェア", systemImage: "square.and.arrow.up") {
                 presentedShare = .cityMap(code: designatedCity.code)
             }
         }
+    }
+
+    private var shareCardLabel: some View {
+        Label("カードにしてシェア", systemImage: "photo.on.rectangle.angled")
+            .symbolEffect(.bounce, options: .repeat(2), value: shareButtonBounce)
+    }
+
+    private func presentShare(_ share: DetailShare) {
+        shareCardTip.invalidate(reason: .actionPerformed)
+        presentedShare = share
+    }
+
+    /// 案内を出す(まだ押しても閉じてもいない)ときだけ、ボタンを弾ませて目を引く。
+    private func bounceIfTipShows() {
+        if shareCardTip.shouldDisplay { shareButtonBounce += 1 }
     }
 
     /// 都道府県のピル、蛍光ペンを引いた市区町村名、訪問の状態。
@@ -284,8 +308,6 @@ struct TriviaCard: View {
     let content: String
     /// シートの中に置くときの小さめの見た目。シート全体が画面に収まるよう、文字と余白を詰める。
     var isCompact = false
-    /// 押すとこの項目をカードにしてシェアする。nilならボタンを出さない(誘いシート・シェアできない文)。
-    var share: (() -> Void)? = nil
 
     @State private var isExpanded = false
 
@@ -305,10 +327,6 @@ struct TriviaCard: View {
             HStack(spacing: 10) {
                 PopIconBadge(systemImage: style.systemImage, fill: style.iconFill, foreground: style.iconForeground, size: isCompact ? 30 : 36)
                 MarkerHeading(style.title, size: isCompact ? 18 : 21, marker: style.marker, foreground: style.text)
-                if let share {
-                    Spacer(minLength: 8)
-                    ShareSectionButton(title: "\(style.title)をシェア", color: style.text, action: share)
-                }
             }
             // マスタが空欄の場合も「情報なし」へ置き換えず、空欄のまま表示する。元の文章は書き換えず、行数だけを絞る。
             Text(content)
@@ -395,21 +413,8 @@ private struct WardChip: View {
     }
 }
 
-/// 図鑑の各項目の見出しの右に置く、小さな共有ボタン。
-struct ShareSectionButton: View {
-    let title: String
-    var color: Color = Pop.ink
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: "square.and.arrow.up")
-                .font(.body.weight(.bold))
-                .foregroundStyle(color)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
-    }
+/// 図鑑の「カードにしてシェア」を初めて見たときの案内。チュートリアル中は図鑑が開かないので出ない。
+struct MunicipalityShareCardTip: Tip {
+    var title: Text { Text("この街をカードにしてシェアできます") }
+    var image: Image? { Image(systemName: "photo.on.rectangle.angled") }
 }

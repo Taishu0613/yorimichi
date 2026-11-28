@@ -5,7 +5,7 @@ import SwiftUI
 /// 1.8.0 (4)への声「アプリのテーマとは別に、白の線で背景を透明にした版や、その黒版も欲しい」を受けて足した(1.8.0 (5))。
 /// 写真を敷いたときに写真を隠さないための選択肢で、写真の明るさで白と黒を選び分けてもらう。
 /// 最後に選んだものを覚えておく(`storageKey`)。値はUserDefaultsに残るので、`rawValue`は変えないこと。
-nonisolated enum ShareCardBoxStyle: String, CaseIterable, Identifiable, Hashable {
+enum ShareCardBoxStyle: String, CaseIterable, Identifiable, Hashable {
     /// これまでどおり、白い箱にテーマ色の枠とずらした影。
     case app
     /// 背景は透明で、白の枠と白の文字。どんな写真でも読めるよう、薄い影を落とす。

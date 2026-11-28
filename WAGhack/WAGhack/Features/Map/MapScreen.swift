@@ -90,6 +90,8 @@ struct MapScreen: View {
     @State private var designatedCityMapState = DesignatedCityMapState.empty
     /// バッジの進み具合と獲得記録。summaryと同じ時だけ評価し直す。シート内の画面へはenvironmentで渡す。
     @State private var badgeStore = BadgeStore()
+    /// シェアし終えた回数。シェア画面が`ShareCompletionCounter`で増やし、ここではバッジの評価にだけ使う。
+    @AppStorage(ShareCompletionCounter.storageKey) private var completedShareCount = 0
     /// 地図の上に出しているバッジ獲得の知らせ。nilなら出していない。
     @State private var badgeAnnouncement: BadgeAnnouncement?
     /// 知らせの「シェアする」から開いたバッジのシェア画面。知らせは数秒で消えるので、シェア画面はここで持つ。
@@ -402,6 +404,8 @@ struct MapScreen: View {
             .onChange(of: selectedPlaceID) { _, _ in handleSelectionChange() }
             .onChange(of: isSheetExpanded) { _, isExpanded in handleExpansionChange(isExpanded) }
             .onChange(of: summaryInputCounts, initial: true) { _, _ in refreshSummary() }
+            // シェア画面(シートの上)でシェアし終えると増える。旅のおすそわけの知らせは、シートを閉じて落ち着いてから出る。
+            .onChange(of: completedShareCount) { _, _ in refreshBadges() }
             .onChange(of: viewModel.currentVisit?.municipality.prefectureCode) { _, _ in
                 handlePrefectureVisitChange()
             }
@@ -909,11 +913,20 @@ struct MapScreen: View {
         )
         designatedCityMapState = DesignatedCityMapState(summary.designatedCities)
         shareMilestoneStore.update(summary: summary)
-        badgeStore.update(summary: summary, visitPoints: savedPlaces.compactMap { place in
-            place.municipality.map {
-                BadgeVisitPoint(code: $0.code, latitude: place.latitude, longitude: place.longitude, recordedAt: place.savedAt)
-            }
-        })
+        refreshBadges()
+    }
+
+    /// バッジを評価し直す。訪問記録の集計が変わったときと、シェアし終えた回数が変わったときに呼ぶ。
+    private func refreshBadges() {
+        badgeStore.update(
+            summary: summary,
+            visitPoints: savedPlaces.compactMap { place in
+                place.municipality.map {
+                    BadgeVisitPoint(code: $0.code, latitude: place.latitude, longitude: place.longitude, recordedAt: place.savedAt)
+                }
+            },
+            completedShareCount: completedShareCount
+        )
     }
 
     /// 出せる状態になったら、少し落ち着くのを待ってからバッジ獲得の知らせを出す。

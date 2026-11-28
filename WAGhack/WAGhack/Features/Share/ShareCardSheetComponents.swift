@@ -107,29 +107,19 @@ struct ShareCardPreview: View {
 }
 
 /// 共有シートを開くボタン。画像ができるまでは押せない同じ形のボタンを置き、読み込み後にレイアウトが跳ねないようにする。
+/// 共有シートは`ShareCardActivity`で開く(シェアし終えた回数を数えるため。`ShareLink`では終えたかが分からない)。
 struct ShareCardShareButton: View {
     let rendered: RenderedShareCard?
 
     var body: some View {
-        if let rendered {
-            ShareLink(
-                item: ShareCardImage(image: rendered.image),
-                message: Text(rendered.message),
-                preview: SharePreview(rendered.title, image: Image(uiImage: rendered.image))
-            ) {
-                label
-            }
-            .popPrimaryButton()
-        } else {
-            Button {} label: { label }
-                .popPrimaryButton()
-                .disabled(true)
+        Button {
+            if let rendered { ShareCardActivity.present(rendered) }
+        } label: {
+            Label("シェアする", systemImage: "square.and.arrow.up")
+                .frame(maxWidth: .infinity)
         }
-    }
-
-    private var label: some View {
-        Label("シェアする", systemImage: "square.and.arrow.up")
-            .frame(maxWidth: .infinity)
+        .popPrimaryButton()
+        .disabled(rendered == nil)
     }
 }
 
