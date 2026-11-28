@@ -2,7 +2,7 @@ import Foundation
 
 /// シェア画面で選んでいるカードの中身(範囲・種類・塗り)。描き直しのきっかけにも使う(1.8.0 (7))。
 ///
-/// 写真・文字の色・まとまりの位置・縦長/正方形のような「見た目」は`ShareCardModel`で持ち、ここには「何を描くか」だけを持つ。
+/// 写真・箱の見た目・箱の位置・縦長/正方形のような「見た目」は`ShareCardModel`で持ち、ここには「何を描くか」だけを持つ。
 struct ShareCardSelection: Hashable {
     var target: ShareCardTarget
     /// この街のカードの種類(`target == .town`のときだけ使う)。
@@ -27,6 +27,15 @@ struct ShareCardSelection: Hashable {
         case .region(.japan): false
         case .region(.prefecture): !isNationwidePrefecture
         case .region(.designatedCity): true
+        }
+    }
+
+    /// 写真が無いときに本物の地図を敷く、地図の枠の種類(`ShareCardSubject.mapBoxKind`と同じ)。
+    var mapBoxKind: ShareCardMapBoxKind {
+        switch target {
+        case .town: townKind == .firstVisit ? .firstVisit : .trivia
+        case .region(.japan): .japan
+        case .region: .region
         }
     }
 
@@ -100,9 +109,10 @@ struct ShareCardSubjectFactory {
         }
     }
 
-    /// 本物の地図は範囲とカードの形(`ShareCardMapBox.backdropBox`)ごとに撮る。
+    /// 本物の地図は範囲とカードの地図の枠(形・種類で変わる。`ShareCardMapBox.box(for:size:)`)ごとに撮る。
+    /// 豆知識は見出しの下の枠、初訪問はカード全体に敷く。
     func backdropKey(for selection: ShareCardSelection, size: ShareCardSize) -> ShareMapSnapshotStore.Key? {
-        let box = ShareCardMapBox.backdropBox(for: size)
+        let box = ShareCardMapBox.box(for: selection.mapBoxKind, size: size)
         switch selection.target {
         case .town:
             guard let townSubject else { return nil }

@@ -16,12 +16,12 @@ enum ShareCardSheetEntry {
 /// 地図・市区町村のカードをシェアする画面(1.8.0 (5)で地図のシェアと市区町村のシェアを1つにした)。
 ///
 /// - 範囲: 市区町村から開いたら「この街 / 愛知県 / 全国」、それ以外から開いたら「全国 / 都道府県 / 政令指定都市」。
-///   範囲を変えても、写真・文字の色・まとまりの位置はそのまま残す。
+///   範囲を変えても、写真・箱の見た目・箱の位置はそのまま残す。
 /// - この街: 初訪問・みどころ・都市伝説・この街でできることをセグメントで切り替える。
 /// - 都道府県: 「県内の市区町村 / 全国の都道府県」を切り替える(1.8.0 (7))。
-/// - カード(1.8.0 (8)): どのカードも写真を全面に敷き、その上に「まとまり」を1つ置く(`ShareCardCanvas`)。
-///   写真が無いときは本物の地図(Appleマップのスナップショット)を薄く敷く。まとまりはプレビューのタップで上と下を入れ替える。
-/// - 文字の色: 白い文字・黒い文字・アプリの色。最後に選んだものを覚えておく(`ShareCardTextStyle.storageKey`)。
+/// - カード(1.8.0 (9)で(6)の見た目に戻した): 写真があれば全面に(暗くせず)敷き、箱をプレビューのタップで上→真ん中→下と動かす。
+///   写真が無いときは(6)と同じ並び(水玉の地に、本物の地図を薄く敷いた地図の枠と箱)で、箱は動かさない。
+/// - 箱の見た目: アプリの色・白の線・黒の線(写真を敷いたときだけ選べる)。最後に選んだものを覚えておく(`ShareCardBoxStyle.storageKey`)。
 /// - 形の見せ方: 形だけ・県(日本)の中の位置。最後に選んだものを覚えておく(`ShareCardShapeMode.storageKey`)。
 /// - ステッカーを貼る: 写真を選ぶと、その上にステッカーを貼る画面(`ShareStickerEditor`)を開く。
 ///
@@ -73,8 +73,8 @@ struct ShareCardSheet: View {
     @State private var photo: UIImage?
     /// 写真を読み込めなかったときの案内。
     @State private var photoErrorMessage: String?
-    @State private var panelPosition: ShareCardPanelPosition = .bottom
-    @AppStorage(ShareCardTextStyle.storageKey) private var textStyle: ShareCardTextStyle = .defaultStyle
+    @State private var boxPosition: ShareCardBoxPosition = .bottom
+    @AppStorage(ShareCardBoxStyle.storageKey) private var boxStyle: ShareCardBoxStyle = .defaultStyle
     @AppStorage(ShareCardShapeMode.storageKey) private var shapeMode: ShareCardShapeMode = .defaultMode
     /// 今描いているカード。ステッカーは、このカードの中身と形で作る。
     @State private var model: ShareCardModel?
@@ -131,7 +131,8 @@ struct ShareCardSheet: View {
             footnote: footnote(for: selection),
             rendered: rendered,
             size: $size,
-            onTapPreview: { panelPosition = panelPosition.next }
+            // 箱を動かせるのは写真を敷いたときだけ。写真が無いカードは地図と箱の並びが決まっている。
+            onTapPreview: photo == nil ? nil : { boxPosition = boxPosition.next }
         ) {
             scopeControls(candidates: candidates, summary: summary, target: selection.target)
             if selection.target == .town {
@@ -147,7 +148,10 @@ struct ShareCardSheet: View {
                 )
             }
             ShareCardPhotoControls(photoItem: $photoItem, photo: $photo, errorMessage: photoErrorMessage)
-            ShareCardSegmentedControl(title: "文字の色", selection: $textStyle, options: ShareCardTextStyle.allCases, label: \.title)
+            // 箱の見た目を選べるのは写真を敷いたときだけ(写真が無いときはアプリの色で描く。`ShareCardModel.effectiveBoxStyle`)。
+            if photo != nil {
+                ShareCardSegmentedControl(title: "箱の見た目", selection: $boxStyle, options: ShareCardBoxStyle.allCases, label: \.title)
+            }
             if selection.canShowLocation {
                 let isTown = selection.target == .town
                 ShareCardSegmentedControl(
@@ -161,7 +165,7 @@ struct ShareCardSheet: View {
                 ShareStickerEditor(
                     photo: stickerPhoto, summary: model.summary, shape: model.shape,
                     shareText: model.subject.shareText, shareTitle: model.subject.shareTitle,
-                    textStyle: $textStyle, size: $size
+                    boxStyle: $boxStyle, size: $size
                 )
             }
         }
@@ -189,7 +193,7 @@ struct ShareCardSheet: View {
         .task(id: RenderKey(
             selection: selection, size: size, isMapReady: isMapReady,
             hasBackdrop: backdropKey.flatMap(snapshotStore.backdrop(for:)) != nil,
-            photoID: photo.map(ObjectIdentifier.init), textStyle: textStyle, panelPosition: panelPosition,
+            photoID: photo.map(ObjectIdentifier.init), boxStyle: boxStyle, boxPosition: boxPosition,
             usesLocation: usesLocation, hasLocationShape: locationShape != nil,
             visitedCount: summary.progress.visited, visitedPrefectureCount: summary.visitedPrefectureCount
         )) {
@@ -202,7 +206,7 @@ struct ShareCardSheet: View {
                 subject: subject, size: size, photo: photo,
                 // 写真があるときは本物の地図を使わない。
                 backdrop: photo == nil ? backdropKey.flatMap(snapshotStore.backdrop(for:)) : nil,
-                textStyle: textStyle, panelPosition: panelPosition, locationShape: locationShape
+                boxStyle: boxStyle, boxPosition: boxPosition, locationShape: locationShape
             )
             self.model = model
             rendered = ShareCardRenderer.render(model)
@@ -322,8 +326,8 @@ struct ShareCardSheet: View {
         let isMapReady: Bool
         let hasBackdrop: Bool
         let photoID: ObjectIdentifier?
-        let textStyle: ShareCardTextStyle
-        let panelPosition: ShareCardPanelPosition
+        let boxStyle: ShareCardBoxStyle
+        let boxPosition: ShareCardBoxPosition
         let usesLocation: Bool
         let hasLocationShape: Bool
         /// 初訪問・全国の都道府県のカードに載せる数。記録が増えたら描き直す。

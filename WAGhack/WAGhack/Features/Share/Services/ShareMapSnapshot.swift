@@ -36,16 +36,39 @@ nonisolated struct ShareCardMapBox: Hashable, Sendable {
         return inner.fitted(aspectRatio: aspectRatio)
     }
 
-    // MARK: - カードの枠
+    // MARK: - カードごとの枠(カードのレイアウトと同じ値。変えるときは両方そろえる)
 
-    /// 写真が無いときにカード全体に敷く本物の地図の枠(1.8.0 (8))。まとまりは上か下に動くので、
-    /// その範囲が上下どちらのまとまりにも隠れにくい真ん中寄りに来るよう、上下の余白を広めに取る。
-    static func backdropBox(for size: ShareCardSize) -> ShareCardMapBox {
-        size == .story ? .cardStory : .cardSquare
+    /// 写真が無いカードで、本物の地図を敷く地図の枠(1.8.0 (6)の値に戻した)。
+    static func box(for kind: ShareCardMapBoxKind, size: ShareCardSize) -> ShareCardMapBox {
+        let isStory = size == .story
+        return switch kind {
+        case .japan: isStory ? .japanStory : .japanSquare
+        case .region: isStory ? .regionStory : .regionSquare
+        case .trivia: isStory ? .triviaStory : .triviaSquare
+        case .firstVisit: isStory ? .firstVisitStory : .firstVisitSquare
+        }
     }
 
-    static let cardStory = ShareCardMapBox(width: 360, height: 640, padding: 36, topPadding: 150, bottomPadding: 210)
-    static let cardSquare = ShareCardMapBox(width: 360, height: 360, padding: 28, topPadding: 70, bottomPadding: 110)
+    /// 全国のカード。縦長は横幅いっぱい(360 - 左右24×2)。
+    static let japanStory = ShareCardMapBox(width: 312, height: 290, padding: 12)
+    static let japanSquare = ShareCardMapBox(width: 176, height: 236, padding: 8)
+    /// 都道府県・政令指定都市(全国の都道府県を含む)のカード。
+    static let regionStory = ShareCardMapBox(width: 312, height: 300, padding: 14)
+    static let regionSquare = ShareCardMapBox(width: 186, height: 236, padding: 10)
+    /// 豆知識のカード。
+    static let triviaStory = ShareCardMapBox(width: 312, height: 210, padding: 16)
+    static let triviaSquare = ShareCardMapBox(width: 120, height: 104, padding: 8, bottomPadding: 22)
+    /// 初訪問のカード(写真なし)。カード全体に地図を敷き、下のパネルより上に市区町村を描く。
+    static let firstVisitStory = ShareCardMapBox(width: 360, height: 640, padding: 48, bottomPadding: 350)
+    static let firstVisitSquare = ShareCardMapBox(width: 360, height: 360, padding: 20, bottomPadding: 222)
+}
+
+/// 地図の枠の種類。カードの種類ごとに地図の枠の大きさが違う(`ShareCardMapBox.box(for:size:)`)。
+nonisolated enum ShareCardMapBoxKind: Hashable, Sendable {
+    case japan
+    case region
+    case trivia
+    case firstVisit
 }
 
 /// スナップショットを撮る範囲と、撮れた画像を置く位置の計算。状態を持たない純粋な計算なので単体テストできる。

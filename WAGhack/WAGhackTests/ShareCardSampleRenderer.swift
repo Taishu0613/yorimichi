@@ -4,11 +4,12 @@ import Testing
 import UIKit
 @testable import WAGhack
 
-/// 1.8.0 (8)のカードの見本の画像を書き出す。ふだんのテストでは動かさない。
+/// 1.8.0 (9)のカード((6)の箱に戻した見た目)の見本の画像を書き出す。ふだんのテストでは動かさない。
 ///
 /// `TEST_RUNNER_SHARE_CARD_SAMPLE_DIR=/path/to/dir xcodebuild test -only-testing:WAGhackTests/ShareCardSampleRenderer ...`
 /// 名古屋市(初訪問・みどころ・都市伝説・できること)・愛知県(県内の市区町村・全国の都道府県)・全国を、
-/// 写真あり/なし × 文字の色3種 × まとまりの上/下で縦長に描く。正方形・「形だけ」・日付の無い初訪問・ステッカーは一部だけ。
+/// 写真あり(箱の見た目3種 × 箱の上/下)と写真なし(アプリの色)を縦長に描く。正方形(アプリの色)・「形だけ」・
+/// 日付の無い初訪問・とても長いみどころ・ステッカーは一部だけ。
 /// 写真はアプリと同じくWikipediaの名古屋城の写真(`WikipediaImageService.spotPhoto`)を使う。取れなければ`SHARE_CARD_SAMPLE_PHOTO`、
 /// それも無ければ空と海を描いた架空の写真。
 @MainActor
@@ -125,54 +126,60 @@ struct ShareCardSampleRenderer {
             #expect(sample.selection.canShowLocation == (locationShape != nil))
             for size in ShareCardSize.allCases {
                 let output = size == .story ? directory : squareDirectory
-                let key = ShareMapSnapshotStore.Key(id: sample.snapshotID, box: ShareCardMapBox.backdropBox(for: size))
+                let key = ShareMapSnapshotStore.Key(id: sample.snapshotID, box: ShareCardMapBox.box(for: sample.subject.mapBoxKind, size: size))
                 if let map = sample.subject.mapForSnapshot {
                     await snapshots.loadBackdropIfNeeded(for: key, map: map)
                 }
                 var model = ShareCardModel(subject: sample.subject, size: size, locationShape: locationShape)
-                for background in ["photo", "map"] {
-                    model.photo = background == "photo" ? photo : nil
-                    model.backdrop = background == "photo" ? nil : snapshots.backdrop(for: key)
-                    // 正方形は、初めの見た目(白い文字・下)だけ。
-                    let styles = size == .story ? ShareCardTextStyle.allCases : [.light]
-                    let positions: [ShareCardPanelPosition] = size == .story ? [.bottom, .top] : [.bottom]
-                    for style in styles {
-                        for position in positions {
-                            model.textStyle = style
-                            model.panelPosition = position
-                            try write(model, name: "\(sample.name)-\(background)-\(style.rawValue)-\(position.rawValue)", in: output)
-                        }
+                // 正方形は、初めの見た目(アプリの色・下)だけ。
+                let styles = size == .story ? ShareCardBoxStyle.allCases : [.app]
+                for style in styles {
+                    model.boxStyle = style
+                    // 写真あり: 箱の上と下。
+                    model.photo = photo
+                    model.backdrop = nil
+                    let positions: [ShareCardBoxPosition] = size == .story ? [.top, .bottom] : [.bottom]
+                    for position in positions {
+                        model.boxPosition = position
+                        try write(model, name: "\(sample.name)-photo-\(style.rawValue)-\(position.rawValue)", in: output)
                     }
                 }
+                // 写真なし: (6)と同じ並び(箱は動かさず、アプリの色で描く)。
+                model.photo = nil
+                model.boxStyle = .app
+                model.boxPosition = .bottom
+                model.backdrop = snapshots.backdrop(for: key)
+                try write(model, name: "\(sample.name)-map", in: output)
                 // 「形だけ」(その範囲だけの形)と比べる1枚。
                 if locationShape != nil, size == .story {
-                    var shapeOnly = ShareCardModel(subject: sample.subject, size: size, photo: photo)
-                    shapeOnly.textStyle = .light
-                    try write(shapeOnly, name: "\(sample.name)-photo-light-bottom-shapeOnly", in: output)
+                    let shapeOnly = ShareCardModel(subject: sample.subject, size: size, photo: photo)
+                    try write(shapeOnly, name: "\(sample.name)-photo-app-bottom-shapeOnly", in: output)
                 }
             }
         }
 
         // 初めて訪れた日が分からない(図鑑から開いた)初訪問。
         let noDate = ShareCardModel(subject: firstVisit(date: nil), size: .story, photo: photo, locationShape: factory.locationShape(for: town))
-        try write(noDate, name: "nagoya-first-visit-nodate-photo-light-bottom", in: directory)
+        try write(noDate, name: "nagoya-first-visit-nodate-photo-app-bottom", in: directory)
 
-        // ステッカーを写真に貼った例(初訪問と愛知県。位置と大きさは指で動かした後の想定)。
+        // とても長いみどころ(箱が伸び、収まらない分だけ本文の文字を小さくして全文を入れる)。
+        let longHighlights = ShareCardSubject.trivia(Self.trivia(.highlights(Self.highlights + Self.highlights)), map: nagoyaMap, highlightedCodes: nagoyaCodes)
+        for size in ShareCardSize.allCases {
+            var long = ShareCardModel(subject: longHighlights, size: size, photo: photo, locationShape: factory.locationShape(for: town))
+            long.boxStyle = .whiteLine
+            try write(long, name: "nagoya-highlights-long-photo-whiteLine-bottom", in: size == .story ? directory : squareDirectory)
+        }
+
+        // ステッカーを写真に貼った例(初訪問。位置と大きさは指で動かした後の想定)。
         let stickerDirectory = directory.appendingPathComponent("sticker")
         try FileManager.default.createDirectory(at: stickerDirectory, withIntermediateDirectories: true)
-        for (index, sample) in [samples[0], samples[4]].enumerated() {
-            let model = ShareCardModel(subject: sample.subject, size: .story, locationShape: factory.locationShape(for: sample.selection))
-            for style in ShareCardTextStyle.allCases {
-                let placement = index == 0
-                    ? ShareStickerPlacement(unitCenter: CGPoint(x: 0.38, y: 0.7), scale: 0.9)
-                    : ShareStickerPlacement(unitCenter: CGPoint(x: 0.5, y: 0.3), scale: 1.15)
-                let canvas = ShareStickerCanvas(
-                    photo: photo, summary: model.summary, shape: model.shape, textStyle: style, size: .story, placement: placement
-                )
-                let image = try #require(ShareCardRenderer.render(canvas, size: .story))
-                try #require(image.pngData()).write(to: stickerDirectory.appendingPathComponent("sticker-\(sample.name)-\(style.rawValue)-story.png"))
-            }
-        }
+        let stickerModel = ShareCardModel(subject: samples[0].subject, size: .story, locationShape: factory.locationShape(for: town))
+        let canvas = ShareStickerCanvas(
+            photo: photo, summary: stickerModel.summary, shape: stickerModel.shape, boxStyle: .whiteLine, size: .story,
+            placement: ShareStickerPlacement(unitCenter: CGPoint(x: 0.38, y: 0.7), scale: 0.9)
+        )
+        let image = try #require(ShareCardRenderer.render(canvas, size: .story))
+        try #require(image.pngData()).write(to: stickerDirectory.appendingPathComponent("sticker-\(samples[0].name)-whiteLine-story.png"))
     }
 
     private static let highlights = "名古屋市は、愛知県の県庁所在地で、中部地方の中心となる大都市だ。1610年に徳川家康が名古屋城を築き、清須の町をまるごと移した「清須越し」で町ができた。久屋大通と若宮大通は、幅100mの広い道路だ。熱田神宮には、三種の神器の一つ、草薙剣が祀られている。人口は東京23区、横浜市、大阪市に次ぐ多さだ。"

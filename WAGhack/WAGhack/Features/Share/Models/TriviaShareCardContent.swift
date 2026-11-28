@@ -42,44 +42,6 @@ struct TriviaShareCardContent: Equatable {
         return false
     }
 
-    /// まとまりに載せる本文(1.8.0 (8))。写真の上半分を空けるため数行に収める。
-    /// みどころ・都市伝説は、`maxLength`字に収まるまで文(「。」まで)を足す(最初の文が長ければ最初の文だけ)。
-    /// それでも収まらない分は、描く側が行数で切る。この街でできることは一言そのまま。
-    func excerpt(maxLength: Int) -> String {
-        switch topic {
-        case .highlights(let text), .legend(let text):
-            return Self.excerpt(of: text, maxLength: maxLength)
-        case .spot(_, let line):
-            return line
-        }
-    }
-
-    static func excerpt(of text: String, maxLength: Int) -> String {
-        var result = ""
-        for sentence in sentences(of: text) {
-            guard result.isEmpty || result.count + sentence.count <= maxLength else { break }
-            result += sentence
-        }
-        return result
-    }
-
-    /// 「。」で区切った文(「。」を含む)。最後に「。」の無い文が残れば、それも1文にする。
-    static func sentences(of text: String) -> [String] {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        var sentences: [String] = []
-        var current = ""
-        for character in trimmed {
-            current.append(character)
-            if character == "。" {
-                sentences.append(current.trimmingCharacters(in: .whitespacesAndNewlines))
-                current = ""
-            }
-        }
-        let rest = current.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !rest.isEmpty { sentences.append(rest) }
-        return sentences
-    }
-
     /// 都市伝説の無い街のマスタに入っている決まり文句。これはカードにしても話のネタにならないので、シェアを出さない。
     static let noLegendSuffix = "には、特に有名な怪談・都市伝説はありません。"
 

@@ -4,43 +4,74 @@ import Testing
 import UIKit
 @testable import WAGhack
 
-/// カードのまとまり・文字の色・形の見せ方・ステッカー(1.8.0 (8))、都道府県の「全国の都道府県」・図鑑の入口の縮め方(1.8.0 (7))。
+/// カードの箱の見た目・位置・添える形・形の見せ方・ステッカー(1.8.0 (9)で(6)の箱に戻した)、
+/// 都道府県の「全国の都道府県」・図鑑の入口の縮め方(1.8.0 (7))。
 @MainActor
 struct ShareCardLayoutTests {
-    // MARK: - まとまり
+    // MARK: - 箱
 
-    @Test func まとまりの大きさはカードの種類で決まる() {
-        #expect(ShareCardSubject.firstVisit(firstVisit(date: nil), map: nil, highlightedCodes: []).panelSize == .small)
-        #expect(ShareCardSubject.trivia(trivia(.highlights("城がある。")), map: nil, highlightedCodes: []).panelSize == .large)
-        let summary = makeSummary(visitedCodes: ["23101"])
-        let aichi = summary.prefectures.first { $0.code == "23" }!
-        #expect(ShareCardSubject.region(RegionShareCardContent(prefecture: aichi, date: .now), map: nil).panelSize == .medium)
+    @Test func タップするたびに箱は上_真ん中_下_上の順に動く() {
+        #expect(ShareCardBoxPosition.top.next == .middle)
+        #expect(ShareCardBoxPosition.middle.next == .bottom)
+        #expect(ShareCardBoxPosition.bottom.next == .top)
     }
 
-    @Test func アプリ名はまとまりと重ならない右の角に置く() {
-        // 小さなまとまり(左に寄せる)は同じ側の右の角。
-        #expect(ShareCardPanelSize.small.logoCorner(for: .bottom) == .bottomTrailing)
-        #expect(ShareCardPanelSize.small.logoCorner(for: .top) == .topTrailing)
-        // 横幅いっぱいのまとまりは反対側の右の角。
-        #expect(ShareCardPanelSize.medium.logoCorner(for: .bottom) == .topTrailing)
-        #expect(ShareCardPanelSize.large.logoCorner(for: .top) == .bottomTrailing)
-    }
-
-    @Test func タップするたびにまとまりは上と下を入れ替える() {
-        #expect(ShareCardPanelPosition.top.next == .bottom)
-        #expect(ShareCardPanelPosition.bottom.next == .top)
-    }
-
-    /// 選んだ値はUserDefaultsに`rawValue`で残る。値を変えると前回の選択が読めなくなる。
-    @Test func 文字の色と形の見せ方の初めの値と覚えておく値() {
-        #expect(ShareCardTextStyle.defaultStyle == .light)
-        #expect(ShareCardTextStyle.allCases.map(\.rawValue) == ["light", "dark", "theme"])
-        #expect(ShareCardTextStyle.allCases.map(\.title) == ["白い文字", "黒い文字", "アプリの色"])
+    /// 選んだ値はUserDefaultsに`rawValue`で残る。(5)(6)と同じキー・値にして、前に選んだ見た目を引き継ぐ。
+    @Test func 箱の見た目と形の見せ方の初めの値と覚えておく値() {
+        #expect(ShareCardBoxStyle.defaultStyle == .app)
+        #expect(ShareCardBoxStyle.storageKey == "shareCardBoxStyle")
+        #expect(ShareCardBoxStyle.allCases.map(\.rawValue) == ["app", "whiteLine", "blackLine"])
+        #expect(ShareCardBoxStyle.allCases.map(\.title) == ["アプリの色", "白の線", "黒の線"])
         #expect(ShareCardShapeMode.defaultMode == .location)
         #expect(ShareCardShapeMode.allCases.map(\.rawValue) == ["shapeOnly", "location"])
         #expect(ShareCardShapeMode.location.title(isTown: true) == "県の中の位置")
         #expect(ShareCardShapeMode.location.title(isTown: false) == "日本の中の位置")
-        #expect(ShareCardTextStyle.storageKey != ShareCardShapeMode.storageKey)
+        #expect(ShareCardBoxStyle.storageKey != ShareCardShapeMode.storageKey)
+    }
+
+    @Test func 写真が無いときは箱をアプリの色で描く() {
+        let card = ShareCardSubject.trivia(trivia(.highlights("城がある。")), map: nil, highlightedCodes: [])
+        var model = ShareCardModel(subject: card, size: .story, boxStyle: .whiteLine)
+        #expect(model.effectiveBoxStyle == .app)
+        model.photo = UIImage()
+        #expect(model.effectiveBoxStyle == .whiteLine)
+    }
+
+    @Test func 写真を敷いた街のカードは形だけでも名前に形を添える() {
+        let photo = UIImage()
+        let firstVisitCard = ShareCardSubject.firstVisit(firstVisit(date: nil), map: nil, highlightedCodes: [])
+        let triviaCard = ShareCardSubject.trivia(trivia(.highlights("城がある。")), map: nil, highlightedCodes: [])
+        #expect(ShareCardModel(subject: firstVisitCard, size: .story, photo: photo).boxShape != nil)
+        #expect(ShareCardModel(subject: triviaCard, size: .story, photo: photo).boxShape != nil)
+        // 写真が無いときは地図の枠に形を大きく描くので、形だけなら添えない。
+        #expect(ShareCardModel(subject: triviaCard, size: .story).boxShape == nil)
+    }
+
+    @Test func 位置を選んだときはどのカードにも位置の形を添える() {
+        let location = ShareCardShape(map: nil, filledCodes: ["23"], outlineWidth: 0.5, placeholderSystemImage: "map.fill", isLocation: true)
+        let summary = makeSummary(visitedCodes: ["23101"])
+        let aichi = summary.prefectures.first { $0.code == "23" }!
+        let regionCard = ShareCardSubject.region(RegionShareCardContent(prefecture: aichi, date: .now), map: nil)
+        #expect(ShareCardModel(subject: regionCard, size: .story, locationShape: location).boxShape?.isLocation == true)
+        #expect(ShareCardModel(subject: regionCard, size: .story, photo: UIImage(), locationShape: location).boxShape?.isLocation == true)
+        // 形だけの制覇率のカードは、写真の上・地図の枠に塗った地図を大きく描くので添えない。
+        #expect(ShareCardModel(subject: regionCard, size: .story, photo: UIImage()).boxShape == nil)
+    }
+
+    @Test func 写真が無いときの地図の枠はカードの種類で決まる() {
+        #expect(selection(.town, townKind: .firstVisit).mapBoxKind == .firstVisit)
+        #expect(selection(.town, townKind: .legend).mapBoxKind == .trivia)
+        #expect(selection(.region(.japan)).mapBoxKind == .japan)
+        #expect(selection(.region(.prefecture(code: "23")), focus: .nationwide).mapBoxKind == .region)
+        #expect(ShareCardMapBox.box(for: .firstVisit, size: .story) == .firstVisitStory)
+        #expect(ShareCardMapBox.box(for: .trivia, size: .square) == .triviaSquare)
+    }
+
+    @Test func 本文の文字は大きい順に試して小さくしすぎない() {
+        let scales = TriviaShareCardView.textScales
+        #expect(scales.first == 1)
+        #expect(scales == scales.sorted(by: >))
+        #expect((scales.last ?? 0) >= 0.6)
     }
 
     @Test func 形の見せ方は全国と全国の都道府県では選ばない() {
@@ -59,17 +90,6 @@ struct ShareCardLayoutTests {
         let withoutDate = ShareCardSubject.firstVisit(firstVisit(date: nil), map: nil, highlightedCodes: []).summary
         #expect(withoutDate.firstVisitDateText == nil)
         #expect(withoutDate.label == "初訪問")
-    }
-
-    @Test func 本文は収まる分だけ文を足す() {
-        let text = "名古屋市は大都市だ。城がある。熱田神宮もある。"
-        #expect(TriviaShareCardContent.excerpt(of: text, maxLength: 15) == "名古屋市は大都市だ。城がある。")
-        #expect(TriviaShareCardContent.excerpt(of: text, maxLength: 100) == text)
-        // 最初の文が長くても、最初の文は残す(残りは描く側が行数で切る)。
-        #expect(TriviaShareCardContent.excerpt(of: text, maxLength: 3) == "名古屋市は大都市だ。")
-        #expect(TriviaShareCardContent.excerpt(of: "句点が無い", maxLength: 3) == "句点が無い")
-        let spot = trivia(.spot(name: "名古屋城", line: "金の鯱を見る。"))
-        #expect(spot.excerpt(maxLength: 3) == "金の鯱を見る。")
     }
 
     @Test func ステッカーの位置はカードの外に出さず大きさは範囲に収める() {

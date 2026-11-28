@@ -11,7 +11,7 @@ struct ShareCardSheetScaffold<Controls: View>: View {
     let footnote: String
     let rendered: RenderedShareCard?
     @Binding var size: ShareCardSize
-    /// プレビューをタップしたときの操作(まとまりを上・下に動かす)。nilならタップできず、案内も出さない。
+    /// プレビューをタップしたときの操作(写真の上の箱を上・真ん中・下に動かす)。nilならタップできず、案内も出さない。
     var onTapPreview: (() -> Void)? = nil
     @ViewBuilder let controls: () -> Controls
 
@@ -25,7 +25,7 @@ struct ShareCardSheetScaffold<Controls: View>: View {
                         ShareCardPreview(rendered: rendered, size: size, onTap: onTapPreview)
                         if onTapPreview != nil {
                             // 画像には入れず、プレビューの下にだけ出す。
-                            Label("タップで文字の位置を上・下に入れ替え", systemImage: "hand.tap")
+                            Label("タップで位置を変更", systemImage: "hand.tap")
                                 .font(.footnote.weight(.semibold))
                                 .foregroundStyle(Pop.muted)
                         }

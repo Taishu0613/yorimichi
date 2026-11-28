@@ -1,68 +1,109 @@
 import SwiftUI
 
-/// カードの文字の色(1.8.0 (8))。シェア画面の「文字の色」で選び、最後に選んだものを覚えておく(`storageKey`)。
+/// カードの中の箱(件数・話題・名前を載せる囲み)の見た目。
 ///
-/// 1.8.0 (7)の6つのレイアウトと箱の見た目3種は「複雑」との声で無くし、写真を全面に敷いた上に「まとまり」
-/// (`ShareCardPanel`)を1つだけ置く形にした。見た目の違いは文字の色だけにし、箱の枠線は引かない。
-/// 値はUserDefaultsに残るので、`rawValue`は変えないこと。
-nonisolated enum ShareCardTextStyle: String, CaseIterable, Identifiable, Hashable {
-    /// 白い文字。写真を、まとまりの側からグラデーションで少し暗くして読めるようにする(初めの見た目)。
-    case light
-    /// 黒い文字。写真全体を白で薄めて読めるようにする。
-    case dark
-    /// アプリの色。まとまりを白い下地に載せ、数字や見出しをテーマ色にする。
-    case theme
+/// 1.8.0 (5)で足し、(7)(8)で「6つのレイアウト」「文字の色3種」に置き換えたが、(8)の写真を暗くするグラデーションが
+/// 「アプリの画像感が強くなる」との声で、1.8.0 (9)でこの箱の3種に戻した。写真を隠さず、写真の明るさで白と黒を選び分けてもらう。
+/// 最後に選んだものを覚えておく(`storageKey`)。値はUserDefaultsに残るので、`rawValue`は変えないこと。
+nonisolated enum ShareCardBoxStyle: String, CaseIterable, Identifiable, Hashable {
+    /// 白い箱にテーマ色の枠とずらした影。
+    case app
+    /// 背景は透明で、白の枠と白の文字。どんな写真でも読めるよう、薄い影を落とす。
+    case whiteLine
+    /// 背景は透明で、黒の枠と黒の文字。明るい写真向け。
+    case blackLine
 
     var id: Self { self }
 
     var title: String {
         switch self {
-        case .light: "白い文字"
-        case .dark: "黒い文字"
-        case .theme: "アプリの色"
+        case .app: "アプリの色"
+        case .whiteLine: "白の線"
+        case .blackLine: "黒の線"
         }
     }
 
-    static let storageKey = "shareCardTextStyle"
-    static let defaultStyle: ShareCardTextStyle = .light
+    /// 最後に選んだ見た目を覚えておくキー(`@AppStorage`)。(5)(6)と同じキーにして、前に選んだ見た目を引き継ぐ。
+    static let storageKey = "shareCardBoxStyle"
+    /// 初めてシェアするときの見た目。
+    static let defaultStyle: ShareCardBoxStyle = .app
+
+    /// 箱の中の主な文字の色。`app`のときは呼び出し側の色(ふだんは`Pop.ink`)。
+    func primary(_ appColor: Color = Pop.ink) -> Color {
+        switch self {
+        case .app: appColor
+        case .whiteLine: .white
+        case .blackLine: .black
+        }
+    }
+
+    /// 箱の中の小さな見出し・単位の色。
+    func secondary(_ appColor: Color = Pop.muted) -> Color {
+        switch self {
+        case .app: appColor
+        case .whiteLine: .white.opacity(0.85)
+        case .blackLine: .black.opacity(0.7)
+        }
+    }
+
+    /// 見出しの蛍光ペン。線の版は箱を透明にするので、塗りの帯も引かない(白い字に黄色の帯は読めないため)。
+    func marker(_ appColor: Color = Pop.yellow) -> Color {
+        self == .app ? appColor : .clear
+    }
+
+    /// 踏破率のバーの塗りと地。
+    var progressFill: Color { primary(Pop.theme) }
+    var progressTrack: Color {
+        switch self {
+        case .app: Pop.themeTint.opacity(0.8)
+        case .whiteLine: .white.opacity(0.3)
+        case .blackLine: .black.opacity(0.15)
+        }
+    }
+
+    /// 箱の見た目に合わせた形の描き方。白の線は写真の上の白い線、黒の線は明るい写真の上の黒い線。
+    var silhouetteStyle: SilhouetteMapView.Style {
+        switch self {
+        case .app: .solid
+        case .whiteLine: .overPhoto
+        case .blackLine: .overLightPhoto
+        }
+    }
+
+    /// 「県の中の位置」「日本の中の位置」で、塗らない区画を薄く塗る色。
+    var locationContext: Color {
+        switch self {
+        case .app: .gray
+        case .whiteLine: .white
+        case .blackLine: .black
+        }
+    }
 }
 
-/// まとまりの位置。プレビューをタップするたびに上と下を入れ替える。中身と大きさは変わらない。
-/// シェア画面を開いている間だけ持つ(覚えておかない)。
-nonisolated enum ShareCardPanelPosition: String, CaseIterable, Hashable {
+/// 写真の上に置いた箱の位置。プレビューをタップするたびに上→真ん中→下→上と変える。
+///
+/// シェア画面を開いている間だけ持ち、種類や範囲を切り替えても同じ位置にする(覚えておくのは見た目だけ)。
+nonisolated enum ShareCardBoxPosition: String, CaseIterable, Hashable {
     case top
+    case middle
     case bottom
 
-    var next: ShareCardPanelPosition {
+    /// タップしたときの次の位置。
+    var next: ShareCardBoxPosition {
         switch self {
-        case .top: .bottom
+        case .top: .middle
+        case .middle: .bottom
         case .bottom: .top
         }
     }
-}
 
-/// まとまりの大きさ。カードの種類で決まり、選ばない。
-nonisolated enum ShareCardPanelSize: Hashable {
-    /// 初訪問。左下(上)に、形・名前・初めて訪れた日。
-    case small
-    /// 制覇率(全国・都道府県・政令指定都市)。横幅いっぱいに、名前・大きな数字・n/N・塗った形。
-    case medium
-    /// みどころ・都市伝説・この街でできること。横幅いっぱいに、見出し・形と名前・本文。写真の上半分は空ける。
-    case large
-
-    /// アプリ名を置く角。小さなまとまりは左に寄せるので同じ側の右の角、横幅いっぱいのまとまりは反対側の右の角。
-    func logoCorner(for position: ShareCardPanelPosition) -> ShareCardLogoCorner {
+    var title: String {
         switch self {
-        case .small: position == .top ? .topTrailing : .bottomTrailing
-        case .medium, .large: position == .top ? .bottomTrailing : .topTrailing
+        case .top: "上"
+        case .middle: "真ん中"
+        case .bottom: "下"
         }
     }
-}
-
-/// アプリ名「よりみち」を置く角。どのカードでも右上か右下。
-nonisolated enum ShareCardLogoCorner: Hashable {
-    case topTrailing
-    case bottomTrailing
 }
 
 /// 形(ポリゴン)の見せ方(1.8.0 (8))。シェア画面の「形の見せ方」で選び、最後に選んだものを覚えておく。

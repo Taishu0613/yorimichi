@@ -21,18 +21,18 @@ struct FirstVisitCardPreview: View {
     @State private var isMapLoaded = false
     @State private var isLocationMapLoaded = false
     @State private var rendered: RenderedShareCard?
-    /// シェア画面で最後に選んだ文字の色・形の見せ方に合わせる(シェア画面を開いたときと同じカードにするため)。
-    @AppStorage(ShareCardTextStyle.storageKey) private var textStyle: ShareCardTextStyle = .defaultStyle
+    /// シェア画面で最後に選んだ箱の見た目・形の見せ方に合わせる(シェア画面を開いたときと同じカードにするため)。
+    @AppStorage(ShareCardBoxStyle.storageKey) private var boxStyle: ShareCardBoxStyle = .defaultStyle
     @AppStorage(ShareCardShapeMode.storageKey) private var shapeMode: ShareCardShapeMode = .defaultMode
 
-    /// 写真はまだ無いので、その街の本物の地図を薄く敷き、左下に形と名前を載せる。
+    /// 写真はまだ無いので、その街の本物の地図を薄く敷き、下に記録の箱を載せる(シェア画面の写真なしの初訪問と同じ)。
     private static let size: ShareCardSize = .square
     /// プレビューの高さ。お祝いのシートが縦に伸びすぎないよう抑える。
     private static let previewHeight: CGFloat = 190
 
     private var store: SilhouetteMapStore { environmentStore ?? fallbackStore }
     private var snapshotKey: ShareMapSnapshotStore.Key {
-        ShareMapSnapshotStore.Key(id: subject.target.snapshotID, box: ShareCardMapBox.backdropBox(for: Self.size))
+        ShareMapSnapshotStore.Key(id: subject.target.snapshotID, box: ShareCardMapBox.box(for: .firstVisit, size: Self.size))
     }
 
     var body: some View {
@@ -73,13 +73,13 @@ struct FirstVisitCardPreview: View {
         // 地図ができたとき・本物の地図が届いたとき・数が変わったときに描き直す(シェア画面の初訪問と同じ描き方)。
         .task(id: RenderKey(
             content: content, isMapLoaded: isMapLoaded, hasBackdrop: snapshotStore.backdrop(for: snapshotKey) != nil,
-            textStyle: textStyle, shapeMode: shapeMode, isLocationMapLoaded: isLocationMapLoaded
+            boxStyle: boxStyle, shapeMode: shapeMode, isLocationMapLoaded: isLocationMapLoaded
         )) {
             guard isMapLoaded else { return }
             let map = subject.target.map(in: store)
             let model = ShareCardModel(
                 subject: .firstVisit(content, map: map, highlightedCodes: map.map(subject.target.highlightedCodes(in:)) ?? []),
-                size: Self.size, backdrop: snapshotStore.backdrop(for: snapshotKey), textStyle: textStyle,
+                size: Self.size, backdrop: snapshotStore.backdrop(for: snapshotKey), boxStyle: boxStyle,
                 locationShape: shapeMode == .location ? subject.target.locationShape(in: store) : nil
             )
             rendered = ShareCardRenderer.render(model)
@@ -90,7 +90,7 @@ struct FirstVisitCardPreview: View {
         let content: FirstVisitShareCardContent
         let isMapLoaded: Bool
         let hasBackdrop: Bool
-        let textStyle: ShareCardTextStyle
+        let boxStyle: ShareCardBoxStyle
         let shapeMode: ShareCardShapeMode
         let isLocationMapLoaded: Bool
     }

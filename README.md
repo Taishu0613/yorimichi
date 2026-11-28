@@ -563,7 +563,7 @@ MapKitはポリゴン1枚ごとに描画を持つため、枚数がそのまま�
   - `Screens/`: `ShareCardSheet`と`ShareCardSelection`（選択と中身の作り方）、バッジのシェア画面、初訪問のプレビュー
   - `Services/`: 画像にする（`ShareCardRenderer`）、本物の地図を撮る（`ShareMapSnapshot`）、共有シート（`ShareActivity`）
 
-### シェアのカードを「全面の写真＋まとまり1つ」に、形の見せ方、ステッカーを貼る（1.8.0 (8)）
+### シェアのカードを「全面の写真＋まとまり1つ」に、形の見せ方、ステッカーを貼る（1.8.0 (8)、カードの見た目は(9)で(6)の箱に戻した）
 
 (7)の6つのレイアウトへの「複雑、レイアウトがダメ」という声を受けて、ユーザーと決めたルールで作り直した。6つのレイアウト選びと箱の見た目3種の設定は無くした（覚えていた`shareCardLayout.*`・`shareCardBoxStyle`は読まない）。
 
@@ -581,3 +581,19 @@ MapKitはポリゴン1枚ごとに描画を持つため、枚数がそのまま�
 - 縦長・正方形、写真選び、都道府県の塗りの切り替え、この街／県／全国の切り替え、図鑑の「カードにする」、シェア回数のバッジはそのまま。
 - `Features/Share`の並び: `Models/`に`ShareCardStyle`（文字の色・まとまりの位置と大きさ・アプリ名の角・形の見せ方）、`Layouts/`は`ShareCardCanvas`・`ShareCardPanel`・`ShareStickerCanvas`、`Screens/ShareStickerEditor`、`Services/ShareCardPhotoLoader`（背景とステッカーの写真の読み込み）。
 - 見本の画像は`ShareCardSampleRenderer`で書き出せる（`TEST_RUNNER_SHARE_CARD_SAMPLE_DIR`。写真はアプリと同じWikipediaの名古屋城の写真）。
+
+### シェアのカードを(6)の箱に戻す（1.8.0 (9)）
+
+(8)の「写真を暗くするグラデーション＋白い文字」は「アプリの画像感が強くなる。投稿したときに、おしゃれ、どうやって作るんだろうと思われたい」との声でやめ、カードの見た目を1.8.0 (6)の箱のカードに戻した。上の(8)の節のうち、まとまり（`ShareCardPanel`）・文字の色（`ShareCardTextStyle`）・グラデーション・本文の切り詰め（`TriviaShareCardContent.excerpt`）・アプリ名の角（`ShareCardLogoMark`）は無くした。形の見せ方・初めて訪れた日・ステッカー・図鑑の「カードにする」・全国の都道府県・シェア回数のバッジは残した。
+
+- **カード**（`ShareCardCanvas`がカードの種類で振り分ける）: `JapanShareCardView`・`RegionShareCardView`（全国の都道府県も）・`FirstVisitShareCardView`・`TriviaShareCardView`。並び・文字組み・箱は(6)のまま。
+  - 写真あり: 写真を全面に敷き、暗くしない。箱はプレビューのタップで上→真ん中→下（`ShareCardBoxPosition`）。全国・都道府県・政令指定都市は残りの広さに塗った地図を描く。
+  - 写真なし: (6)と同じ水玉の地に、本物の地図を薄く敷いた地図の枠と箱。地図の枠の大きさはカードの種類ごと（`ShareCardMapBox.box(for:size:)`、(6)の値）で、本物の地図もその枠で撮る。箱は動かさない。
+- **箱の見た目**（`ShareCardBoxStyle`、`@AppStorage("shareCardBoxStyle")`。(5)(6)と同じキーと値）: アプリの色（初めの値）／白の線／黒の線。写真を隠さないための選択肢なので、選べるのは写真を敷いたときだけ。写真が無いときはアプリの色で描く（`ShareCardModel.effectiveBoxStyle`。(6)では水玉の地に白い字の箱ができて読めなかった）。
+- **本文は省略しない**: みどころ・都市伝説・この街でできること（スポット名も）は全文を載せ、箱が伸びる。カードに収まらないときだけ、本文の文字を1→0.64倍まで少しずつ小さくする（`TriviaShareCardView.textScales`を`ViewThatFits`で大きい順に試す）。見出しは小さくしない。
+- **形**: 写真を敷いた初訪問・豆知識のカードは(6)では形が無かったので、名前の左にその街の形を添える。「県の中の位置」「日本の中の位置」を選んだときは、どのカードでも名前（見出し）の横に位置の形を添える（`ShareCardModel.boxShape`）。
+- **初めて訪れた日**: 初訪問の箱の名前の下に「初めて訪れた日 yyyy.MM.dd」（分かるときだけ）。その下は(6)と同じ全国で訪れた市区町村の数。
+- **アプリ名**: (6)と同じく箱の下の行の右（右下）に置き、箱と重ねない。ステッカーを貼った写真では、ステッカーと反対側の右上か右下。
+- **ステッカー**: 見た目を箱の3種にした（`shareCardBox`）。
+- `Features/Share`の並び: `Models/ShareCardStyle`（箱の見た目・位置・形の見せ方）、`Components/ShareCardBox`（箱・箱の並び・名前に添える形）、`Components/ShareMapCanvas`（地図の枠・写真の上の地図・形）、`Layouts/`は`ShareCardCanvas`と4つのカード・`ShareStickerCanvas`。
+

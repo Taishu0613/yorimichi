@@ -70,63 +70,12 @@ struct ShareCardPhotoBackground: View {
     }
 }
 
-/// カードの地。写真があれば写真、無ければ本物の地図を薄く(撮れるまでは水玉の地)。
-struct ShareCardPhotoOrMapBackground: View {
-    let photo: UIImage?
-    let backdrop: ShareMapBackdrop?
-    /// 本物の地図を撮った枠(`ShareCardMapBox.backdropBox`)。
-    let box: ShareCardMapBox
-    let size: CGSize
-
-    var body: some View {
-        if let photo {
-            ShareCardPhotoBackground(photo: photo, size: size)
-        } else if let backdrop {
-            ShareMapBackdropView(backdrop: backdrop, box: box)
-        } else {
-            ShareCardBackground()
-        }
-    }
-}
-
-/// カードの縁の余白。縦長はストーリーズの上下に重なるアプリの表示(上約60pt・下約83pt)に文字を掛けない。
-/// 正方形の下は、本物の地図の左下に入るAppleマップのロゴ(下端から約8〜22pt)に掛けない。
+/// ステッカーを貼った写真の縁の余白。縦長はストーリーズの上下に重なるアプリの表示(上約60pt・下約83pt)に文字を掛けない。
 enum ShareCardInsets {
     static func of(_ size: ShareCardSize) -> EdgeInsets {
         switch size {
         case .story: EdgeInsets(top: 64, leading: 24, bottom: 96, trailing: 24)
-        case .square: EdgeInsets(top: 20, leading: 20, bottom: 32, trailing: 20)
+        case .square: EdgeInsets(top: 18, leading: 18, bottom: 18, trailing: 18)
         }
-    }
-}
-
-/// 右上か右下の角に添える小さなアプリの印(アイコンと名前)。文字の色に合わせる。
-/// 白い文字は明るい写真の上でも読めるよう薄い影を落とし、アプリの色は白い札に載せる。
-struct ShareCardLogoMark: View {
-    var size: CGFloat = 20
-    let textStyle: ShareCardTextStyle
-
-    var body: some View {
-        HStack(spacing: size * 0.25) {
-            Image("LaunchLogo")
-                .resizable()
-                .scaledToFit()
-                .frame(width: size, height: size)
-                .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
-            Text("よりみち")
-                .font(.system(size: size * 0.55, weight: .black, design: .rounded))
-                .foregroundStyle(textStyle.primary)
-                .fixedSize()
-        }
-        .padding(.vertical, textStyle == .theme ? size * 0.15 : 0)
-        .padding(.leading, textStyle == .theme ? size * 0.2 : 0)
-        .padding(.trailing, textStyle == .theme ? size * 0.4 : 0)
-        .background {
-            if textStyle == .theme {
-                Capsule().fill(Color.white.opacity(0.94))
-            }
-        }
-        .compositingGroup()
-        .shadow(color: textStyle == .light ? .black.opacity(0.45) : .clear, radius: 2.5, y: 1)
     }
 }

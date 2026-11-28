@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 /// 「ステッカーを貼る」で作る画像(1.8.0 (8))。選んだ写真を全面に敷き、形・名前・数字のステッカーを
-/// 指で動かした位置と大きさで重ね、右下か右上にアプリ名を添える。
+/// 指で動かした位置と大きさで重ね、右下か右上にアプリ名を添える。写真は暗くしない。
 ///
 /// 1.8.0 (7)の透明なPNGのステッカーは、貼る先のアプリで重ねる手間があったので、この合成画像に置き換えた。
 /// 位置と大きさはカードの座標(pt、`ShareCardSize.pointSize`)で持ち、編集画面のプレビューも書き出しもこのViewで描く。
@@ -10,7 +10,7 @@ struct ShareStickerCanvas: View {
     let photo: UIImage
     let summary: ShareCardSummary
     let shape: ShareCardShape
-    let textStyle: ShareCardTextStyle
+    let boxStyle: ShareCardBoxStyle
     let size: ShareCardSize
     let placement: ShareStickerPlacement
 
@@ -19,12 +19,13 @@ struct ShareStickerCanvas: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             ShareCardPhotoBackground(photo: photo, size: cardSize)
-            ShareStickerView(summary: summary, shape: shape, textStyle: textStyle)
+            ShareStickerView(summary: summary, shape: shape, boxStyle: boxStyle)
                 .scaleEffect(placement.scale)
                 .position(placement.center(in: cardSize))
         }
         .overlay(alignment: placement.logoCorner(in: cardSize) == .topTrailing ? .topTrailing : .bottomTrailing) {
-            ShareCardLogoMark(size: size == .story ? 24 : 20, textStyle: textStyle)
+            ShareCardAppMark(logoSize: size == .story ? 30 : 22, isOverPhoto: true)
+                .fixedSize()
                 .padding(ShareCardInsets.of(size))
         }
         .frame(width: cardSize.width, height: cardSize.height)
@@ -67,50 +68,49 @@ nonisolated struct ShareStickerPlacement: Hashable {
 }
 
 /// ステッカー1枚。形を大きく、その下に名前と数字(制覇率)・「初訪問」・見出しのラベル。
-/// 文字の色はカードと同じ3つ。アプリの色だけ白い札に載せ、白い文字は写真の上でも読めるよう影を落とす。
+/// 見た目はカードの箱と同じ3つ(`shareCardBox`)。アプリの色は白い箱、白の線・黒の線は枠だけ。
 struct ShareStickerView: View {
     let summary: ShareCardSummary
     let shape: ShareCardShape
-    let textStyle: ShareCardTextStyle
+    let boxStyle: ShareCardBoxStyle
 
     private static let shapeSide: CGFloat = 170
 
     var body: some View {
         VStack(spacing: 6) {
-            ShareCardShapeView(shape: shape, textStyle: textStyle)
+            ShareCardShapeView(shape: shape, boxStyle: boxStyle)
                 .frame(width: shapeWidth, height: shapeHeight)
             Text(summary.name)
                 .font(.system(size: 28, weight: .black))
-                .foregroundStyle(textStyle.primary)
+                .foregroundStyle(boxStyle.primary())
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
             if let stat = summary.stat {
                 Text(stat.value)
                     .font(.system(size: 34, weight: .black, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(textStyle.accent)
+                    .foregroundStyle(boxStyle.primary(Pop.theme))
                 Text(stat.detail)
                     .font(.system(size: 13, weight: .bold, design: .rounded))
-                    .foregroundStyle(textStyle.secondary)
+                    .foregroundStyle(boxStyle.secondary())
             } else {
                 Text(summary.firstVisitDateText ?? summary.label)
                     .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundStyle(textStyle.secondary)
+                    .foregroundStyle(boxStyle.secondary())
             }
         }
         .lineLimit(1)
-        .padding(textStyle == .theme ? 16 : 4)
+        .padding(16)
         .frame(width: 230)
-        .background {
-            if textStyle == .theme {
-                RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color.white.opacity(0.95))
-            }
-        }
-        .compositingGroup()
-        .shadow(color: textStyle == .light ? .black.opacity(0.5) : .clear, radius: 3, y: 1)
+        .shareCardBox(boxStyle, fill: Color.white.opacity(0.9), shadow: Pop.yellow.opacity(0.8), shadowOffset: 4)
     }
 
-    private var aspectRatio: CGFloat { shape.map?.aspectRatio ?? 1 }
-    private var shapeWidth: CGFloat { aspectRatio >= 1 ? Self.shapeSide : Self.shapeSide * max(aspectRatio, 0.45) }
-    private var shapeHeight: CGFloat { aspectRatio >= 1 ? Self.shapeSide / min(aspectRatio, 2.2) : Self.shapeSide }
+    private var shapeWidth: CGFloat { ShareCardShapeView.frameSize(for: shape, side: Self.shapeSide).width }
+    private var shapeHeight: CGFloat { ShareCardShapeView.frameSize(for: shape, side: Self.shapeSide).height }
+}
+
+/// ステッカーを貼った写真で、アプリ名「よりみち」を置く角。どちらでも右上か右下。
+nonisolated enum ShareCardLogoCorner: Hashable {
+    case topTrailing
+    case bottomTrailing
 }

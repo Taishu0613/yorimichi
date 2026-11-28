@@ -5,14 +5,14 @@ import UIKit
 /// 指で動かす・2本指で拡大縮小して、その合成画像をシェアする。
 ///
 /// プレビューは書き出すのと同じView(`ShareStickerCanvas`)をカードの大きさ(pt)で組み、画面の幅に縮めて見せる。
-/// 指の動きは縮めた分を戻してカードの座標に直す。文字の色と縦長・正方形はシェア画面と共通(Bindingで受け取る)。
+/// 指の動きは縮めた分を戻してカードの座標に直す。箱の見た目と縦長・正方形はシェア画面と共通(Bindingで受け取る)。
 struct ShareStickerEditor: View {
     let photo: UIImage
     let summary: ShareCardSummary
     let shape: ShareCardShape
     let shareText: String
     let shareTitle: String
-    @Binding var textStyle: ShareCardTextStyle
+    @Binding var boxStyle: ShareCardBoxStyle
     @Binding var size: ShareCardSize
 
     @State private var placement = ShareStickerPlacement()
@@ -32,7 +32,7 @@ struct ShareStickerEditor: View {
                             .foregroundStyle(Pop.muted)
                     }
                     VStack(alignment: .leading, spacing: 14) {
-                        ShareCardSegmentedControl(title: "文字の色", selection: $textStyle, options: ShareCardTextStyle.allCases, label: \.title)
+                        ShareCardSegmentedControl(title: "箱の見た目", selection: $boxStyle, options: ShareCardBoxStyle.allCases, label: \.title)
                         ShareCardSizePicker(size: $size)
                     }
                     Button {
@@ -60,7 +60,7 @@ struct ShareStickerEditor: View {
     }
 
     private var canvas: ShareStickerCanvas {
-        ShareStickerCanvas(photo: photo, summary: summary, shape: shape, textStyle: textStyle, size: size, placement: placement)
+        ShareStickerCanvas(photo: photo, summary: summary, shape: shape, boxStyle: boxStyle, size: size, placement: placement)
     }
 
     private var preview: some View {

@@ -98,7 +98,7 @@ extension View {
 struct PopProgressBar: View {
     let fraction: Double
     var fill: Color = Pop.theme
-    /// バーの地。
+    /// バーの地。シェアのカードで箱を線だけにしたとき(`ShareCardBoxStyle`)に変える。
     var track: Color = Pop.themeTint.opacity(0.8)
     @ScaledMetric(relativeTo: .body) private var height: CGFloat = 10
 
