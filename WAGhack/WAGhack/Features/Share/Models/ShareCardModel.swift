@@ -3,8 +3,9 @@ import UIKit
 /// 1枚のカードを描くのに要るものすべて。
 ///
 /// シェア画面(`ShareCardSheet`)が選んだ状態から作り、`ShareCardCanvas`が描き、`ShareCardRenderer.render(_:)`が画像にする。
-/// 1.8.0 (9)で見た目を(6)の「箱」のカードに戻した。カードの種類ごとの並び(地図と箱)は(6)のまま、写真があれば全面に敷き
-/// (暗くしない)、箱を上・真ん中・下に置く。写真が無いときは(6)と同じ水玉の地に、本物の地図を薄く敷いた地図の枠を描く。
+/// 1.8.0 (9)で見た目を(6)の「箱」のカードに戻した。写真があれば全面に敷き(暗くしない)、上に大きな形(ポリゴン)、
+/// その下に箱を置く(1.8.0 (10)。箱の大きさは`boxSize`、指でずらした分は`adjustment`)。
+/// 写真が無いときは(6)と同じ水玉の地に、本物の地図を薄く敷いた地図の枠を描く。
 struct ShareCardModel {
     let subject: ShareCardSubject
     var size: ShareCardSize
@@ -13,8 +14,10 @@ struct ShareCardModel {
     /// 写真が無いときに地図の枠へ薄く敷く本物の地図。撮れるまで・撮れなかったときはnilで、図形だけの地図にする。
     var backdrop: ShareMapBackdrop? = nil
     var boxStyle: ShareCardBoxStyle = .defaultStyle
-    /// 写真を敷いたときの箱の位置。写真が無いカードは並びが決まっているので使わない。
-    var boxPosition: ShareCardBoxPosition = .bottom
+    /// 写真を敷いたときのレイアウト。写真が無いカードは並びが決まっているので使わない。
+    var boxSize: ShareCardBoxSize = .defaultSize
+    /// 「位置を調整」でずらした箱と形。写真が無いカードでは使わない。
+    var adjustment: ShareCardAdjustment = .none
     /// 「県の中の位置」「日本の中の位置」の形(`ShareCardSubjectFactory.locationShape`)。
     /// nilなら「形だけ」を選んだか、一回り大きな地図がまだ無い。
     var locationShape: ShareCardShape? = nil
@@ -24,25 +27,23 @@ struct ShareCardModel {
     var effectiveBoxStyle: ShareCardBoxStyle { photo == nil ? .app : boxStyle }
 
     var summary: ShareCardSummary { subject.summary }
-    /// ステッカーに描く形。
+    /// 写真を敷いた街のカード(初訪問・豆知識)で大きく描く形。「県の中の位置」を選んでいれば県の形の中でその街を塗る。
     var shape: ShareCardShape { locationShape ?? summary.shape }
 
     /// 箱の中の名前に添える小さな形。nilなら添えない。
     ///
-    /// どのカードにも形が目に入る大きさで載るようにする(1.8.0 (8)の声)。地図の枠や写真の上の地図で形を大きく描くカードは、
-    /// 「位置」を選んだときだけ一回り大きな範囲の中の位置を添える。写真を敷いた街のカード(初訪問・豆知識)は(6)では形が無かったので、
-    /// 「形だけ」でもその街の形を添える。
+    /// 「位置」を選んだときだけ、一回り大きな範囲の中の位置を添える。ただし写真を敷いた街のカードは、
+    /// 1.8.0 (10)から上にその街の形(`shape`)を大きく描くので、名前には添えない(同じ形が2つ並ぶため)。
     var boxShape: ShareCardShape? {
-        if let locationShape { return locationShape }
-        guard photo != nil else { return nil }
+        guard photo != nil else { return locationShape }
         switch subject {
-        case .firstVisit, .trivia: return summary.shape
-        case .japan, .region: return nil
+        case .firstVisit, .trivia: return nil
+        case .japan, .region: return locationShape
         }
     }
 }
 
-/// カードの中身。ステッカーは、ここから作る要約(`ShareCardSummary`)で描く。
+/// カードの中身。
 enum ShareCardSubject {
     /// 全国の地図。
     case japan(ShareCardContent, fill: ShareCardFill, maps: ShareCardMaps)

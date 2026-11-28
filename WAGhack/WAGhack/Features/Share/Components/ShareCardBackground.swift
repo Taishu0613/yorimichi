@@ -70,12 +70,44 @@ struct ShareCardPhotoBackground: View {
     }
 }
 
-/// ステッカーを貼った写真の縁の余白。縦長はストーリーズの上下に重なるアプリの表示(上約60pt・下約83pt)に文字を掛けない。
+/// 写真を敷いたカードで、形と箱を並べる範囲の余白(1.8.0 (10))。
+/// 縦長はストーリーズの上下に重なるアプリの表示(上約60pt・下約83pt)に箱の文字を掛けない。
+/// 下は右下の角のアプリ名(`ShareCardAppMark.cornerFrame`)と箱が重ならない広さを空ける。
 enum ShareCardInsets {
-    static func of(_ size: ShareCardSize) -> EdgeInsets {
+    static func photoContent(_ size: ShareCardSize) -> EdgeInsets {
         switch size {
-        case .story: EdgeInsets(top: 64, leading: 24, bottom: 96, trailing: 24)
-        case .square: EdgeInsets(top: 18, leading: 18, bottom: 18, trailing: 18)
+        case .story: EdgeInsets(top: 52, leading: 18, bottom: 96, trailing: 18)
+        case .square: EdgeInsets(top: 14, leading: 16, bottom: 44, trailing: 16)
         }
+    }
+}
+
+extension ShareCardAppMark {
+    /// 角に置くアプリ名の大きさ。1.8.0 (10)で「もっと端でいい」との声から、箱の下の行をやめて角に小さめに置く。
+    static func logoSize(for size: ShareCardSize) -> CGFloat {
+        switch size {
+        case .story: 24
+        case .square: 20
+        }
+    }
+
+    /// カードの端からアプリ名までの余白。
+    static func margin(for size: ShareCardSize) -> CGFloat {
+        switch size {
+        case .story: 12
+        case .square: 10
+        }
+    }
+
+    /// 写真の上に置いたアプリ名(白い札)のおおよその枠。右下か右上の角に置いた位置で返す。
+    /// 箱と重なるかを決めるだけなので、字の幅は1文字あたりロゴの約0.6倍とみて少し広めに取る。
+    static func cornerFrame(_ corner: ShareCardLogoCorner, size: ShareCardSize) -> CGRect {
+        let cardSize = size.pointSize
+        let logoSize = logoSize(for: size)
+        let margin = margin(for: size)
+        let width = logoSize * (1 + 0.2 + 0.4 + 4 * 0.6) + 8
+        let height = logoSize * 1.3
+        let y = corner == .topTrailing ? margin : cardSize.height - margin - height
+        return CGRect(x: cardSize.width - margin - width, y: y, width: width, height: height)
     }
 }

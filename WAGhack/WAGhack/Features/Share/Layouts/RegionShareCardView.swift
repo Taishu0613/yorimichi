@@ -5,6 +5,7 @@ import UIKit
 ///
 /// 1.8.0 (6)の見た目。「全国の都道府県」(1.8.0 (7))も同じ形で、日本地図の都道府県を塗ってその県を強く示す。
 /// 「日本の中の位置」を選ぶと、見出しの右に日本地図の中のその県を小さく添える(`ShareCardModel.boxShape`)。
+/// 写真ありは上に塗った地図を大きく、その下に箱(標準・小さい箱、1.8.0 (10))。
 /// 載せるのは塗った地図と件数・称号だけで、ピン・座標・住所・訪問日時は載せない。
 struct RegionShareCardView: View {
     let content: RegionShareCardContent
@@ -16,7 +17,7 @@ struct RegionShareCardView: View {
     private var backdrop: ShareMapBackdrop? { model.backdrop }
     private var photo: UIImage? { model.photo }
     private var boxStyle: ShareCardBoxStyle { model.effectiveBoxStyle }
-    private var boxPosition: ShareCardBoxPosition { model.boxPosition }
+    private var isStory: Bool { layout == .story }
 
     var body: some View {
         ZStack {
@@ -28,8 +29,7 @@ struct RegionShareCardView: View {
             switch (layout, photo != nil) {
             case (.story, false): storyLayout
             case (.square, false): squareLayout
-            case (.story, true): storyPhotoLayout
-            case (.square, true): squarePhotoLayout
+            case (_, true): photoLayout
             }
         }
         .frame(width: layout.pointSize.width, height: layout.pointSize.height)
@@ -53,38 +53,9 @@ struct RegionShareCardView: View {
                 .popCard(shadow: Pop.theme.opacity(0.35), shadowOffset: 5)
             statsBox(percentageSize: 52, countSize: 20, padding: 14)
                 .shareCardBox(boxStyle, shadow: Pop.yellow.opacity(0.8), shadowOffset: 5)
-            ShareCardAppMark(logoSize: 30)
         }
         .padding(.horizontal, 24)
         .frame(maxHeight: .infinity)
-    }
-
-    /// 写真ありの縦長。見出しと制覇率を1つの箱にまとめて上・真ん中・下に置き、残りの広さに地図を描く。
-    private var storyPhotoLayout: some View {
-        VStack(spacing: 12) {
-            ShareCardBoxArrangement(position: boxPosition) {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(alignment: .center, spacing: 10) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            heading(size: 26, style: boxStyle)
-                            dateLabel(size: 13, style: boxStyle)
-                        }
-                        Spacer(minLength: 0)
-                        locator(side: 48, style: boxStyle)
-                    }
-                    statsBox(percentageSize: 44, countSize: 18, padding: 0)
-                }
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .shareCardBox(boxStyle, fill: Color.white.opacity(0.9), shadow: Pop.yellow.opacity(0.8), shadowOffset: 4)
-            } filler: {
-                photoMap
-            }
-            ShareCardAppMark(logoSize: 30, isOverPhoto: true)
-        }
-        .padding(.horizontal, 24)
-        .padding(.top, 64)
-        .padding(.bottom, 96)
     }
 
     /// 制覇率・件数・バー・称号と次の目標。縦長の箱の中身。
@@ -135,38 +106,91 @@ struct RegionShareCardView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             Spacer(minLength: 0)
-            ShareCardAppMark(logoSize: 26)
         }
         .padding(20)
+        // 右下の角のアプリ名(`ShareCardCanvas`)に掛けない。
+        .padding(.bottom, 22)
     }
 
-    private var squarePhotoLayout: some View {
-        VStack(spacing: 8) {
-            ShareCardBoxArrangement(position: boxPosition, spacing: 8) {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(alignment: .center) {
-                        heading(size: 20, style: boxStyle)
-                        Spacer(minLength: 8)
-                        dateLabel(size: 11, style: boxStyle)
-                        locator(side: 30, style: boxStyle)
-                    }
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        percentage(size: 30, style: boxStyle)
-                        Spacer(minLength: 8)
-                        count(size: 14, style: boxStyle)
-                    }
-                    PopProgressBar(fraction: content.fraction, fill: boxStyle.progressFill, track: boxStyle.progressTrack)
-                    PopPill(text: content.achievementText, systemImage: "seal.fill", fill: Pop.yellow)
-                }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .shareCardBox(boxStyle, fill: Color.white.opacity(0.9), shadow: Pop.yellow.opacity(0.8), shadowOffset: 3)
-            } filler: {
-                photoMap
+    // MARK: - 写真あり(1.8.0 (10))
+
+    /// 上に塗った地図を大きく、その下に見出しと制覇率の箱。
+    private var photoLayout: some View {
+        ShareCardPhotoComposition(size: layout, adjustment: model.adjustment, spacing: isStory ? 12 : 8) {
+            photoMap
+        } box: {
+            switch model.boxSize {
+            case .standard: standardBox
+            case .compact: compactBox
             }
-            ShareCardAppMark(logoSize: 22, isOverPhoto: true)
         }
-        .padding(18)
+    }
+
+    /// 標準: (9)の箱の中身のまま、余白と文字を少し詰める。
+    private var standardBox: some View {
+        VStack(alignment: .leading, spacing: isStory ? 8 : 5) {
+            HStack(alignment: .center, spacing: 8) {
+                if isStory {
+                    VStack(alignment: .leading, spacing: 2) {
+                        heading(size: 22, style: boxStyle)
+                        dateLabel(size: 12, style: boxStyle)
+                    }
+                    Spacer(minLength: 8)
+                } else {
+                    heading(size: 18, style: boxStyle)
+                    Spacer(minLength: 8)
+                    dateLabel(size: 10, style: boxStyle)
+                }
+                locator(side: isStory ? 40 : 26, style: boxStyle)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                VStack(alignment: .leading, spacing: 0) {
+                    if isStory { caption("制覇率", style: boxStyle) }
+                    percentage(size: isStory ? 38 : 28, style: boxStyle)
+                }
+                Spacer(minLength: 8)
+                count(size: isStory ? 16 : 13, style: boxStyle)
+            }
+            PopProgressBar(fraction: content.fraction, fill: boxStyle.progressFill, track: boxStyle.progressTrack)
+            HStack(spacing: 8) {
+                PopPill(text: content.achievementText, systemImage: "seal.fill", fill: Pop.yellow)
+                if isStory { nextGoal(size: 11, style: boxStyle) }
+            }
+        }
+        .padding(isStory ? 12 : 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .shareCardBox(boxStyle, fill: Color.white.opacity(0.9), shadow: Pop.yellow.opacity(0.8), shadowOffset: isStory ? 4 : 3)
+    }
+
+    /// 小さい箱: 見出しと日付を1行に、大きな制覇率の右にn/Nを縦に添え、細い棒。
+    /// 達成の札と「あと何市区町村で」は載せない(「そこはいらない」との声)。
+    private var compactBox: some View {
+        VStack(alignment: .leading, spacing: isStory ? 4 : 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                heading(size: isStory ? 16 : 14, style: boxStyle)
+                Spacer(minLength: 6)
+                dateLabel(size: isStory ? 10 : 9, style: boxStyle)
+            }
+            HStack(alignment: .center, spacing: 8) {
+                percentage(size: isStory ? 34 : 26, style: boxStyle)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(content.visitedCount.formatted())
+                        .font(.system(size: isStory ? 16 : 13, weight: .black, design: .rounded))
+                        .foregroundStyle(boxStyle.primary())
+                    Text("/ \(content.totalCount.formatted()) \(content.unit)")
+                        .font(.system(size: isStory ? 10 : 9, weight: .bold, design: .rounded))
+                        .foregroundStyle(boxStyle.secondary())
+                }
+                .monospacedDigit()
+                .lineLimit(1)
+                Spacer(minLength: 0)
+                locator(side: isStory ? 30 : 24, style: boxStyle)
+            }
+            ShareCardThinProgressBar(fraction: content.fraction, style: boxStyle, height: isStory ? 5 : 4)
+        }
+        .padding(isStory ? 10 : 8)
+        .frame(width: isStory ? 236 : 196)
+        .shareCardBox(boxStyle, fill: Color.white.opacity(0.9), shadow: Pop.yellow.opacity(0.8), cornerRadius: 12, shadowOffset: 3)
     }
 
     // MARK: - 部品

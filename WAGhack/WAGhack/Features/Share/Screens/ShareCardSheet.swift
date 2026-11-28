@@ -16,14 +16,16 @@ enum ShareCardSheetEntry {
 /// 地図・市区町村のカードをシェアする画面(1.8.0 (5)で地図のシェアと市区町村のシェアを1つにした)。
 ///
 /// - 範囲: 市区町村から開いたら「この街 / 愛知県 / 全国」、それ以外から開いたら「全国 / 都道府県 / 政令指定都市」。
-///   範囲を変えても、写真・箱の見た目・箱の位置はそのまま残す。
+///   範囲を変えても、写真・箱の見た目・レイアウトはそのまま残す。
 /// - この街: 初訪問・みどころ・都市伝説・この街でできることをセグメントで切り替える。
 /// - 都道府県: 「県内の市区町村 / 全国の都道府県」を切り替える(1.8.0 (7))。
-/// - カード(1.8.0 (9)で(6)の見た目に戻した): 写真があれば全面に(暗くせず)敷き、箱をプレビューのタップで上→真ん中→下と動かす。
-///   写真が無いときは(6)と同じ並び(水玉の地に、本物の地図を薄く敷いた地図の枠と箱)で、箱は動かさない。
+/// - カード(1.8.0 (9)で(6)の見た目に戻した): 写真があれば全面に(暗くせず)敷き、上に大きな形、その下に箱。
+///   写真が無いときは(6)と同じ並び(水玉の地に、本物の地図を薄く敷いた地図の枠と箱)。
+/// - レイアウト: 標準・小さい箱(写真を敷いたときだけ選べる、1.8.0 (10))。最後に選んだものを覚えておく(`ShareCardBoxSize.storageKey`)。
 /// - 箱の見た目: アプリの色・白の線・黒の線(写真を敷いたときだけ選べる)。最後に選んだものを覚えておく(`ShareCardBoxStyle.storageKey`)。
 /// - 形の見せ方: 形だけ・県(日本)の中の位置。最後に選んだものを覚えておく(`ShareCardShapeMode.storageKey`)。
-/// - ステッカーを貼る: 写真を選ぶと、その上にステッカーを貼る画面(`ShareStickerEditor`)を開く。
+/// - 位置を調整: 写真を敷いたとき、箱と形を指で動かす画面(`ShareCardPositionEditor`)を開く(1.8.0 (10)。(8)のステッカーを作り変えた)。
+///   調整はそのカードのためのものなので、カードの種類・範囲・レイアウトを変えたらレイアウトの位置に戻す。
 ///
 /// 何を描くか(範囲・種類・塗り)は`ShareCardSelection`、その中身の作り方は`ShareCardSubjectFactory`、
 /// 見た目は`ShareCardModel`にまとめ、この画面は選択肢の並びと読み込みのきっかけだけを持つ。
@@ -73,18 +75,18 @@ struct ShareCardSheet: View {
     @State private var photo: UIImage?
     /// 写真を読み込めなかったときの案内。
     @State private var photoErrorMessage: String?
-    @State private var boxPosition: ShareCardBoxPosition = .bottom
     @AppStorage(ShareCardBoxStyle.storageKey) private var boxStyle: ShareCardBoxStyle = .defaultStyle
+    @AppStorage(ShareCardBoxSize.storageKey) private var boxSize: ShareCardBoxSize = .defaultSize
     @AppStorage(ShareCardShapeMode.storageKey) private var shapeMode: ShareCardShapeMode = .defaultMode
-    /// 今描いているカード。ステッカーは、このカードの中身と形で作る。
+    /// 今描いているカード。「位置を調整」の画面は、このカードの上で箱と形を動かす。
     @State private var model: ShareCardModel?
     @State private var rendered: RenderedShareCard?
 
-    // MARK: ステッカー
+    // MARK: 位置を調整
 
-    @State private var stickerPhotoItem: PhotosPickerItem?
-    /// ステッカーを貼る写真。読み込めたらステッカーの画面を開き、閉じたらnilに戻す。
-    @State private var stickerPhoto: UIImage?
+    /// 箱と形のずれ。シェアする画像にも使う。
+    @State private var adjustment: ShareCardAdjustment = .none
+    @State private var isAdjustingPosition = false
 
     private let logger = Logger(subsystem: "com.wakasugi.yorimichi", category: "ShareCardSheet")
 
@@ -130,9 +132,7 @@ struct ShareCardSheet: View {
             navigationTitle: navigationTitle,
             footnote: footnote(for: selection),
             rendered: rendered,
-            size: $size,
-            // 箱を動かせるのは写真を敷いたときだけ。写真が無いカードは地図と箱の並びが決まっている。
-            onTapPreview: photo == nil ? nil : { boxPosition = boxPosition.next }
+            size: $size
         ) {
             scopeControls(candidates: candidates, summary: summary, target: selection.target)
             if selection.target == .town {
@@ -148,8 +148,10 @@ struct ShareCardSheet: View {
                 )
             }
             ShareCardPhotoControls(photoItem: $photoItem, photo: $photo, errorMessage: photoErrorMessage)
-            // 箱の見た目を選べるのは写真を敷いたときだけ(写真が無いときはアプリの色で描く。`ShareCardModel.effectiveBoxStyle`)。
+            // レイアウト・箱の見た目・位置を選べるのは写真を敷いたときだけ。写真が無いカードは地図の枠と箱の並びが決まっていて、
+            // 箱はアプリの色で描く(`ShareCardModel.effectiveBoxStyle`)。
             if photo != nil {
+                ShareCardSegmentedControl(title: "レイアウト", selection: $boxSize, options: ShareCardBoxSize.allCases, label: \.title)
                 ShareCardSegmentedControl(title: "箱の見た目", selection: $boxStyle, options: ShareCardBoxStyle.allCases, label: \.title)
             }
             if selection.canShowLocation {
@@ -158,16 +160,18 @@ struct ShareCardSheet: View {
                     title: "形の見せ方", selection: $shapeMode, options: ShareCardShapeMode.allCases, label: { $0.title(isTown: isTown) }
                 )
             }
-            ShareCardStickerButton(photoItem: $stickerPhotoItem)
-        }
-        .sheet(isPresented: Binding(get: { stickerPhoto != nil }, set: { if !$0 { stickerPhoto = nil } })) {
-            if let stickerPhoto, let model {
-                ShareStickerEditor(
-                    photo: stickerPhoto, summary: model.summary, shape: model.shape,
-                    shareText: model.subject.shareText, shareTitle: model.subject.shareTitle,
-                    boxStyle: $boxStyle, size: $size
-                )
+            if photo != nil {
+                ShareCardPositionControls(adjustment: $adjustment) { isAdjustingPosition = true }
             }
+        }
+        .sheet(isPresented: $isAdjustingPosition) {
+            if let model, model.photo != nil {
+                ShareCardPositionEditor(model: model, adjustment: $adjustment)
+            }
+        }
+        // 調整はそのカードのためのもの。カードの種類・範囲・レイアウトを変えたらレイアウトの位置に戻す。
+        .onChange(of: AdjustmentScope(selection: selection, boxSize: boxSize)) {
+            adjustment = .none
         }
         .task(id: townSubject?.target) {
             guard let townTarget = townSubject?.target else { return }
@@ -188,12 +192,11 @@ struct ShareCardSheet: View {
             await snapshotStore.loadBackdropIfNeeded(for: backdropKey, map: map)
         }
         .task(id: photoItem) { await loadPhoto() }
-        .task(id: stickerPhotoItem) { await loadStickerPhoto() }
         // 地図の読み込みが終わったとき・本物の地図が届いたとき・選択肢や数を変えたときに描き直す。
         .task(id: RenderKey(
             selection: selection, size: size, isMapReady: isMapReady,
             hasBackdrop: backdropKey.flatMap(snapshotStore.backdrop(for:)) != nil,
-            photoID: photo.map(ObjectIdentifier.init), boxStyle: boxStyle, boxPosition: boxPosition,
+            photoID: photo.map(ObjectIdentifier.init), boxStyle: boxStyle, boxSize: boxSize, adjustment: adjustment,
             usesLocation: usesLocation, hasLocationShape: locationShape != nil,
             visitedCount: summary.progress.visited, visitedPrefectureCount: summary.visitedPrefectureCount
         )) {
@@ -206,7 +209,7 @@ struct ShareCardSheet: View {
                 subject: subject, size: size, photo: photo,
                 // 写真があるときは本物の地図を使わない。
                 backdrop: photo == nil ? backdropKey.flatMap(snapshotStore.backdrop(for:)) : nil,
-                boxStyle: boxStyle, boxPosition: boxPosition, locationShape: locationShape
+                boxStyle: boxStyle, boxSize: boxSize, adjustment: adjustment, locationShape: locationShape
             )
             self.model = model
             rendered = ShareCardRenderer.render(model)
@@ -320,6 +323,11 @@ struct ShareCardSheet: View {
         let usesLocation: Bool
     }
 
+    private struct AdjustmentScope: Equatable {
+        let selection: ShareCardSelection
+        let boxSize: ShareCardBoxSize
+    }
+
     private struct RenderKey: Hashable {
         let selection: ShareCardSelection
         let size: ShareCardSize
@@ -327,7 +335,8 @@ struct ShareCardSheet: View {
         let hasBackdrop: Bool
         let photoID: ObjectIdentifier?
         let boxStyle: ShareCardBoxStyle
-        let boxPosition: ShareCardBoxPosition
+        let boxSize: ShareCardBoxSize
+        let adjustment: ShareCardAdjustment
         let usesLocation: Bool
         let hasLocationShape: Bool
         /// 初訪問・全国の都道府県のカードに載せる数。記録が増えたら描き直す。
@@ -363,20 +372,5 @@ struct ShareCardSheet: View {
             logger.error("写真を読み込めませんでした: \(String(describing: error), privacy: .public)")
             photoErrorMessage = "写真を読み込めませんでした"
         }
-    }
-
-    /// ステッカーを貼る写真を読み込み、ステッカーの画面を開く。選び直せるよう、読み込んだら選択を外す。
-    private func loadStickerPhoto() async {
-        guard let stickerPhotoItem else { return }
-        photoErrorMessage = nil
-        do {
-            let image = try await ShareCardPhotoLoader.load(stickerPhotoItem)
-            guard !Task.isCancelled else { return }
-            stickerPhoto = image
-        } catch {
-            logger.error("ステッカーの写真を読み込めませんでした: \(String(describing: error), privacy: .public)")
-            photoErrorMessage = "写真を読み込めませんでした"
-        }
-        self.stickerPhotoItem = nil
     }
 }

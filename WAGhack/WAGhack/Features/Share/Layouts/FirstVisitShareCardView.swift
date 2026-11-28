@@ -1,11 +1,11 @@
 import SwiftUI
 import UIKit
 
-/// 初訪問のシェア用カード(1.8.0 (6)の見た目)。
+/// 初訪問のシェア用カード。
 ///
-/// - 写真あり: 選んだ写真をカードいっぱいに(暗くせず)敷き、パネルに記録を載せる(Stravaの記録の貼り付けと同じ考え方)。
-///   名前の左にその街の形(「県の中の位置」ならその県の中の位置)を添える。
-/// - 写真なし: その市区町村の本物の地図を薄く敷き、形を塗って描く。地図が撮れないときは水玉の地に形だけを描く。
+/// - 写真あり(1.8.0 (10)): 選んだ写真をカードいっぱいに(暗くせず)敷き、上にその街の形を大きく
+///   (「県の中の位置」なら県の形の中でその街を塗る)、その下に記録の箱(標準・小さい箱)。
+/// - 写真なし((6)の見た目): その市区町村の本物の地図を薄く敷き、形を塗って描く。地図が撮れないときは水玉の地に形だけを描く。
 /// 初めて訪れた日は、記録した直後(初訪問のお祝い)から開いたときだけ載せる(`FirstVisitShareCardContent.firstVisitDate`)。
 struct FirstVisitShareCardView: View {
     let content: FirstVisitShareCardContent
@@ -17,18 +17,18 @@ struct FirstVisitShareCardView: View {
     private var photo: UIImage? { model.photo }
     private var backdrop: ShareMapBackdrop? { model.backdrop }
     private var boxStyle: ShareCardBoxStyle { model.effectiveBoxStyle }
-    /// 写真を敷いたときのパネルの位置。写真が無いときは下に固定する(市区町村の形をパネルより上に描くため)。
-    private var boxPosition: ShareCardBoxPosition { model.boxPosition }
-
-    /// 実際に置く位置。
-    private var panelPosition: ShareCardBoxPosition { photo == nil ? .bottom : boxPosition }
+    private var isStory: Bool { layout == .story }
 
     var body: some View {
         ZStack {
             background
-            switch layout {
-            case .story: storyLayout
-            case .square: squareLayout
+            if photo != nil {
+                photoLayout
+            } else {
+                switch layout {
+                case .story: storyLayout
+                case .square: squareLayout
+                }
             }
         }
         .frame(width: layout.pointSize.width, height: layout.pointSize.height)
@@ -42,44 +42,78 @@ struct FirstVisitShareCardView: View {
         } else {
             ShareCardBackground()
             ShareMapCanvas(
-                map: map, visitedCodes: highlightedCodes, box: layout == .story ? .firstVisitStory : .firstVisitSquare,
+                map: map, visitedCodes: highlightedCodes, box: isStory ? .firstVisitStory : .firstVisitSquare,
                 backdrop: backdrop, outlineWidth: 1.2, placeholderSystemImage: "mappin.and.ellipse", cornerRadius: 0
             )
         }
     }
 
+    // MARK: - 写真なし
+
     /// パネルは下寄せにするが、ストーリーズの下に重なるアプリの表示(約83pt)と、
     /// 左下のAppleマップのロゴ(下端から約22pt)には掛けない。
     private var storyLayout: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ShareCardBoxArrangement(position: panelPosition) {
-                panel(nameSize: 36, countSize: 44, padding: 20)
-            } filler: {
-                Color.clear
-            }
-            ShareCardAppMark(logoSize: 30, isOverPhoto: photo != nil)
-                .padding(.trailing, 4)
+            Spacer(minLength: 0)
+            panel(nameSize: 36, countSize: 44, padding: 20)
         }
         .padding(.horizontal, 24)
-        // 写真ありは豆知識の写真のカードと同じく、ストーリーズの上に重なるアプリの表示(約60pt)を避ける。
         .padding(.top, 64)
         .padding(.bottom, 96)
     }
 
     private var squareLayout: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ShareCardBoxArrangement(position: panelPosition, spacing: 8) {
-                panel(nameSize: 26, countSize: 30, padding: 14)
-                    .frame(maxWidth: 260, alignment: .leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } filler: {
-                Color.clear
-            }
-            ShareCardAppMark(logoSize: 24, isOverPhoto: photo != nil)
+            Spacer(minLength: 0)
+            panel(nameSize: 26, countSize: 30, padding: 14)
+                .frame(maxWidth: 260, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 20)
         .padding(.top, 20)
-        .padding(.bottom, 30)
+        // 右下の角のアプリ名(`ShareCardCanvas`)に掛けない。
+        .padding(.bottom, 44)
+    }
+
+    // MARK: - 写真あり(1.8.0 (10))
+
+    private var photoLayout: some View {
+        ShareCardPhotoComposition(size: layout, adjustment: model.adjustment, spacing: isStory ? 12 : 8) {
+            ShareCardPhotoShape(shape: model.shape, boxStyle: boxStyle)
+        } box: {
+            switch model.boxSize {
+            case .standard:
+                if isStory {
+                    panel(nameSize: 30, countSize: 34, padding: 14)
+                } else {
+                    panel(nameSize: 22, countSize: 24, padding: 10)
+                }
+            case .compact:
+                compactPanel
+            }
+        }
+    }
+
+    /// 小さい箱: 名前の下に「初訪問 · 県 · 日付 · 全国の数」を小さな文字で1行にまとめる(情報は減らさない)。
+    private var compactPanel: some View {
+        VStack(alignment: .leading, spacing: isStory ? 3 : 2) {
+            MarkerHeading(content.municipalityName, size: isStory ? 24 : 19, marker: boxStyle.marker(), foreground: boxStyle.primary())
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+            HStack(spacing: 4) {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(boxStyle.primary(Pop.theme))
+                Text(content.compactSummaryText())
+                    .foregroundStyle(boxStyle.secondary())
+                    .monospacedDigit()
+            }
+            .font(.system(size: isStory ? 11 : 9.5, weight: .heavy, design: .rounded))
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+        }
+        // 幅は中身に合わせる(記録の1行が読める大きさで収まる幅。カードの幅を超えるときだけ字を少し縮める)。
+        .padding(isStory ? 10 : 8)
+        .shareCardBox(boxStyle, fill: Color.white.opacity(0.88), shadow: Pop.yellow.opacity(0.8), cornerRadius: 12, shadowOffset: 3)
     }
 
     private func panel(nameSize: CGFloat, countSize: CGFloat, padding: CGFloat) -> some View {

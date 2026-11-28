@@ -129,18 +129,27 @@ struct ShareCardPhotoControls: View {
     }
 }
 
-/// 「ステッカーを貼る」。写真を選ぶと、その写真の上に形・名前・数字のステッカーを貼る画面(`ShareStickerEditor`)を開く。
-struct ShareCardStickerButton: View {
-    @Binding var photoItem: PhotosPickerItem?
+/// 「位置を調整」(1.8.0 (10)。(8)の「ステッカーを貼る」を作り変えた)。押すと箱と形を指で動かす画面(`ShareCardPositionEditor`)を開く。
+/// 調整したら「元に戻す」でレイアウトの位置に戻せる。
+struct ShareCardPositionControls: View {
+    @Binding var adjustment: ShareCardAdjustment
+    let onAdjust: () -> Void
 
     var body: some View {
-        ShareCardLabeledControl("ステッカー") {
-            PhotosPicker(selection: $photoItem, matching: .images) {
-                Label("ステッカーを貼る", systemImage: "sparkles.rectangle.stack")
+        ShareCardLabeledControl("位置") {
+            HStack(spacing: 10) {
+                Button("位置を調整", systemImage: "hand.draw", action: onAdjust)
+                    .buttonStyle(.bordered)
+                    .tint(Pop.theme)
+                if adjustment.isAdjusted {
+                    Button("元に戻す", systemImage: "arrow.counterclockwise") {
+                        adjustment = .none
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(Pop.muted)
+                }
             }
-            .buttonStyle(.bordered)
-            .tint(Pop.theme)
-            Text("写真を選ぶと、その上に形と名前のステッカーを貼って、指で動かしたり大きさを変えたりできます")
+            Text("箱と形を指で動かしたり、大きさを変えたりできます")
                 .font(.footnote)
                 .foregroundStyle(Pop.muted)
         }

@@ -11,8 +11,6 @@ struct ShareCardSheetScaffold<Controls: View>: View {
     let footnote: String
     let rendered: RenderedShareCard?
     @Binding var size: ShareCardSize
-    /// プレビューをタップしたときの操作(写真の上の箱を上・真ん中・下に動かす)。nilならタップできず、案内も出さない。
-    var onTapPreview: (() -> Void)? = nil
     @ViewBuilder let controls: () -> Controls
 
     @Environment(\.dismiss) private var dismiss
@@ -21,15 +19,7 @@ struct ShareCardSheetScaffold<Controls: View>: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
-                    VStack(spacing: 8) {
-                        ShareCardPreview(rendered: rendered, size: size, onTap: onTapPreview)
-                        if onTapPreview != nil {
-                            // 画像には入れず、プレビューの下にだけ出す。
-                            Label("タップで位置を変更", systemImage: "hand.tap")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(Pop.muted)
-                        }
-                    }
+                    ShareCardPreview(rendered: rendered, size: size)
                     VStack(alignment: .leading, spacing: 14) {
                         controls()
                         ShareCardSizePicker(size: $size)
@@ -71,19 +61,11 @@ struct ShareCardPreview: View {
     let rendered: RenderedShareCard?
     let size: ShareCardSize
     var placeholder = "カードを準備しています"
-    /// タップしたときの操作。nilならただの画像。
-    var onTap: (() -> Void)? = nil
 
     var body: some View {
         Group {
             if let rendered {
-                if let onTap {
-                    Button(action: onTap) { image(rendered) }
-                        .buttonStyle(.plain)
-                        .accessibilityHint("文字の位置を上と下で入れ替えます")
-                } else {
-                    image(rendered)
-                }
+                image(rendered)
             } else {
                 ProgressView(placeholder)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

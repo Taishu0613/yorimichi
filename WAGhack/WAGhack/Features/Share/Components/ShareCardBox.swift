@@ -27,37 +27,97 @@ extension View {
     }
 }
 
-/// 写真を敷いたカードで、箱を上・真ん中・下に置く。
+/// 写真を敷いたカードの並び(1.8.0 (10))。上に大きな形(ポリゴン)、その下に箱。
 ///
-/// - 上・下: 箱と`filler`(地図のカードなら地図、ほかは空き)を縦に並べ、箱の無い側を`filler`に譲る。
-///   地図のカードで箱が地図に重ならないようにするため。
-/// - 真ん中: `filler`を全体に広げ、その上の真ん中に箱を置く。
-///
-/// 箱は中身の高さのまま(本文が長ければ伸びる)。アプリ名は呼び出し側がこの下の行に右寄せで置くので、箱とは重ならない。
-struct ShareCardBoxArrangement<Box: View, Filler: View>: View {
-    let position: ShareCardBoxPosition
-    var spacing: CGFloat = 12
+/// 形は箱の残りの広さいっぱいに描く(箱を小さくするほど形が大きくなる)。箱は中身の高さのまま(本文が長ければ伸びる)。
+/// 「位置を調整」でずらした分(`adjustment`)は、この並びの位置からのずれと大きさとして描く(並び自体は変えない)。
+/// 箱の枠(ずらす前)は`ShareCardBoxBoundsKey`で`ShareCardCanvas`に渡し、アプリ名を箱と重ならない角に置くのに使う。
+struct ShareCardPhotoComposition<Polygon: View, Box: View>: View {
+    let size: ShareCardSize
+    let adjustment: ShareCardAdjustment
+    var spacing: CGFloat = 10
+    /// 形に残す最低限の高さ。本文の長い豆知識でも形が消えないようにする(`TriviaShareCardView`は収まらなければ本文を小さくする)。
+    var minimumPolygonHeight: CGFloat = 0
+    @ViewBuilder let polygon: () -> Polygon
     @ViewBuilder let box: () -> Box
-    @ViewBuilder let filler: () -> Filler
 
     var body: some View {
-        switch position {
-        case .top:
-            VStack(spacing: spacing) {
-                box().layoutPriority(1)
-                filler().frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        case .middle:
-            ZStack {
-                filler().frame(maxWidth: .infinity, maxHeight: .infinity)
-                box()
-            }
-        case .bottom:
-            VStack(spacing: spacing) {
-                filler().frame(maxWidth: .infinity, maxHeight: .infinity)
-                box().layoutPriority(1)
-            }
+        let cardSize = size.pointSize
+        VStack(spacing: spacing) {
+            polygon()
+                .frame(maxWidth: .infinity, minHeight: minimumPolygonHeight, maxHeight: .infinity)
+                .adjusted(by: adjustment.shape, in: cardSize)
+            box()
+                .layoutPriority(1)
+                .anchorPreference(key: ShareCardBoxBoundsKey.self, value: .bounds) { $0 }
+                .adjusted(by: adjustment.box, in: cardSize)
         }
+        // 大きさはカード(`ShareCardSize.pointSize`)の枠から受け取る。ここで高さを決めないのは、豆知識のカードが
+        // `ViewThatFits`で本文の大きさを選ぶとき、この並びの本来の高さで収まるかを見るため。
+        .padding(ShareCardInsets.photoContent(size))
+    }
+}
+
+/// 写真を敷いたカードの箱の枠。アプリ名を箱と重ならない角に置くため(`ShareCardLogoCorner`)。
+struct ShareCardBoxBoundsKey: PreferenceKey {
+    static let defaultValue: Anchor<CGRect>? = nil
+
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = value ?? nextValue()
+    }
+}
+
+extension View {
+    /// 「位置を調整」のずれと大きさ。並びの位置は変えず、描く位置だけを動かす。
+    func adjusted(by placement: ShareCardElementPlacement, in cardSize: CGSize) -> some View {
+        scaleEffect(placement.scale)
+            .offset(placement.offset(in: cardSize))
+    }
+}
+
+/// 写真の上に大きく描く街の形(初訪問・豆知識、1.8.0 (10))。与えられた広さに縦横比を保って収める。
+/// 「県の中の位置」なら県の形の中でその街を塗る(`ShareCardShapeView`)。
+struct ShareCardPhotoShape: View {
+    let shape: ShareCardShape
+    let boxStyle: ShareCardBoxStyle
+
+    var body: some View {
+        GeometryReader { proxy in
+            let fitted = Self.fittedSize(aspectRatio: shape.map?.aspectRatio ?? 1, in: proxy.size)
+            ShareCardShapeView(shape: shape, boxStyle: boxStyle)
+                .frame(width: fitted.width, height: fitted.height)
+                .frame(width: proxy.size.width, height: proxy.size.height)
+        }
+    }
+
+    static func fittedSize(aspectRatio: CGFloat, in container: CGSize) -> CGSize {
+        guard aspectRatio > 0, container.width > 0, container.height > 0 else { return .zero }
+        if container.width / container.height > aspectRatio {
+            return CGSize(width: container.height * aspectRatio, height: container.height)
+        }
+        return CGSize(width: container.width, height: container.width / aspectRatio)
+    }
+}
+
+/// 小さい箱の細い進み具合の棒。`PopProgressBar`は文字の大きさに合わせた太さで細くできないため、カード用に描く。
+struct ShareCardThinProgressBar: View {
+    let fraction: Double
+    let style: ShareCardBoxStyle
+    var height: CGFloat = 5
+
+    var body: some View {
+        let clamped = min(max(fraction, 0), 1)
+        Capsule()
+            .fill(style.progressTrack)
+            .overlay(alignment: .leading) {
+                GeometryReader { proxy in
+                    Capsule()
+                        .fill(style.progressFill)
+                        .frame(width: proxy.size.width * clamped)
+                }
+            }
+            .clipShape(Capsule())
+            .frame(height: height)
     }
 }
 

@@ -80,30 +80,29 @@ nonisolated enum ShareCardBoxStyle: String, CaseIterable, Identifiable, Hashable
     }
 }
 
-/// 写真の上に置いた箱の位置。プレビューをタップするたびに上→真ん中→下→上と変える。
+/// 写真を敷いたカードのレイアウト(1.8.0 (10))。シェア画面の「レイアウト」で選び、最後に選んだものを覚えておく。
 ///
-/// シェア画面を開いている間だけ持ち、種類や範囲を切り替えても同じ位置にする(覚えておくのは見た目だけ)。
-nonisolated enum ShareCardBoxPosition: String, CaseIterable, Hashable {
-    case top
-    case middle
-    case bottom
+/// どちらも上に大きな形(ポリゴン)、その下に箱を置く。(9)の「プレビューのタップで箱を上・真ん中・下に動かす」は、
+/// 「位置を変えるよりレイアウトを変えたい」との声でやめた(細かく動かしたいときは「位置を調整」、`ShareCardAdjustment`)。
+/// 値はUserDefaultsに残るので`rawValue`は変えない。
+nonisolated enum ShareCardBoxSize: String, CaseIterable, Identifiable, Hashable {
+    /// (9)の箱を少し詰めたもの。載せる中身は(9)と同じ。
+    case standard
+    /// 箱をぐっと小さくして形を主役にする。中身は減らさず、並べ方と文字の大きさで詰める
+    /// (制覇率の達成の札と「あと何市区町村で」だけは載せない、という声に合わせて省く)。
+    case compact
 
-    /// タップしたときの次の位置。
-    var next: ShareCardBoxPosition {
-        switch self {
-        case .top: .middle
-        case .middle: .bottom
-        case .bottom: .top
-        }
-    }
+    var id: Self { self }
 
     var title: String {
         switch self {
-        case .top: "上"
-        case .middle: "真ん中"
-        case .bottom: "下"
+        case .standard: "標準"
+        case .compact: "小さい箱"
         }
     }
+
+    static let storageKey = "shareCardBoxSize"
+    static let defaultSize: ShareCardBoxSize = .standard
 }
 
 /// 形(ポリゴン)の見せ方(1.8.0 (8))。シェア画面の「形の見せ方」で選び、最後に選んだものを覚えておく。

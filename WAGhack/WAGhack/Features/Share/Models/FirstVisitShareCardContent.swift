@@ -32,6 +32,16 @@ struct FirstVisitShareCardContent: Hashable {
         return formatter.string(from: date)
     }
 
+    /// 小さい箱(1.8.0 (10))で名前の下に1行にまとめる記録。「初訪問 · 愛知県 · 2026.11.28 · 全国 124/1,918 (6.5%)」。
+    /// 箱を小さくしても情報は減らさず、並べ方で詰める(標準の箱に載せるものと同じ)。都道府県・日付は分かるときだけ。
+    func compactSummaryText(timeZone: TimeZone = .current) -> String {
+        var parts = ["初訪問"]
+        if !prefectureName.isEmpty { parts.append(prefectureName) }
+        if let firstVisitDate { parts.append(Self.dateText(for: firstVisitDate, timeZone: timeZone)) }
+        parts.append("全国 \(visitedMunicipalityCount.formatted())/\(totalMunicipalityCount.formatted()) (\(percentageText))")
+        return parts.joined(separator: " · ")
+    }
+
     /// 画像と一緒に共有する文。
     var shareText: String {
         let headline = visitedMunicipalityCount > 0

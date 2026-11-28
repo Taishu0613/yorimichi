@@ -4,12 +4,12 @@ import Testing
 import UIKit
 @testable import WAGhack
 
-/// 1.8.0 (9)のカード((6)の箱に戻した見た目)の見本の画像を書き出す。ふだんのテストでは動かさない。
+/// 1.8.0 (10)のカード(上に大きな形・下に箱、標準と小さい箱)の見本の画像を書き出す。ふだんのテストでは動かさない。
 ///
 /// `TEST_RUNNER_SHARE_CARD_SAMPLE_DIR=/path/to/dir xcodebuild test -only-testing:WAGhackTests/ShareCardSampleRenderer ...`
 /// 名古屋市(初訪問・みどころ・都市伝説・できること)・愛知県(県内の市区町村・全国の都道府県)・全国を、
-/// 写真あり(箱の見た目3種 × 箱の上/下)と写真なし(アプリの色)を縦長に描く。正方形(アプリの色)・「形だけ」・
-/// 日付の無い初訪問・とても長いみどころ・ステッカーは一部だけ。
+/// 写真あり(標準・小さい箱 × 白の線、愛知県と名古屋市の初訪問はアプリの色・黒の線も)と写真なし(アプリの色)を縦長に描く。
+/// 正方形(白の線の標準・小さい箱)・「形だけ」・日付の無い初訪問・とても長いみどころ・位置を調整した例は一部だけ。
 /// 写真はアプリと同じくWikipediaの名古屋城の写真(`WikipediaImageService.spotPhoto`)を使う。取れなければ`SHARE_CARD_SAMPLE_PHOTO`、
 /// それも無ければ空と海を描いた架空の写真。
 @MainActor
@@ -131,55 +131,80 @@ struct ShareCardSampleRenderer {
                     await snapshots.loadBackdropIfNeeded(for: key, map: map)
                 }
                 var model = ShareCardModel(subject: sample.subject, size: size, locationShape: locationShape)
-                // 正方形は、初めの見た目(アプリの色・下)だけ。
-                let styles = size == .story ? ShareCardBoxStyle.allCases : [.app]
+                // 写真あり: 白の線を中心に。縦長の愛知県と初訪問だけ、アプリの色・黒の線も。
+                let showsAllStyles = size == .story && ["aichi", "nagoya-first-visit"].contains(sample.name)
+                let styles: [ShareCardBoxStyle] = showsAllStyles ? ShareCardBoxStyle.allCases : [.whiteLine]
+                model.photo = photo
                 for style in styles {
                     model.boxStyle = style
-                    // 写真あり: 箱の上と下。
-                    model.photo = photo
-                    model.backdrop = nil
-                    let positions: [ShareCardBoxPosition] = size == .story ? [.top, .bottom] : [.bottom]
-                    for position in positions {
-                        model.boxPosition = position
-                        try write(model, name: "\(sample.name)-photo-\(style.rawValue)-\(position.rawValue)", in: output)
+                    for boxSize in ShareCardBoxSize.allCases {
+                        model.boxSize = boxSize
+                        try write(model, name: "\(sample.name)-photo-\(style.rawValue)-\(boxSize.rawValue)", in: output)
                     }
                 }
-                // 写真なし: (6)と同じ並び(箱は動かさず、アプリの色で描く)。
+                guard size == .story else { continue }
+                // 写真なし: (6)と同じ並び(アプリの色で描く)。
                 model.photo = nil
                 model.boxStyle = .app
-                model.boxPosition = .bottom
+                model.boxSize = .standard
                 model.backdrop = snapshots.backdrop(for: key)
                 try write(model, name: "\(sample.name)-map", in: output)
                 // 「形だけ」(その範囲だけの形)と比べる1枚。
-                if locationShape != nil, size == .story {
-                    let shapeOnly = ShareCardModel(subject: sample.subject, size: size, photo: photo)
-                    try write(shapeOnly, name: "\(sample.name)-photo-app-bottom-shapeOnly", in: output)
+                if locationShape != nil {
+                    var shapeOnly = ShareCardModel(subject: sample.subject, size: size, photo: photo, boxStyle: .whiteLine)
+                    shapeOnly.boxSize = .compact
+                    try write(shapeOnly, name: "\(sample.name)-photo-whiteLine-compact-shapeOnly", in: output)
                 }
             }
         }
 
         // 初めて訪れた日が分からない(図鑑から開いた)初訪問。
-        let noDate = ShareCardModel(subject: firstVisit(date: nil), size: .story, photo: photo, locationShape: factory.locationShape(for: town))
-        try write(noDate, name: "nagoya-first-visit-nodate-photo-app-bottom", in: directory)
+        var noDate = ShareCardModel(subject: firstVisit(date: nil), size: .story, photo: photo, boxStyle: .whiteLine, locationShape: factory.locationShape(for: town))
+        for boxSize in ShareCardBoxSize.allCases {
+            noDate.boxSize = boxSize
+            try write(noDate, name: "nagoya-first-visit-nodate-photo-whiteLine-\(boxSize.rawValue)", in: directory)
+        }
 
         // とても長いみどころ(箱が伸び、収まらない分だけ本文の文字を小さくして全文を入れる)。
         let longHighlights = ShareCardSubject.trivia(Self.trivia(.highlights(Self.highlights + Self.highlights)), map: nagoyaMap, highlightedCodes: nagoyaCodes)
         for size in ShareCardSize.allCases {
-            var long = ShareCardModel(subject: longHighlights, size: size, photo: photo, locationShape: factory.locationShape(for: town))
-            long.boxStyle = .whiteLine
-            try write(long, name: "nagoya-highlights-long-photo-whiteLine-bottom", in: size == .story ? directory : squareDirectory)
+            for boxSize in ShareCardBoxSize.allCases {
+                var long = ShareCardModel(subject: longHighlights, size: size, photo: photo, boxStyle: .whiteLine, locationShape: factory.locationShape(for: town))
+                long.boxSize = boxSize
+                try write(long, name: "nagoya-highlights-long-photo-whiteLine-\(boxSize.rawValue)", in: size == .story ? directory : squareDirectory)
+            }
         }
 
-        // ステッカーを写真に貼った例(初訪問。位置と大きさは指で動かした後の想定)。
-        let stickerDirectory = directory.appendingPathComponent("sticker")
-        try FileManager.default.createDirectory(at: stickerDirectory, withIntermediateDirectories: true)
-        let stickerModel = ShareCardModel(subject: samples[0].subject, size: .story, locationShape: factory.locationShape(for: town))
-        let canvas = ShareStickerCanvas(
-            photo: photo, summary: stickerModel.summary, shape: stickerModel.shape, boxStyle: .whiteLine, size: .story,
-            placement: ShareStickerPlacement(unitCenter: CGPoint(x: 0.38, y: 0.7), scale: 0.9)
+        // 「位置を調整」した例(指で動かした後の想定)。
+        let adjustedDirectory = directory.appendingPathComponent("adjusted")
+        try FileManager.default.createDirectory(at: adjustedDirectory, withIntermediateDirectories: true)
+        let aichiSample = try #require(samples.first { $0.name == "aichi" })
+        var adjusted = ShareCardModel(
+            subject: aichiSample.subject, size: .story, photo: photo, boxStyle: .whiteLine,
+            locationShape: factory.locationShape(for: aichiSample.selection)
         )
-        let image = try #require(ShareCardRenderer.render(canvas, size: .story))
-        try #require(image.pngData()).write(to: stickerDirectory.appendingPathComponent("sticker-\(samples[0].name)-whiteLine-story.png"))
+        adjusted.boxSize = .compact
+        // 形を少し大きくして上へ、箱を左へ寄せる(アプリ名は右下のまま)。
+        adjusted.adjustment = ShareCardAdjustment(
+            box: ShareCardElementPlacement(unitOffset: CGSize(width: -0.14, height: 0.02), scale: 0.95),
+            shape: ShareCardElementPlacement(unitOffset: CGSize(width: 0, height: -0.04), scale: 1.12)
+        )
+        try write(adjusted, name: "aichi-photo-whiteLine-compact-moved-left", in: adjustedDirectory)
+        // 箱を右下の角まで下げる(アプリ名は右上へ逃げる)。
+        adjusted.adjustment = ShareCardAdjustment(
+            box: ShareCardElementPlacement(unitOffset: CGSize(width: 0.1, height: 0.13), scale: 1),
+            shape: ShareCardElementPlacement(unitOffset: CGSize(width: 0, height: 0.06), scale: 1.05)
+        )
+        try write(adjusted, name: "aichi-photo-whiteLine-compact-moved-down", in: adjustedDirectory)
+        var adjustedTown = ShareCardModel(
+            subject: samples[1].subject, size: .story, photo: photo, boxStyle: .whiteLine, locationShape: factory.locationShape(for: town)
+        )
+        adjustedTown.boxSize = .compact
+        adjustedTown.adjustment = ShareCardAdjustment(
+            box: ShareCardElementPlacement(unitOffset: CGSize(width: 0, height: -0.42), scale: 1),
+            shape: ShareCardElementPlacement(unitOffset: CGSize(width: 0, height: 0.18), scale: 0.8)
+        )
+        try write(adjustedTown, name: "nagoya-highlights-photo-whiteLine-compact-box-on-top", in: adjustedDirectory)
     }
 
     private static let highlights = "名古屋市は、愛知県の県庁所在地で、中部地方の中心となる大都市だ。1610年に徳川家康が名古屋城を築き、清須の町をまるごと移した「清須越し」で町ができた。久屋大通と若宮大通は、幅100mの広い道路だ。熱田神宮には、三種の神器の一つ、草薙剣が祀られている。人口は東京23区、横浜市、大阪市に次ぐ多さだ。"

@@ -1,19 +1,22 @@
 import CoreGraphics
 import Foundation
+import SwiftUI
 import Testing
 import UIKit
 @testable import WAGhack
 
-/// カードの箱の見た目・位置・添える形・形の見せ方・ステッカー(1.8.0 (9)で(6)の箱に戻した)、
+/// カードの箱の見た目・レイアウト・位置の調整・アプリ名の角・添える形・形の見せ方(1.8.0 (9)で(6)の箱に戻し、(10)で2つのレイアウトにした)、
 /// 都道府県の「全国の都道府県」・図鑑の入口の縮め方(1.8.0 (7))。
 @MainActor
 struct ShareCardLayoutTests {
     // MARK: - 箱
 
-    @Test func タップするたびに箱は上_真ん中_下_上の順に動く() {
-        #expect(ShareCardBoxPosition.top.next == .middle)
-        #expect(ShareCardBoxPosition.middle.next == .bottom)
-        #expect(ShareCardBoxPosition.bottom.next == .top)
+    @Test func レイアウトは標準と小さい箱で初めは標準() {
+        #expect(ShareCardBoxSize.defaultSize == .standard)
+        #expect(ShareCardBoxSize.allCases.map(\.rawValue) == ["standard", "compact"])
+        #expect(ShareCardBoxSize.allCases.map(\.title) == ["標準", "小さい箱"])
+        #expect(Set([ShareCardBoxSize.storageKey, ShareCardBoxStyle.storageKey, ShareCardShapeMode.storageKey]).count == 3)
+        #expect(ShareCardModel(subject: .trivia(trivia(.highlights("城がある。")), map: nil, highlightedCodes: []), size: .story).adjustment == .none)
     }
 
     /// 選んだ値はUserDefaultsに`rawValue`で残る。(5)(6)と同じキー・値にして、前に選んだ見た目を引き継ぐ。
@@ -37,14 +40,33 @@ struct ShareCardLayoutTests {
         #expect(model.effectiveBoxStyle == .whiteLine)
     }
 
-    @Test func 写真を敷いた街のカードは形だけでも名前に形を添える() {
+    @Test func 写真を敷いた街のカードは上に大きな形を描くので名前には形を添えない() {
         let photo = UIImage()
+        let location = ShareCardShape(map: nil, filledCodes: ["23100"], outlineWidth: 0.5, placeholderSystemImage: "map.fill", isLocation: true)
         let firstVisitCard = ShareCardSubject.firstVisit(firstVisit(date: nil), map: nil, highlightedCodes: [])
         let triviaCard = ShareCardSubject.trivia(trivia(.highlights("城がある。")), map: nil, highlightedCodes: [])
-        #expect(ShareCardModel(subject: firstVisitCard, size: .story, photo: photo).boxShape != nil)
-        #expect(ShareCardModel(subject: triviaCard, size: .story, photo: photo).boxShape != nil)
-        // 写真が無いときは地図の枠に形を大きく描くので、形だけなら添えない。
+        #expect(ShareCardModel(subject: firstVisitCard, size: .story, photo: photo, locationShape: location).boxShape == nil)
+        #expect(ShareCardModel(subject: triviaCard, size: .story, photo: photo).boxShape == nil)
+        // 大きく描く形は、県の中の位置を選んでいればその形、形だけならその街の形。
+        #expect(ShareCardModel(subject: triviaCard, size: .story, photo: photo, locationShape: location).shape.isLocation)
+        #expect(!ShareCardModel(subject: triviaCard, size: .story, photo: photo).shape.isLocation)
+        // 写真が無いときは地図の枠に形を大きく描くので、形だけなら添えず、位置なら添える。
         #expect(ShareCardModel(subject: triviaCard, size: .story).boxShape == nil)
+        #expect(ShareCardModel(subject: triviaCard, size: .story, locationShape: location).boxShape?.isLocation == true)
+    }
+
+    @Test func 小さい箱の初訪問は記録を1行にまとめて減らさない() throws {
+        let date = try #require(Calendar(identifier: .gregorian).date(
+            from: DateComponents(timeZone: TimeZone(identifier: "Asia/Tokyo"), year: 2026, month: 11, day: 28, hour: 9)
+        ))
+        let tokyo = try #require(TimeZone(identifier: "Asia/Tokyo"))
+        let content = FirstVisitShareCardContent(
+            municipalityName: "名古屋市", prefectureName: "愛知県", progress: ExplorationCount(visited: 124, total: 1_918), firstVisitDate: date
+        )
+        #expect(content.compactSummaryText(timeZone: tokyo) == "初訪問 · 愛知県 · 2026.11.28 · 全国 \(124.formatted())/\(1_918.formatted()) (\(content.percentageText))")
+        // 日付が分からないときは日付だけを省く。
+        let noDate = FirstVisitShareCardContent(municipalityName: "名古屋市", prefectureName: "愛知県", progress: ExplorationCount(visited: 1, total: 2))
+        #expect(noDate.compactSummaryText(timeZone: tokyo) == "初訪問 · 愛知県 · 全国 1/2 (\(noDate.percentageText))")
     }
 
     @Test func 位置を選んだときはどのカードにも位置の形を添える() {
@@ -92,16 +114,41 @@ struct ShareCardLayoutTests {
         #expect(withoutDate.label == "初訪問")
     }
 
-    @Test func ステッカーの位置はカードの外に出さず大きさは範囲に収める() {
+    @Test func 位置の調整はずらせる幅と大きさを範囲に収める() {
         let cardSize = ShareCardSize.story.pointSize
-        let placement = ShareStickerPlacement(unitCenter: CGPoint(x: 0.5, y: 0.5), scale: 1)
-        let moved = placement.moved(by: CGSize(width: 1_000, height: -1_000), in: cardSize)
-        #expect(moved.unitCenter == CGPoint(x: 1, y: 0))
-        #expect(placement.scaled(by: 10).scale == ShareStickerPlacement.scaleRange.upperBound)
-        #expect(placement.scaled(by: 0.01).scale == ShareStickerPlacement.scaleRange.lowerBound)
-        // ステッカーが下半分ならアプリ名は右上、上半分なら右下。
-        #expect(ShareStickerPlacement(unitCenter: CGPoint(x: 0.3, y: 0.8)).logoCorner(in: cardSize) == .topTrailing)
-        #expect(ShareStickerPlacement(unitCenter: CGPoint(x: 0.3, y: 0.2)).logoCorner(in: cardSize) == .bottomTrailing)
+        let placement = ShareCardElementPlacement()
+        let moved = placement.moved(by: CGSize(width: 36, height: -64), in: cardSize)
+        #expect(moved.unitOffset == CGSize(width: 0.1, height: -0.1))
+        #expect(moved.offset(in: cardSize) == CGSize(width: 36, height: -64))
+        let far = placement.moved(by: CGSize(width: 10_000, height: -10_000), in: cardSize)
+        #expect(far.unitOffset == CGSize(width: ShareCardElementPlacement.offsetLimit.width, height: -ShareCardElementPlacement.offsetLimit.height))
+        #expect(placement.scaled(by: 10).scale == ShareCardElementPlacement.scaleRange.upperBound)
+        #expect(placement.scaled(by: 0.01).scale == ShareCardElementPlacement.scaleRange.lowerBound)
+        var adjustment = ShareCardAdjustment.none
+        #expect(!adjustment.isAdjusted)
+        adjustment[.shape] = moved
+        #expect(adjustment.isAdjusted)
+        #expect(adjustment.shape == moved)
+        #expect(adjustment.box == ShareCardElementPlacement())
+    }
+
+    @Test func アプリ名はふだん右下で箱が重なるときだけ右上() {
+        for size in ShareCardSize.allCases {
+            let bottom = ShareCardAppMark.cornerFrame(.bottomTrailing, size: size)
+            let top = ShareCardAppMark.cornerFrame(.topTrailing, size: size)
+            // どちらもカードの右端から小さな余白だけあけた角。
+            #expect(bottom.maxX == size.pointSize.width - ShareCardAppMark.margin(for: size))
+            #expect(bottom.maxY == size.pointSize.height - ShareCardAppMark.margin(for: size))
+            #expect(top.minY == ShareCardAppMark.margin(for: size))
+            // レイアウトの位置の箱(並べる範囲の下端まで)は、右下のアプリ名に掛からない。
+            let insets = ShareCardInsets.photoContent(size)
+            let boxBottom = size.pointSize.height - insets.bottom
+            let box = CGRect(x: insets.leading, y: boxBottom - 120, width: size.pointSize.width - insets.leading - insets.trailing, height: 120)
+            #expect(ShareCardLogoCorner.corner(avoiding: box, bottomLogoFrame: bottom) == .bottomTrailing)
+            // 箱を下へずらして重なったら右上。
+            #expect(ShareCardLogoCorner.corner(avoiding: box.offsetBy(dx: 0, dy: 80), bottomLogoFrame: bottom) == .topTrailing)
+        }
+        #expect(ShareCardLogoCorner.corner(avoiding: nil, bottomLogoFrame: .zero) == .bottomTrailing)
     }
 
     // MARK: - 全国の都道府県
