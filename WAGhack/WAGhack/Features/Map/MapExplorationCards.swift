@@ -1268,7 +1268,7 @@ struct MunicipalityFirstVisitSheet: View {
         }
         .sheet(isPresented: $isPresentingShare) {
             if let shareSubject {
-                MunicipalityShareSheet(subject: shareSubject, initialKind: .firstVisit)
+                ShareCardSheet(entry: .town(shareSubject, initialKind: .firstVisit))
             }
         }
         .task(id: municipality?.code) {

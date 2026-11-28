@@ -10,7 +10,7 @@ struct RenderedShareCard {
 
 /// シェア画面の共通の骨組み。プレビュー→選択肢→注意書き→シェアするボタンの順に並べる。
 ///
-/// 地図のシェア(`ShareMapSheet`)・バッジ・豆知識・初訪問のシェアで同じ並びにして、どこから開いても迷わないようにする。
+/// 地図・市区町村のシェア(`ShareCardSheet`)とバッジのシェアで同じ並びにして、どこから開いても迷わないようにする。
 /// プレビューには共有するのと同じ画像(`ShareCardRenderer`の結果)を縮めて出す。
 /// 画面用に別のViewを組むと、書き出した画像と見た目がずれることがあるため。
 struct ShareCardSheetScaffold<Controls: View>: View {
@@ -18,6 +18,8 @@ struct ShareCardSheetScaffold<Controls: View>: View {
     let footnote: String
     let rendered: RenderedShareCard?
     @Binding var layout: ShareCardLayout
+    /// プレビューをタップしたときの操作(写真の上の箱を動かす)。nilならタップできず、案内も出さない。
+    var onTapPreview: (() -> Void)? = nil
     @ViewBuilder let controls: () -> Controls
 
     @Environment(\.dismiss) private var dismiss
@@ -26,7 +28,15 @@ struct ShareCardSheetScaffold<Controls: View>: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
-                    ShareCardPreview(rendered: rendered, layout: layout)
+                    VStack(spacing: 8) {
+                        ShareCardPreview(rendered: rendered, layout: layout, onTap: onTapPreview)
+                        if onTapPreview != nil {
+                            // 画像には入れず、プレビューの下にだけ出す。
+                            Label("タップで位置を変更", systemImage: "hand.tap")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(Pop.muted)
+                        }
+                    }
                     VStack(alignment: .leading, spacing: 14) {
                         controls()
                         ShareCardLabeledControl("形") {
@@ -59,18 +69,20 @@ struct ShareCardPreview: View {
     let rendered: RenderedShareCard?
     let layout: ShareCardLayout
     var placeholder = "カードを準備しています"
+    /// タップしたときの操作。nilならただの画像。
+    var onTap: (() -> Void)? = nil
 
     var body: some View {
         let size = layout.pixelSize
         Group {
             if let rendered {
-                Image(uiImage: rendered.image)
-                    .resizable()
-                    .scaledToFit()
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Pop.border, lineWidth: 1))
-                    .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
-                    .accessibilityLabel("シェアする画像のプレビュー")
+                if let onTap {
+                    Button(action: onTap) { image(rendered.image) }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("箱の位置を上・真ん中・下の順に変えます")
+                } else {
+                    image(rendered.image)
+                }
             } else {
                 ProgressView(placeholder)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -81,6 +93,16 @@ struct ShareCardPreview: View {
         .frame(maxHeight: 440)
         .frame(maxWidth: .infinity)
         .animation(.easeOut(duration: 0.2), value: layout)
+    }
+
+    private func image(_ image: UIImage) -> some View {
+        Image(uiImage: image)
+            .resizable()
+            .scaledToFit()
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Pop.border, lineWidth: 1))
+            .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
+            .accessibilityLabel("シェアする画像のプレビュー")
     }
 }
 

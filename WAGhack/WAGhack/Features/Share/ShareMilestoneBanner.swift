@@ -109,7 +109,7 @@ struct ShareMilestonePresentation: ViewModifier {
                 await presentWhenCalm()
             }
             .sheet(item: $shareScope) { scope in
-                ShareMapSheet(initialScope: scope, silhouetteStore: silhouetteStore)
+                ShareCardSheet(entry: .region(scope), silhouetteStore: silhouetteStore)
             }
     }
 

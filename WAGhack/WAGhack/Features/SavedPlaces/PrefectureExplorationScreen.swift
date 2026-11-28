@@ -96,7 +96,7 @@ struct PrefectureExplorationScreen: View {
             }
         }
         .sheet(isPresented: $isPresentingShare) {
-            ShareMapSheet(initialScope: .prefecture(code: prefectureCode), silhouetteStore: silhouetteStore)
+            ShareCardSheet(entry: .region(.prefecture(code: prefectureCode)), silhouetteStore: silhouetteStore)
         }
         .alert("削除できませんでした", isPresented: Binding(
             get: { store.deletionErrorMessage != nil },

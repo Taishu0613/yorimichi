@@ -39,6 +39,12 @@ struct FirstVisitShareCardView: View {
     let map: SilhouetteMap?
     let highlightedCodes: Set<String>
     var backdrop: ShareMapBackdrop? = nil
+    var boxStyle: ShareCardBoxStyle = .app
+    /// 写真を敷いたときのパネルの位置。写真が無いときは下に固定する(市区町村の形をパネルより上に描くため)。
+    var boxPosition: ShareCardBoxPosition = .bottom
+
+    /// 実際に置く位置。
+    private var panelPosition: ShareCardBoxPosition { photo == nil ? .bottom : boxPosition }
 
     var body: some View {
         ZStack {
@@ -69,20 +75,29 @@ struct FirstVisitShareCardView: View {
     /// 左下のAppleマップのロゴ(下端から約22pt)には掛けない。
     private var storyLayout: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Spacer(minLength: 0)
-            panel(nameSize: 36, countSize: 44, padding: 20)
+            ShareCardBoxArrangement(position: panelPosition) {
+                panel(nameSize: 36, countSize: 44, padding: 20)
+            } filler: {
+                Color.clear
+            }
             ShareCardAppMark(logoSize: 30, isOverPhoto: photo != nil)
                 .padding(.trailing, 4)
         }
         .padding(.horizontal, 24)
+        // 写真ありは豆知識の写真のカードと同じく、ストーリーズの上に重なるアプリの表示(約60pt)を避ける。
+        .padding(.top, 64)
         .padding(.bottom, 96)
     }
 
     private var squareLayout: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Spacer(minLength: 0)
-            panel(nameSize: 26, countSize: 30, padding: 14)
-                .frame(maxWidth: 260, alignment: .leading)
+            ShareCardBoxArrangement(position: panelPosition, spacing: 8) {
+                panel(nameSize: 26, countSize: 30, padding: 14)
+                    .frame(maxWidth: 260, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } filler: {
+                Color.clear
+            }
             ShareCardAppMark(logoSize: 24, isOverPhoto: photo != nil)
         }
         .padding(.horizontal, 20)
@@ -98,24 +113,24 @@ struct FirstVisitShareCardView: View {
                     PopPill(text: content.prefectureName, systemImage: "mappin", fill: Pop.themeSoft)
                 }
             }
-            MarkerHeading(content.municipalityName, size: nameSize)
+            MarkerHeading(content.municipalityName, size: nameSize, marker: boxStyle.marker(), foreground: boxStyle.primary())
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
             VStack(alignment: .leading, spacing: 0) {
                 Text("全国で訪れた市区町村")
                     .font(.system(size: 12, weight: .heavy))
-                    .foregroundStyle(Pop.muted)
+                    .foregroundStyle(boxStyle.secondary())
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(content.visitedMunicipalityCount.formatted())
                         .font(.system(size: countSize, weight: .black, design: .rounded))
                     Text("/ \(content.totalMunicipalityCount.formatted())")
                         .font(.system(size: countSize * 0.4, weight: .bold, design: .rounded))
-                        .foregroundStyle(Pop.muted)
+                        .foregroundStyle(boxStyle.secondary())
                     Spacer(minLength: 4)
                     Text(content.percentageText)
                         .font(.system(size: countSize * 0.5, weight: .black, design: .rounded))
                 }
-                .foregroundStyle(Pop.ink)
+                .foregroundStyle(boxStyle.primary())
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
@@ -124,6 +139,6 @@ struct FirstVisitShareCardView: View {
         .padding(padding)
         .frame(maxWidth: .infinity, alignment: .leading)
         // 写真の上でも読めるよう、ほぼ白の半透明にする(すりガラスは画像に書き出せないため使わない)。
-        .popCard(fill: Color.white.opacity(0.88), shadow: Pop.yellow.opacity(0.8), shadowOffset: 4)
+        .shareCardBox(boxStyle, fill: Color.white.opacity(0.88), shadow: Pop.yellow.opacity(0.8), shadowOffset: 4)
     }
 }

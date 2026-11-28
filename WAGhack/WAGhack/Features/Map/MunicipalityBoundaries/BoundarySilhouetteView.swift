@@ -15,6 +15,9 @@ struct SilhouetteMapView: View {
         case solid
         /// 本物の地図の上に重ねる(シェア用のカード)。未訪問は細い線とごく薄い色だけにして、下の地図を透かす。
         case overMap
+        /// 写真の上に重ねる(シェア用のカード)。未訪問は線だけにして写真を透かし、訪問済みだけを塗る。
+        /// どんな色の写真でも形が分かるよう、白い線に薄い影を落とす。
+        case overPhoto
     }
 
     var body: some View {
@@ -39,13 +42,30 @@ struct SilhouetteMapView: View {
                 outlined(visited, color: .teal)
                     .compositingGroup()
                     .opacity(0.82)
+            case .overPhoto:
+                ZStack {
+                    unvisited.stroke(Color.white.opacity(0.9), style: StrokeStyle(lineWidth: max(outlineWidth, 0.8), lineJoin: .round))
+                    outlined(visited, color: .teal)
+                        .compositingGroup()
+                        .opacity(0.88)
+                }
+                .shadow(color: .black.opacity(0.35), radius: 1.5, y: 0.5)
             }
             if let insetFrame = map.insetFrame {
                 InsetFrameShape(frame: insetFrame, aspectRatio: map.aspectRatio)
-                    .stroke(style == .solid ? AnyShapeStyle(.secondary) : AnyShapeStyle(Pop.border), lineWidth: style == .solid ? 0.5 : 1)
+                    .stroke(insetFrameStyle, lineWidth: style == .solid ? 0.5 : 1)
             }
         }
         .accessibilityHidden(true)
+    }
+
+    /// 沖縄の小窓の囲みの色。写真の上では白にする。
+    private var insetFrameStyle: AnyShapeStyle {
+        switch style {
+        case .solid: AnyShapeStyle(.secondary)
+        case .overMap: AnyShapeStyle(Pop.border)
+        case .overPhoto: AnyShapeStyle(Color.white.opacity(0.9))
+        }
     }
 
     /// 区画ごとに別々に間引いて角を丸めているため(丸めると形がわずかに内側へ縮む)、隣り合う区画の間に隙間ができる。

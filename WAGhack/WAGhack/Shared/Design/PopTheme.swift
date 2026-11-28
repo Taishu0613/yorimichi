@@ -98,12 +98,14 @@ extension View {
 struct PopProgressBar: View {
     let fraction: Double
     var fill: Color = Pop.theme
+    /// バーの地。シェアのカードで箱を線だけにしたとき(`ShareCardBoxStyle`)に変える。
+    var track: Color = Pop.themeTint.opacity(0.8)
     @ScaledMetric(relativeTo: .body) private var height: CGFloat = 10
 
     var body: some View {
         let clamped = min(max(fraction, 0), 1)
         Capsule()
-            .fill(Pop.themeTint.opacity(0.8))
+            .fill(track)
             .overlay(alignment: .leading) {
                 GeometryReader { proxy in
                     Capsule()

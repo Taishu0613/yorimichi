@@ -215,6 +215,8 @@ struct ShareMapCanvas: View {
     var placeholderSystemImage = "map.fill"
     /// 枠の角の丸み。カードの地図枠(`popCard`)と同じにする。0なら丸めない(カード全体に敷くとき)。
     var cornerRadius: CGFloat = Pop.cornerRadius
+    /// 写真の上に描くとき。未訪問は線だけにして写真を透かす(`backdrop`は使わない)。
+    var isOverPhoto = false
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -229,14 +231,14 @@ struct ShareMapCanvas: View {
                 }
                 SilhouetteMapView(
                     map: map, visitedCodes: visitedCodes, outlineWidth: outlineWidth,
-                    style: backdrop == nil ? .solid : .overMap
+                    style: isOverPhoto ? .overPhoto : (backdrop == nil ? .solid : .overMap)
                 )
                 .frame(width: contentRect.width, height: contentRect.height)
                 .offset(x: contentRect.minX, y: contentRect.minY)
             } else {
                 Image(systemName: placeholderSystemImage)
                     .font(.system(size: 56, weight: .bold))
-                    .foregroundStyle(Pop.theme.opacity(0.5))
+                    .foregroundStyle(isOverPhoto ? Color.white.opacity(0.8) : Pop.theme.opacity(0.5))
                     .frame(width: box.size.width, height: box.size.height)
             }
         }

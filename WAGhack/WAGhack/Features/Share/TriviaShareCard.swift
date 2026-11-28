@@ -61,7 +61,7 @@ struct TriviaShareCardContent: Equatable {
 ///
 /// - 写真なし: 上に市区町村の形(本物の地図を薄く敷く)と名前、下に話題のカード。
 /// - 写真あり: 写真をカードいっぱいに敷き、名前と話題をほぼ不透明のパネルに載せる(どんな写真でも読めるように)。
-///   地図は出さないので、Appleマップの帰属表示も出ない。
+///   地図は出さないので、Appleマップの帰属表示も出ない。名前と話題はまとめて上・真ん中・下に置ける(`boxPosition`)。
 struct TriviaShareCardView: View {
     let content: TriviaShareCardContent
     let layout: ShareCardLayout
@@ -69,6 +69,9 @@ struct TriviaShareCardView: View {
     let highlightedCodes: Set<String>
     var backdrop: ShareMapBackdrop? = nil
     var photo: UIImage? = nil
+    var boxStyle: ShareCardBoxStyle = .app
+    /// 写真を敷いたときの、名前と話題の位置。写真が無いときは使わない。
+    var boxPosition: ShareCardBoxPosition = .bottom
 
     var body: some View {
         ZStack {
@@ -124,13 +127,18 @@ struct TriviaShareCardView: View {
         .padding(18)
     }
 
-    /// 写真ありの縦長。名前は上、話題は下に寄せて写真を真ん中に見せる。
+    /// 写真ありの縦長。名前と話題をまとめて上・真ん中・下に置き、残りに写真を見せる。
     /// ストーリーズの上下に重なるアプリの表示(上約60pt・下約83pt)には文字を掛けない。
     private var storyPhotoLayout: some View {
         VStack(alignment: .leading, spacing: 14) {
-            namePanel(nameSize: 32, padding: 14)
-            Spacer(minLength: 0)
-            topicCard(fontSize: 14.5, headingSize: 20, iconSize: 32)
+            ShareCardBoxArrangement(position: boxPosition) {
+                VStack(alignment: .leading, spacing: 10) {
+                    namePanel(nameSize: 32, padding: 14)
+                    topicCard(fontSize: 14.5, headingSize: 20, iconSize: 32)
+                }
+            } filler: {
+                Color.clear
+            }
             ShareCardAppMark(logoSize: 30, isOverPhoto: true)
         }
         .padding(.horizontal, 24)
@@ -140,9 +148,14 @@ struct TriviaShareCardView: View {
 
     private var squarePhotoLayout: some View {
         VStack(alignment: .leading, spacing: 10) {
-            namePanel(nameSize: 24, padding: 10)
-            Spacer(minLength: 0)
-            topicCard(fontSize: 11.5, headingSize: 15, iconSize: 24)
+            ShareCardBoxArrangement(position: boxPosition, spacing: 8) {
+                VStack(alignment: .leading, spacing: 8) {
+                    namePanel(nameSize: 24, padding: 10)
+                    topicCard(fontSize: 11.5, headingSize: 15, iconSize: 24)
+                }
+            } filler: {
+                Color.clear
+            }
             ShareCardAppMark(logoSize: 22, isOverPhoto: true)
         }
         .padding(18)
@@ -154,13 +167,13 @@ struct TriviaShareCardView: View {
     private func namePanel(nameSize: CGFloat, padding: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: padding * 0.6) {
             pills
-            MarkerHeading(content.municipalityName, size: nameSize)
+            MarkerHeading(content.municipalityName, size: nameSize, marker: boxStyle.marker(), foreground: boxStyle.primary())
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
         }
         .padding(padding)
         // すりガラスは画像に書き出せないため、ほぼ白の半透明にする(初訪問のパネルと同じ)。
-        .popCard(fill: Color.white.opacity(0.9), shadow: Pop.theme.opacity(0.35), shadowOffset: 3)
+        .shareCardBox(boxStyle, fill: Color.white.opacity(0.9), shadow: Pop.theme.opacity(0.35), shadowOffset: 3)
     }
 
     private func mapCanvas(box: ShareCardMapBox) -> some View {
@@ -205,7 +218,7 @@ struct TriviaShareCardView: View {
     }
 
     private func topicCard(fontSize: CGFloat, headingSize: CGFloat, iconSize: CGFloat) -> some View {
-        let textColor = isLegend ? Pop.onNight : Pop.ink
+        let textColor = boxStyle.primary(isLegend ? Pop.onNight : Pop.ink)
         return VStack(alignment: .leading, spacing: fontSize * 0.7) {
             HStack(spacing: 8) {
                 PopIconBadge(
@@ -214,7 +227,7 @@ struct TriviaShareCardView: View {
                     foreground: isLegend ? .white : Pop.inkOnAccent,
                     size: iconSize
                 )
-                MarkerHeading(content.title, size: headingSize, marker: isLegend ? Pop.legend : iconFill, foreground: textColor)
+                MarkerHeading(content.title, size: headingSize, marker: boxStyle.marker(isLegend ? Pop.legend : iconFill), foreground: textColor)
             }
             switch content.topic {
             case .highlights(let text), .legend(let text):
@@ -233,13 +246,14 @@ struct TriviaShareCardView: View {
                 // 伝説や噂話なので、事実と受け取られないよう注記する。
                 Text("※諸説あり")
                     .font(.system(size: fontSize * 0.8, weight: .bold))
-                    .foregroundStyle(Pop.onNight.opacity(0.7))
+                    .foregroundStyle(boxStyle.secondary(Pop.onNight.opacity(0.7)))
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
         .padding(fontSize * 1.1)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .popCard(
+        .shareCardBox(
+            boxStyle,
             // 写真の上では写真の色が少し透けるようにする。文字が読める濃さは残す。
             fill: (isLegend ? Pop.night : Color.white).opacity(photo == nil ? 1 : 0.93),
             shadow: isLegend ? Pop.legend.opacity(0.6) : Pop.yellow.opacity(0.8),

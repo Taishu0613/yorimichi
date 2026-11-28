@@ -118,7 +118,7 @@ struct SavedPlacesScreen: View {
         }
         .sheet(isPresented: $isPresentingShare) {
             // 旅の記録は日本全体の記録なので全国のカードから始める。都道府県・政令指定都市にはシェア画面で切り替えられる。
-            ShareMapSheet(initialScope: .japan, silhouetteStore: silhouetteStore)
+            ShareCardSheet(entry: .region(.japan), silhouetteStore: silhouetteStore)
         }
         .alert("削除できませんでした", isPresented: Binding(
             get: { store.deletionErrorMessage != nil },

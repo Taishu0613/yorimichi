@@ -146,10 +146,10 @@ struct MunicipalityDetailScreen: View {
         .sheet(item: $presentedShare) { share in
             switch share {
             case .cityMap(let code):
-                ShareMapSheet(initialScope: .designatedCity(code: code), silhouetteStore: silhouetteStore)
+                ShareCardSheet(entry: .region(.designatedCity(code: code)), silhouetteStore: silhouetteStore)
             case .municipality(let initialKind):
                 if let shareSubject {
-                    MunicipalityShareSheet(subject: shareSubject, initialKind: initialKind)
+                    ShareCardSheet(entry: .town(shareSubject, initialKind: initialKind))
                 }
             }
         }
