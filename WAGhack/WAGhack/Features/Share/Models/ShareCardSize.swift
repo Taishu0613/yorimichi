@@ -3,7 +3,7 @@ import Foundation
 
 /// シェア用カードの形(縦長・正方形)。書き出す画像のピクセル寸法を決める。
 ///
-/// 1.8.0 (7)で、カードの並び方(`ShareCardLayout`: 標準・写真が主役など)と区別するため`ShareCardLayout`から名前を変えた。
+/// 1.8.0 (7)で、カードの並び方(当時の`ShareCardLayout`)と区別するため`ShareCardLayout`から名前を変えた。
 enum ShareCardSize: String, CaseIterable, Identifiable, Hashable {
     /// Instagramのストーリーズなどの縦長(9:16)。
     case story

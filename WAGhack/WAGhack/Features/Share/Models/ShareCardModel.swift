@@ -1,28 +1,31 @@
 import UIKit
 
-/// 1枚のカードを描くのに要るものすべて(1.8.0 (7))。
+/// 1枚のカードを描くのに要るものすべて(1.8.0 (8))。
 ///
-/// シェア画面(`ShareCardSheet`)が選んだ状態から作り、`ShareCardCanvas`がレイアウトに応じて描き、
-/// `ShareCardRenderer.render(_:)`が画像にする。地図のカードも街のカードも同じ道を通すので、
-/// 「どの中身を・どのレイアウトで・どの形で」の組み合わせを1か所(`ShareCardCanvas`)で決められる。
+/// シェア画面(`ShareCardSheet`)が選んだ状態から作り、`ShareCardCanvas`が描き、`ShareCardRenderer.render(_:)`が画像にする。
+/// どのカードも「全面の写真(無ければ薄い地図)＋まとまり1つ＋右の角のアプリ名」の同じ形で、
+/// まとまりの大きさと中身はカードの種類(`ShareCardSubject.panelSize`)で決まる。
 struct ShareCardModel {
     let subject: ShareCardSubject
-    /// 描くレイアウト。シェア画面で、中身の種類で選べるもの(`ShareCardSubjectKind.resolvedLayout`)にしてから渡す。
-    var layout: ShareCardLayout
-    /// 縦長・正方形。ステッカーでは使わない(中身の大きさで書き出す)。
     var size: ShareCardSize
     /// カードに敷く写真。
     var photo: UIImage? = nil
     /// 写真の代わりに薄く敷く本物の地図。撮れるまで・撮れなかったときはnilで、水玉の地にする。
     var backdrop: ShareMapBackdrop? = nil
-    var boxStyle: ShareCardBoxStyle = .app
-    /// フォトの帯の位置。
-    var boxPosition: ShareCardBoxPosition = .bottom
+    var textStyle: ShareCardTextStyle = .defaultStyle
+    var panelPosition: ShareCardPanelPosition = .bottom
+    /// 「県の中の位置」「日本の中の位置」の形(`ShareCardSubjectFactory.locationShape`)。
+    /// nilなら、その範囲だけの形(`summary.shape`)で描く(「形だけ」を選んだとき・一回り大きな地図がまだ無いとき)。
+    var locationShape: ShareCardShape? = nil
 
     var summary: ShareCardSummary { subject.summary }
+    /// まとまりとステッカーに描く形。
+    var shape: ShareCardShape { locationShape ?? summary.shape }
+    var panelSize: ShareCardPanelSize { subject.panelSize }
+    var logoCorner: ShareCardLogoCorner { panelSize.logoCorner(for: panelPosition) }
 }
 
-/// カードの中身。どのレイアウトも、ここから作る要約(`ShareCardSummary`)で描く。
+/// カードの中身。まとまりは、ここから作る要約(`ShareCardSummary`)で描く。
 enum ShareCardSubject {
     /// 全国の地図。
     case japan(ShareCardContent, fill: ShareCardFill, maps: ShareCardMaps)
@@ -33,11 +36,11 @@ enum ShareCardSubject {
     /// 市区町村の豆知識(みどころ・都市伝説・この街でできること)。
     case trivia(TriviaShareCardContent, map: SilhouetteMap?, highlightedCodes: Set<String>)
 
-    var kind: ShareCardSubjectKind {
+    var panelSize: ShareCardPanelSize {
         switch self {
-        case .japan, .region: .map
-        case .firstVisit: .firstVisit
-        case .trivia: .trivia
+        case .japan, .region: .medium
+        case .firstVisit: .small
+        case .trivia: .large
         }
     }
 
@@ -67,6 +70,4 @@ struct RenderedShareCard {
     let image: UIImage
     let message: String
     let title: String
-    /// 背景が透明な画像(ステッカー)か。透明な画像はPNGのファイルとして共有する(写真に保存しても透明のまま残すため)。
-    var isTransparent = false
 }

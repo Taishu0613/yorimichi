@@ -183,7 +183,7 @@ struct ShareCardKindsTests {
     }
 }
 
-/// バッジのカードの見本の画像を書き出す。ふだんのテストでは動かさない(地図・市区町村のカードの見本は`ShareCardLayoutSampleRenderer`)。
+/// バッジのカードの見本の画像を書き出す。ふだんのテストでは動かさない(地図・市区町村のカードの見本は`ShareCardSampleRenderer`)。
 ///
 /// `TEST_RUNNER_SHARE_CARD_SAMPLE_DIR=/path/to/dir xcodebuild test -only-testing:WAGhackTests/ShareCardKindsSampleRenderer ...`
 @MainActor

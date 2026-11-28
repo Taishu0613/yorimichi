@@ -84,19 +84,17 @@ struct ShareCardSegmentedControl<Value: Hashable & Identifiable>: View {
     }
 }
 
-/// 背景の写真を選ぶ・外す。
+/// 背景の写真を選ぶ・外す。写真はどのカードでも全面の背景なので、まだ無ければ「写真を選ぶ」を目立たせる。
 struct ShareCardPhotoControls: View {
     @Binding var photoItem: PhotosPickerItem?
     @Binding var photo: UIImage?
     /// 写真を読み込めなかったときの案内。
     let errorMessage: String?
-    /// 写真が主役のレイアウト(フォト・フォト・余白)か。写真がまだ無ければ選ぶよう案内し、ボタンを目立たせる。
-    var expectsPhoto = false
 
     var body: some View {
         ShareCardLabeledControl("背景") {
             HStack(spacing: 10) {
-                if expectsPhoto, photo == nil {
+                if photo == nil {
                     PhotosPicker(selection: $photoItem, matching: .images) {
                         Label("写真を選ぶ", systemImage: "photo")
                     }
@@ -104,12 +102,10 @@ struct ShareCardPhotoControls: View {
                     .tint(Pop.theme)
                 } else {
                     PhotosPicker(selection: $photoItem, matching: .images) {
-                        Label(photo == nil ? "写真を選ぶ" : "写真を変える", systemImage: "photo")
+                        Label("写真を変える", systemImage: "photo")
                     }
                     .buttonStyle(.bordered)
                     .tint(Pop.theme)
-                }
-                if photo != nil {
                     Button("写真を外す", systemImage: "xmark.circle") {
                         photoItem = nil
                         photo = nil
@@ -118,7 +114,7 @@ struct ShareCardPhotoControls: View {
                     .tint(Pop.muted)
                 }
             }
-            if expectsPhoto, photo == nil {
+            if photo == nil {
                 // 写真が無い間は、その範囲の本物の地図を薄く敷いて描いている。
                 Text("写真を選ぶと、写真が主役のカードになります(今は地図を敷いています)")
                     .font(.footnote)
@@ -129,6 +125,24 @@ struct ShareCardPhotoControls: View {
                     .font(.footnote)
                     .foregroundStyle(.red)
             }
+        }
+    }
+}
+
+/// 「ステッカーを貼る」。写真を選ぶと、その写真の上に形・名前・数字のステッカーを貼る画面(`ShareStickerEditor`)を開く。
+struct ShareCardStickerButton: View {
+    @Binding var photoItem: PhotosPickerItem?
+
+    var body: some View {
+        ShareCardLabeledControl("ステッカー") {
+            PhotosPicker(selection: $photoItem, matching: .images) {
+                Label("ステッカーを貼る", systemImage: "sparkles.rectangle.stack")
+            }
+            .buttonStyle(.bordered)
+            .tint(Pop.theme)
+            Text("写真を選ぶと、その上に形と名前のステッカーを貼って、指で動かしたり大きさを変えたりできます")
+                .font(.footnote)
+                .foregroundStyle(Pop.muted)
         }
     }
 }

@@ -33,23 +33,30 @@ struct MunicipalityShareSubject: Hashable {
     let legendText: String
     /// この街でできること(みどころのマスタの順)。
     let spots: [YorimichiSpot]
+    /// 初めて訪れた日。確かな日が分かるとき(初訪問を記録した直後)だけ渡す(`FirstVisitShareCardContent.firstVisitDate`)。
+    let firstVisitDate: Date?
 
-    init(target: ShareMunicipalityTarget, isVisited: Bool, highlightsText: String, legendText: String, spots: [YorimichiSpot]) {
+    init(
+        target: ShareMunicipalityTarget, isVisited: Bool, highlightsText: String, legendText: String, spots: [YorimichiSpot],
+        firstVisitDate: Date? = nil
+    ) {
         self.target = target
         self.isVisited = isVisited
         self.highlightsText = highlightsText
         self.legendText = legendText
         self.spots = spots
+        self.firstVisitDate = firstVisitDate
     }
 
     /// マスタの市区町村から作る。スポットは図鑑と同じく、マスタのJSONから読む。
-    init(target: ShareMunicipalityTarget, isVisited: Bool, municipality: Municipality) {
+    init(target: ShareMunicipalityTarget, isVisited: Bool, municipality: Municipality, firstVisitDate: Date? = nil) {
         self.init(
             target: target,
             isVisited: isVisited,
             highlightsText: municipality.famousThingsTrivia,
             legendText: municipality.historyTrivia,
-            spots: YorimichiSpot.spots(fromJSON: municipality.spotsJSON)
+            spots: YorimichiSpot.spots(fromJSON: municipality.spotsJSON),
+            firstVisitDate: firstVisitDate
         )
     }
 

@@ -2,7 +2,7 @@ import Foundation
 
 /// シェア画面で選んでいるカードの中身(範囲・種類・塗り)。描き直しのきっかけにも使う(1.8.0 (7))。
 ///
-/// 写真・箱の見た目・形・レイアウトのような「見た目」は`ShareCardModel`で持ち、ここには「何を描くか」だけを持つ。
+/// 写真・文字の色・まとまりの位置・縦長/正方形のような「見た目」は`ShareCardModel`で持ち、ここには「何を描くか」だけを持つ。
 struct ShareCardSelection: Hashable {
     var target: ShareCardTarget
     /// この街のカードの種類(`target == .town`のときだけ使う)。
@@ -14,18 +14,20 @@ struct ShareCardSelection: Hashable {
     /// 都道府県のカードで数えるもの(県内の市区町村 / 全国の都道府県)。
     var prefectureFocus: PrefectureShareFocus
 
-    /// 選べるレイアウトを決める中身の種類。
-    var subjectKind: ShareCardSubjectKind {
-        switch target {
-        case .town: townKind == .firstVisit ? .firstVisit : .trivia
-        case .region: .map
-        }
-    }
-
     /// 都道府県を「全国の都道府県」で見せるか。
     var isNationwidePrefecture: Bool {
         if case .region(.prefecture) = target { return prefectureFocus == .nationwide }
         return false
+    }
+
+    /// 「形の見せ方」(県の中の位置・日本の中の位置)を選べるか。全国と「全国の都道府県」はもともと日本地図なので選ばない。
+    var canShowLocation: Bool {
+        switch target {
+        case .town: true
+        case .region(.japan): false
+        case .region(.prefecture): !isNationwidePrefecture
+        case .region(.designatedCity): true
+        }
     }
 
     /// 読み込む地図の範囲。全国の都道府県は日本地図(都道府県の区画)を使うので全国。この街のカードはnil。
@@ -72,9 +74,35 @@ struct ShareCardSubjectFactory {
         }
     }
 
-    /// 本物の地図は範囲とレイアウトの枠(`ShareCardMapBox.backdropBox`)ごとに撮る。本物の地図を敷かないレイアウトはnil。
-    func backdropKey(for selection: ShareCardSelection, size: ShareCardSize, layout: ShareCardLayout) -> ShareMapSnapshotStore.Key? {
-        guard let box = ShareCardMapBox.backdropBox(for: layout, size: size) else { return nil }
+    /// 「県の中の位置」「日本の中の位置」の形(1.8.0 (8))。選べない範囲・一回り大きな地図がまだ無いときはnil。
+    ///
+    /// - この街: その県の地図を薄く描き、この街を塗る(`ShareMunicipalityTarget.locationShape`)。
+    /// - 都道府県・政令指定都市: 日本地図(区画=都道府県)を薄く描き、その県を塗る。小さく描くので、進捗の隣の日本地図(`japanMap`)で足りる。
+    func locationShape(for selection: ShareCardSelection) -> ShareCardShape? {
+        guard selection.canShowLocation else { return nil }
+        switch selection.target {
+        case .town:
+            return townSubject?.target.locationShape(in: store)
+        case .region(let scope):
+            guard let map = store.japanMap, let prefectureCode = scope.prefectureCodeForLocation else { return nil }
+            return ShareCardShape(
+                map: map, filledCodes: [prefectureCode], outlineWidth: 0.5, placeholderSystemImage: "map.fill", isLocation: true
+            )
+        }
+    }
+
+    /// 「県の中の位置」「日本の中の位置」に使う地図を用意する。
+    func loadLocationMap(for selection: ShareCardSelection) async {
+        guard selection.canShowLocation else { return }
+        switch selection.target {
+        case .town: await townSubject?.target.loadLocationMap(in: store)
+        case .region: await store.loadJapanMapIfNeeded()
+        }
+    }
+
+    /// 本物の地図は範囲とカードの形(`ShareCardMapBox.backdropBox`)ごとに撮る。
+    func backdropKey(for selection: ShareCardSelection, size: ShareCardSize) -> ShareMapSnapshotStore.Key? {
+        let box = ShareCardMapBox.backdropBox(for: size)
         switch selection.target {
         case .town:
             guard let townSubject else { return nil }
@@ -89,7 +117,7 @@ struct ShareCardSubjectFactory {
         }
     }
 
-    /// カードの中身。まだ描けない(地図の読み込み中など)ときはnil。カードの日付は描いた時点の日にする(訪問日ではない)。
+    /// カードの中身。まだ描けない(地図の読み込み中など)ときはnil。
     ///
     /// - この街: 写真があれば地図を待たずに描く。写真が無いときは形を読み込み終えてから描く(読み込めなければアイコンだけのカード)。
     /// - 全国: 地図を読み込めないとカードの主役が無くなるので、地図ができるまでは描かない(1.8.0 (1)と同じ)。
@@ -129,7 +157,8 @@ struct ShareCardSubjectFactory {
         let highlightedCodes = map.map(townTarget.highlightedCodes(in:)) ?? []
         if selection.townKind == .firstVisit {
             let content = FirstVisitShareCardContent(
-                municipalityName: townTarget.name, prefectureName: townTarget.prefectureName, progress: summary.progress
+                municipalityName: townTarget.name, prefectureName: townTarget.prefectureName, progress: summary.progress,
+                firstVisitDate: townSubject.firstVisitDate
             )
             return .firstVisit(content, map: map, highlightedCodes: highlightedCodes)
         }
@@ -138,5 +167,16 @@ struct ShareCardSubjectFactory {
             municipalityName: townTarget.name, prefectureName: townTarget.prefectureName, isVisited: townSubject.isVisited, topic: topic
         )
         return .trivia(content, map: map, highlightedCodes: highlightedCodes)
+    }
+}
+
+private extension ShareScope {
+    /// 「日本の中の位置」で塗る都道府県。政令指定都市はその市のある県。
+    var prefectureCodeForLocation: String? {
+        switch self {
+        case .japan: nil
+        case .prefecture(let code): code
+        case .designatedCity(let code): String(code.prefix(2))
+        }
     }
 }

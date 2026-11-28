@@ -4,58 +4,84 @@ import Testing
 import UIKit
 @testable import WAGhack
 
-/// カードのレイアウトの選び方・都道府県の「全国の都道府県」・図鑑の入口の縮め方(1.8.0 (7))。
+/// カードのまとまり・文字の色・形の見せ方・ステッカー(1.8.0 (8))、都道府県の「全国の都道府県」・図鑑の入口の縮め方(1.8.0 (7))。
 @MainActor
 struct ShareCardLayoutTests {
-    // MARK: - レイアウト
+    // MARK: - まとまり
 
-    @Test func 種類ごとに選べるレイアウトと初めのレイアウト() {
-        #expect(ShareCardSubjectKind.firstVisit.availableLayouts == [.photo, .photoMat, .sticker])
-        #expect(ShareCardSubjectKind.trivia.availableLayouts == [.reading, .photo])
-        #expect(ShareCardSubjectKind.map.availableLayouts == [.number, .map, .photo, .sticker])
-        #expect(ShareCardSubjectKind.firstVisit.defaultLayout == .photo)
-        #expect(ShareCardSubjectKind.trivia.defaultLayout == .reading)
-        #expect(ShareCardSubjectKind.map.defaultLayout == .number)
+    @Test func まとまりの大きさはカードの種類で決まる() {
+        #expect(ShareCardSubject.firstVisit(firstVisit(date: nil), map: nil, highlightedCodes: []).panelSize == .small)
+        #expect(ShareCardSubject.trivia(trivia(.highlights("城がある。")), map: nil, highlightedCodes: []).panelSize == .large)
+        let summary = makeSummary(visitedCodes: ["23101"])
+        let aichi = summary.prefectures.first { $0.code == "23" }!
+        #expect(ShareCardSubject.region(RegionShareCardContent(prefecture: aichi, date: .now), map: nil).panelSize == .medium)
     }
 
-    @Test func 覚えていないか選べないレイアウトはその種類の初めのレイアウトで描く() {
-        #expect(ShareCardSubjectKind.map.resolvedLayout(nil) == .number)
-        // 豆知識で数字は選べない。
-        #expect(ShareCardSubjectKind.trivia.resolvedLayout(.number) == .reading)
-        // 初訪問で地図は選べない。
-        #expect(ShareCardSubjectKind.firstVisit.resolvedLayout(.map) == .photo)
-        #expect(ShareCardSubjectKind.map.resolvedLayout(.sticker) == .sticker)
+    @Test func アプリ名はまとまりと重ならない右の角に置く() {
+        // 小さなまとまり(左に寄せる)は同じ側の右の角。
+        #expect(ShareCardPanelSize.small.logoCorner(for: .bottom) == .bottomTrailing)
+        #expect(ShareCardPanelSize.small.logoCorner(for: .top) == .topTrailing)
+        // 横幅いっぱいのまとまりは反対側の右の角。
+        #expect(ShareCardPanelSize.medium.logoCorner(for: .bottom) == .topTrailing)
+        #expect(ShareCardPanelSize.large.logoCorner(for: .top) == .bottomTrailing)
     }
 
-    @Test func レイアウトはカードの種類ごとに覚える() {
-        #expect(ShareCardSubjectKind.map.family == .map)
-        #expect(ShareCardSubjectKind.firstVisit.family == .firstVisit)
-        #expect(ShareCardSubjectKind.trivia.family == .trivia)
-        #expect(ShareCardLayoutFamily.allCases.map(\.storageKey) == ["shareCardLayout.map", "shareCardLayout.firstVisit", "shareCardLayout.trivia"])
-        #expect(ShareCardLayout.allCases.map(\.rawValue) == ["photo", "photoMat", "sticker", "number", "map", "reading"])
+    @Test func タップするたびにまとまりは上と下を入れ替える() {
+        #expect(ShareCardPanelPosition.top.next == .bottom)
+        #expect(ShareCardPanelPosition.bottom.next == .top)
     }
 
-    @Test func ステッカーだけ透明で写真と形の選択を使わない() {
-        for layout in ShareCardLayout.allCases {
-            #expect(layout.isTransparent == (layout == .sticker))
-            #expect(layout.usesPhoto == (layout != .sticker))
-            #expect(layout.usesCardSize == (layout != .sticker))
-        }
-        // 帯を動かせるのはフォトだけ。
-        #expect(ShareCardLayout.allCases.filter(\.canMoveBox) == [.photo])
+    /// 選んだ値はUserDefaultsに`rawValue`で残る。値を変えると前回の選択が読めなくなる。
+    @Test func 文字の色と形の見せ方の初めの値と覚えておく値() {
+        #expect(ShareCardTextStyle.defaultStyle == .light)
+        #expect(ShareCardTextStyle.allCases.map(\.rawValue) == ["light", "dark", "theme"])
+        #expect(ShareCardTextStyle.allCases.map(\.title) == ["白い文字", "黒い文字", "アプリの色"])
+        #expect(ShareCardShapeMode.defaultMode == .location)
+        #expect(ShareCardShapeMode.allCases.map(\.rawValue) == ["shapeOnly", "location"])
+        #expect(ShareCardShapeMode.location.title(isTown: true) == "県の中の位置")
+        #expect(ShareCardShapeMode.location.title(isTown: false) == "日本の中の位置")
+        #expect(ShareCardTextStyle.storageKey != ShareCardShapeMode.storageKey)
     }
 
-    @Test func 中身の種類は範囲とこの街のカードの種類で決まる() {
-        #expect(selection(.town, townKind: .firstVisit).subjectKind == .firstVisit)
-        #expect(selection(.town, townKind: .legend).subjectKind == .trivia)
-        #expect(selection(.region(.prefecture(code: "23"))).subjectKind == .map)
+    @Test func 形の見せ方は全国と全国の都道府県では選ばない() {
+        #expect(selection(.town).canShowLocation)
+        #expect(selection(.region(.prefecture(code: "23"))).canShowLocation)
+        #expect(selection(.region(.designatedCity(code: "23100"))).canShowLocation)
+        #expect(!selection(.region(.japan)).canShowLocation)
+        #expect(!selection(.region(.prefecture(code: "23")), focus: .nationwide).canShowLocation)
     }
 
-    @Test func フォトに載せる一文は本文の最初の文() {
-        #expect(TriviaShareCardContent.firstSentence(of: " 名古屋市は大都市だ。城がある。") == "名古屋市は大都市だ。")
-        #expect(TriviaShareCardContent.firstSentence(of: "句点が無い") == "句点が無い")
-        let spot = TriviaShareCardContent(municipalityName: "名古屋市", prefectureName: "愛知県", isVisited: true, topic: .spot(name: "名古屋城", line: "金の鯱を見る。"))
-        #expect(spot.leadSentence == "「名古屋城」金の鯱を見る。")
+    @Test func 初めて訪れた日が分かるときだけ日付を載せる() {
+        let date = Calendar(identifier: .gregorian).date(from: DateComponents(timeZone: TimeZone(identifier: "Asia/Tokyo"), year: 2026, month: 11, day: 8, hour: 9))!
+        #expect(FirstVisitShareCardContent.dateText(for: date, timeZone: TimeZone(identifier: "Asia/Tokyo")!) == "2026.11.08")
+        let withDate = ShareCardSubject.firstVisit(firstVisit(date: date), map: nil, highlightedCodes: []).summary
+        #expect(withDate.firstVisitDateText?.hasPrefix("初めて訪れた日 2026.11.") == true)
+        let withoutDate = ShareCardSubject.firstVisit(firstVisit(date: nil), map: nil, highlightedCodes: []).summary
+        #expect(withoutDate.firstVisitDateText == nil)
+        #expect(withoutDate.label == "初訪問")
+    }
+
+    @Test func 本文は収まる分だけ文を足す() {
+        let text = "名古屋市は大都市だ。城がある。熱田神宮もある。"
+        #expect(TriviaShareCardContent.excerpt(of: text, maxLength: 15) == "名古屋市は大都市だ。城がある。")
+        #expect(TriviaShareCardContent.excerpt(of: text, maxLength: 100) == text)
+        // 最初の文が長くても、最初の文は残す(残りは描く側が行数で切る)。
+        #expect(TriviaShareCardContent.excerpt(of: text, maxLength: 3) == "名古屋市は大都市だ。")
+        #expect(TriviaShareCardContent.excerpt(of: "句点が無い", maxLength: 3) == "句点が無い")
+        let spot = trivia(.spot(name: "名古屋城", line: "金の鯱を見る。"))
+        #expect(spot.excerpt(maxLength: 3) == "金の鯱を見る。")
+    }
+
+    @Test func ステッカーの位置はカードの外に出さず大きさは範囲に収める() {
+        let cardSize = ShareCardSize.story.pointSize
+        let placement = ShareStickerPlacement(unitCenter: CGPoint(x: 0.5, y: 0.5), scale: 1)
+        let moved = placement.moved(by: CGSize(width: 1_000, height: -1_000), in: cardSize)
+        #expect(moved.unitCenter == CGPoint(x: 1, y: 0))
+        #expect(placement.scaled(by: 10).scale == ShareStickerPlacement.scaleRange.upperBound)
+        #expect(placement.scaled(by: 0.01).scale == ShareStickerPlacement.scaleRange.lowerBound)
+        // ステッカーが下半分ならアプリ名は右上、上半分なら右下。
+        #expect(ShareStickerPlacement(unitCenter: CGPoint(x: 0.3, y: 0.8)).logoCorner(in: cardSize) == .topTrailing)
+        #expect(ShareStickerPlacement(unitCenter: CGPoint(x: 0.3, y: 0.2)).logoCorner(in: cardSize) == .bottomTrailing)
     }
 
     // MARK: - 全国の都道府県
@@ -82,9 +108,11 @@ struct ShareCardLayoutTests {
         #expect(content.visitedCodes == ["13", "23", "27"])
         #expect(content.emphasizedCodes == ["23"])
         #expect(content.headline == "愛知県に来た！")
-        let stat = try #require(ShareCardSubject.region(content, map: nil).summary.stat)
-        #expect(stat.value == "3/4")
-        #expect(stat.detail == "制覇率 \(content.percentageText)")
+        let summaryOfCard = ShareCardSubject.region(content, map: nil).summary
+        let stat = try #require(summaryOfCard.stat)
+        #expect(stat.value == content.percentageText)
+        #expect(stat.detail == "3 / 4 都道府県")
+        #expect(summaryOfCard.name == "愛知県に来た！")
         #expect(content.shareText.hasPrefix("3/4都道府県を訪れました(愛知県も制覇) #よりみち\n"))
         #expect(content.shareText.hasSuffix(ShareCardContent.appStoreURL.absoluteString))
     }
@@ -111,7 +139,6 @@ struct ShareCardLayoutTests {
         #expect(content.emphasizedCodes.isEmpty)
         let stat = try #require(ShareCardSubject.region(content, map: nil).summary.stat)
         #expect(stat.value == content.percentageText)
-        #expect(stat.caption == "制覇率")
         #expect(stat.detail == "1 / 2 市区町村")
     }
 
@@ -132,6 +159,16 @@ struct ShareCardLayoutTests {
 
     // MARK: - 部品
 
+    private func firstVisit(date: Date?) -> FirstVisitShareCardContent {
+        FirstVisitShareCardContent(
+            municipalityName: "名古屋市", prefectureName: "愛知県", progress: ExplorationCount(visited: 1, total: 2), firstVisitDate: date
+        )
+    }
+
+    private func trivia(_ topic: TriviaShareCardContent.Topic) -> TriviaShareCardContent {
+        TriviaShareCardContent(municipalityName: "名古屋市", prefectureName: "愛知県", isVisited: true, topic: topic)
+    }
+
     private func selection(
         _ target: ShareCardTarget, townKind: MunicipalityShareKind = .highlights, focus: PrefectureShareFocus = .municipalities
     ) -> ShareCardSelection {
@@ -151,194 +188,3 @@ struct ShareCardLayoutTests {
 }
 
 
-/// 1.8.0 (7)のレイアウトの見本の画像を書き出す。ふだんのテストでは動かさない。
-///
-/// `TEST_RUNNER_SHARE_CARD_SAMPLE_DIR=/path/to/dir xcodebuild test -only-testing:WAGhackTests/ShareCardLayoutSampleRenderer ...`
-/// 名古屋市(初訪問・みどころ・都市伝説・できること)・愛知県(県内の市区町村・全国の都道府県)・全国を、選べるレイアウトすべてで縦長に描く。
-/// 写真は`SHARE_CARD_SAMPLE_PHOTO`(画像のパス)で渡す。渡さなければ、空と海を描いた架空の写真を使う。
-@MainActor
-struct ShareCardLayoutSampleRenderer {
-    private static let outputDirectory = ProcessInfo.processInfo.environment["SHARE_CARD_SAMPLE_DIR"]
-
-    @Test(.enabled(if: outputDirectory != nil))
-    func どのレイアウトも見本の画像を書き出す() async throws {
-        let directory = URL(fileURLWithPath: try #require(Self.outputDirectory))
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let photo = ProcessInfo.processInfo.environment["SHARE_CARD_SAMPLE_PHOTO"].flatMap { UIImage(contentsOfFile: $0) } ?? Self.fakePhoto()
-
-        let store = SilhouetteMapStore()
-        let repository = BoundaryRepository.bundled()
-        let manifest = try await repository.loadManifest()
-
-        // 全国: 架空の旅(12都道府県、愛知県は市区町村の約半分)。
-        await store.loadShareCardMapsIfNeeded()
-        let maps = try #require(store.shareCardMaps)
-        let all = try await repository.boundaries(
-            in: manifest.files(in: .municipalities, lod: 0, intersecting: GeoBoundingBox(minLongitude: -180, minLatitude: -90, maxLongitude: 180, maxLatitude: 90)),
-            pieceFilter: BoundaryPieceFilter(visibleWidthMeters: 700_000)
-        )
-        let entries = all.map {
-            ExplorationMunicipality(
-                code: $0.code, name: $0.name, prefectureCode: $0.prefectureCode,
-                prefectureName: $0.prefectureCode == "23" ? "愛知県" : $0.prefectureCode, isPrefecture: false
-            )
-        }
-        let codes = entries.map(\.code)
-        var visited: Set<String> = []
-        for prefix in ["01", "04", "13", "14", "17", "22", "26", "27", "37", "40", "47"] {
-            visited.formUnion(codes.filter { $0.hasPrefix(prefix) }.prefix(4))
-        }
-        let aichiCodes = codes.filter { $0.hasPrefix("23") }.sorted()
-        visited.formUnion(aichiCodes.enumerated().filter { $0.offset.isMultiple(of: 2) }.map(\.element))
-        let summary = ExplorationProgressCalculator().summarize(municipalities: entries, visitedCodes: visited)
-        let aichi = try #require(summary.prefectures.first { $0.code == "23" })
-        await store.loadSharePrefectureMapIfNeeded(code: "23")
-
-        // 愛知県(県内の市区町村)は県の地図の区画で数え直す(全国のLOD0には無い細かい区画があるため)。
-        let aichiBoundaries = try await repository.boundaries(
-            in: manifest.files(in: .municipalities, lod: 2, prefectureCode: "23"),
-            pieceFilter: BoundaryPieceFilter(visibleWidthMeters: 100_000)
-        )
-        let aichiEntries = aichiBoundaries.filter { !$0.code.hasSuffix("000") }.map {
-            ExplorationMunicipality(code: $0.code, name: $0.name, prefectureCode: "23", prefectureName: "愛知県", isPrefecture: false)
-        }
-        let aichiVisited = Set(aichiEntries.map(\.code).sorted().enumerated().filter { $0.offset.isMultiple(of: 2) }.map(\.element))
-        let aichiOnly = try #require(
-            ExplorationProgressCalculator().summarize(municipalities: aichiEntries, visitedCodes: aichiVisited).prefectures.first
-        )
-
-        // 名古屋市(区を集めた地図)。
-        let wards = aichiBoundaries.map(\.code).filter { $0.hasPrefix("231") && $0 != "23100" }
-        let nagoya = ShareMunicipalityTarget(code: "23100", name: "名古屋市", prefectureName: "愛知県", wardCodes: Set(wards))
-        await nagoya.loadMap(in: store)
-        let nagoyaMap = try #require(nagoya.map(in: store))
-        let nagoyaCodes = nagoya.highlightedCodes(in: nagoyaMap)
-
-        let subjects: [(name: String, snapshotID: String, subject: ShareCardSubject)] = [
-            ("japan", "japan", .japan(ShareCardContent(summary: summary, date: .now), fill: .municipalities, maps: maps)),
-            ("aichi", "prefecture-23", .region(RegionShareCardContent(prefecture: aichiOnly, date: .now), map: store.sharePrefectureMaps["23"])),
-            ("aichi-nationwide", "japan", .region(RegionShareCardContent(nationwide: aichi, summary: summary, date: .now), map: maps.prefectureMap)),
-            ("nagoya-first-visit", nagoya.snapshotID, .firstVisit(
-                FirstVisitShareCardContent(municipalityName: "名古屋市", prefectureName: "愛知県", progress: ExplorationCount(visited: 124, total: 1_918)),
-                map: nagoyaMap, highlightedCodes: nagoyaCodes
-            )),
-            ("nagoya-highlights", nagoya.snapshotID, .trivia(Self.trivia(.highlights(Self.highlights)), map: nagoyaMap, highlightedCodes: nagoyaCodes)),
-            ("nagoya-legend", nagoya.snapshotID, .trivia(Self.trivia(.legend(Self.legend)), map: nagoyaMap, highlightedCodes: nagoyaCodes)),
-            ("nagoya-spots", nagoya.snapshotID, .trivia(
-                Self.trivia(.spot(name: "名古屋城", line: "金の鯱がのる天守と、復元された本丸御殿の豪華なふすま絵を見られる。")),
-                map: nagoyaMap, highlightedCodes: nagoyaCodes
-            )),
-        ]
-
-        let snapshots = ShareMapSnapshotStore()
-        // 縦長は`directory`に、正方形は`directory/square`に書き出す(ステッカーは形を選ばないので1枚)。
-        let squareDirectory = directory.appendingPathComponent("square")
-        try FileManager.default.createDirectory(at: squareDirectory, withIntermediateDirectories: true)
-        for (name, snapshotID, subject) in subjects {
-            for layout in subject.kind.availableLayouts {
-                if layout == .sticker {
-                    var model = ShareCardModel(subject: subject, layout: layout, size: .story, boxStyle: ShareCardBoxStyle.stickerDefaultStyle)
-                    try writeSticker(model, name: "\(name)-sticker-whiteLine", in: directory)
-                    model.boxStyle = .app
-                    try writeSticker(model, name: "\(name)-sticker-app", in: directory)
-                    continue
-                }
-                for size in ShareCardSize.allCases {
-                    let output = size == .story ? directory : squareDirectory
-                    var model = ShareCardModel(subject: subject, layout: layout, size: size)
-                    // 写真なし(本物の地図を敷くレイアウトは地図を撮る)と、写真あり。
-                    if let box = ShareCardMapBox.backdropBox(for: layout, size: size), let map = subject.mapForSnapshot {
-                        let key = ShareMapSnapshotStore.Key(id: snapshotID, box: box)
-                        await snapshots.loadBackdropIfNeeded(for: key, map: map)
-                        model.backdrop = snapshots.backdrop(for: key)
-                    }
-                    try write(model, name: "\(name)-\(layout.rawValue)", in: output)
-                    model.backdrop = nil
-                    model.photo = photo
-                    try write(model, name: "\(name)-\(layout.rawValue)-photo", in: output)
-                    if layout == .photo {
-                        model.boxStyle = .whiteLine
-                        model.boxPosition = .top
-                        try write(model, name: "\(name)-\(layout.rawValue)-photo-whiteLine-top", in: output)
-                    }
-                }
-            }
-        }
-    }
-
-    private static let highlights = "名古屋市は、愛知県の県庁所在地で、中部地方の中心となる大都市だ。1610年に徳川家康が名古屋城を築き、清須の町をまるごと移した「清須越し」で町ができた。久屋大通と若宮大通は、幅100mの広い道路だ。熱田神宮には、三種の神器の一つ、草薙剣が祀られている。人口は東京23区、横浜市、大阪市に次ぐ多さだ。"
-    private static let legend = "名古屋城の天守の金鯱は、何度も盗難にあった。1876年には鱗3枚がはがされ、1937年には北の鯱の鱗58枚から金が盗まれた。江戸時代には、盗賊の柿木金助が大凧に乗って天守に近づき、鯱の鱗を盗んだという話が作られ、歌舞伎でも演じられた。"
-
-    private static func trivia(_ topic: TriviaShareCardContent.Topic) -> TriviaShareCardContent {
-        TriviaShareCardContent(municipalityName: "名古屋市", prefectureName: "愛知県", isVisited: true, topic: topic)
-    }
-
-    /// 架空の写真。夕方の空と海と岬(白の線・黒の線の帯が読めるかを見るため、明るい空と暗い海の両方を入れる)。
-    private static func fakePhoto() -> UIImage {
-        let size = ShareCardSize.story.pixelSize
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        return UIGraphicsImageRenderer(size: size, format: format).image { context in
-            let cg = context.cgContext
-            let colors = [UIColor(red: 0.3, green: 0.5, blue: 0.82, alpha: 1), UIColor(red: 0.98, green: 0.76, blue: 0.52, alpha: 1)].map(\.cgColor)
-            let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors as CFArray, locations: [0, 1])!
-            cg.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: 0, y: size.height * 0.62), options: [.drawsAfterEndLocation])
-            UIColor(red: 1, green: 0.93, blue: 0.75, alpha: 1).setFill()
-            cg.fillEllipse(in: CGRect(x: size.width * 0.6, y: size.height * 0.45, width: 170, height: 170))
-            UIColor(red: 0.12, green: 0.3, blue: 0.42, alpha: 1).setFill()
-            cg.fill(CGRect(x: 0, y: size.height * 0.6, width: size.width, height: size.height * 0.4))
-            UIColor(red: 0.16, green: 0.22, blue: 0.2, alpha: 1).setFill()
-            let cape = UIBezierPath()
-            cape.move(to: CGPoint(x: 0, y: size.height * 0.5))
-            cape.addCurve(to: CGPoint(x: size.width * 0.45, y: size.height * 0.62), controlPoint1: CGPoint(x: size.width * 0.2, y: size.height * 0.48), controlPoint2: CGPoint(x: size.width * 0.35, y: size.height * 0.58))
-            cape.addLine(to: CGPoint(x: 0, y: size.height * 0.66))
-            cape.close()
-            cape.fill()
-        }
-    }
-
-    private func write(_ model: ShareCardModel, name: String, in directory: URL) throws {
-        let rendered = try #require(ShareCardRenderer.render(model))
-        #expect(!rendered.isTransparent)
-        #expect(rendered.image.size.width * rendered.image.scale == model.size.pixelSize.width)
-        let data = try #require(rendered.image.pngData())
-        try data.write(to: directory.appendingPathComponent("\(name)-\(model.size.rawValue).png"))
-    }
-
-    /// ステッカーは透明が残っているか(アルファがあり、左上の角が透明か)も確かめる。
-    private func writeSticker(_ model: ShareCardModel, name: String, in directory: URL) throws {
-        let rendered = try #require(ShareCardRenderer.render(model))
-        #expect(rendered.isTransparent)
-        let data = try #require(rendered.image.pngData())
-        let url = directory.appendingPathComponent("\(name).png")
-        try data.write(to: url)
-        // 書き出したPNGを読み直して確かめる(共有するのもこのPNGのファイル)。
-        let reloaded = try #require(UIImage(contentsOfFile: url.path)?.cgImage)
-        #expect([.premultipliedLast, .premultipliedFirst, .last, .first].contains(reloaded.alphaInfo))
-        #expect(Self.alpha(ofTopLeftPixelIn: reloaded) == 0)
-        #expect(CGFloat(reloaded.width) == StickerCardLayout.width * ShareCardSize.renderScale)
-    }
-
-    private static func alpha(ofTopLeftPixelIn image: CGImage) -> UInt8 {
-        var pixel: [UInt8] = [0, 0, 0, 0]
-        let context = CGContext(
-            data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
-            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        )
-        // 左上の1pxだけを1×1の枠に描く(CGの原点は左下なので、画像の上端が枠に来るようずらす)。
-        context?.draw(image, in: CGRect(x: 0, y: -CGFloat(image.height - 1), width: CGFloat(image.width), height: CGFloat(image.height)))
-        return pixel[3]
-    }
-}
-
-private extension ShareCardSubject {
-    /// 本物の地図を撮る範囲を決める地図。全国は2種類の地図が同じ枠なので、市区町村の地図で撮る(シェア画面と同じ)。
-    var mapForSnapshot: SilhouetteMap? {
-        switch self {
-        case .japan(_, _, let maps): maps.municipalityMap
-        case .region(_, let map): map
-        case .firstVisit(_, let map, _): map
-        case .trivia(_, let map, _): map
-        }
-    }
-}

@@ -40,6 +40,23 @@ struct ShareMunicipalityTarget: Hashable {
         }
     }
 
+    /// 都道府県コード(行政区域コードの頭2桁)。
+    var prefectureCode: String { String(code.prefix(2)) }
+
+    /// 「県の中の位置」の形(1.8.0 (8))。その県の地図(区画=市区町村)を薄く描き、この街を塗る。
+    /// 県の地図では政令指定都市が区に分かれているので、市そのものなら区のコードも塗る。地図がまだ無ければnil。
+    func locationShape(in store: SilhouetteMapStore) -> ShareCardShape? {
+        guard let map = store.sharePrefectureMaps[prefectureCode] else { return nil }
+        return ShareCardShape(
+            map: map, filledCodes: (wardCodes ?? []).union([code]), outlineWidth: 0.4,
+            placeholderSystemImage: "mappin.and.ellipse", isLocation: true
+        )
+    }
+
+    func loadLocationMap(in store: SilhouetteMapStore) async {
+        await store.loadSharePrefectureMapIfNeeded(code: prefectureCode)
+    }
+
     /// 本物の地図を撮り分けるときの名前。
     var snapshotID: String { "municipality-\(code)" }
 }

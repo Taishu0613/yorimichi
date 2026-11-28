@@ -31,7 +31,7 @@ enum ShareCardActivity {
             return
         }
         let controller = UIActivityViewController(
-            activityItems: [ShareCardImageItemSource(image: card.image, title: card.title, pngFileURL: transparentFileURL(for: card)), card.message],
+            activityItems: [ShareCardImageItemSource(image: card.image, title: card.title), card.message],
             applicationActivities: nil
         )
         controller.completionWithItemsHandler = { _, completed, _, error in
@@ -46,21 +46,6 @@ enum ShareCardActivity {
             popover.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.maxY - 80, width: 1, height: 1)
         }
         presenter.present(controller, animated: true)
-    }
-
-    /// 背景が透明なカード(ステッカー)は、PNGのファイルにして渡す。`UIImage`のまま渡すと、
-    /// 「画像を保存」でJPEGに変えられて透明なところが黒・白になることがあるため(写真への保存はファイルの中身をそのまま残す)。
-    /// 不透明なカードはこれまでどおり`UIImage`で渡す(nil)。ファイルは一時フォルダに置き、次に書くときに上書きする。
-    private static func transparentFileURL(for card: RenderedShareCard) -> URL? {
-        guard card.isTransparent, let data = card.image.pngData() else { return nil }
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("yorimichi-sticker.png")
-        do {
-            try data.write(to: url, options: .atomic)
-            return url
-        } catch {
-            logger.error("ステッカーのPNGを書き出せませんでした: \(String(describing: error), privacy: .public)")
-            return nil
-        }
     }
 
     /// いちばん手前の画面(シェア画面のシートの上でも出せるよう、表示中のものをたどる)。
@@ -81,25 +66,22 @@ enum ShareCardActivity {
 private final class ShareCardImageItemSource: NSObject, UIActivityItemSource {
     private let image: UIImage
     private let title: String
-    /// 背景が透明なカードのPNGのファイル。あればこちらを渡す(透明を残すため)。
-    private let pngFileURL: URL?
 
-    init(image: UIImage, title: String, pngFileURL: URL?) {
+    init(image: UIImage, title: String) {
         self.image = image
         self.title = title
-        self.pngFileURL = pngFileURL
     }
 
     func activityViewControllerPlaceholderItem(_ activityViewController: UIActivityViewController) -> Any {
-        pngFileURL ?? image
+        image
     }
 
     func activityViewController(_ activityViewController: UIActivityViewController, itemForActivityType activityType: UIActivity.ActivityType?) -> Any? {
-        pngFileURL ?? image
+        image
     }
 
     func activityViewController(_ activityViewController: UIActivityViewController, dataTypeIdentifierForActivityType activityType: UIActivity.ActivityType?) -> String {
-        pngFileURL != nil ? UTType.png.identifier : UTType.image.identifier
+        UTType.image.identifier
     }
 
     func activityViewControllerLinkMetadata(_ activityViewController: UIActivityViewController) -> LPLinkMetadata? {

@@ -70,18 +70,18 @@ struct ShareCardPhotoBackground: View {
     }
 }
 
-/// 写真を敷くレイアウトの地。写真があれば写真、無ければ本物の地図を薄く(撮れるまでは水玉の地)。
+/// カードの地。写真があれば写真、無ければ本物の地図を薄く(撮れるまでは水玉の地)。
 struct ShareCardPhotoOrMapBackground: View {
     let photo: UIImage?
     let backdrop: ShareMapBackdrop?
     /// 本物の地図を撮った枠(`ShareCardMapBox.backdropBox`)。
-    let box: ShareCardMapBox?
+    let box: ShareCardMapBox
     let size: CGSize
 
     var body: some View {
         if let photo {
             ShareCardPhotoBackground(photo: photo, size: size)
-        } else if let backdrop, let box {
+        } else if let backdrop {
             ShareMapBackdropView(backdrop: backdrop, box: box)
         } else {
             ShareCardBackground()
@@ -100,10 +100,11 @@ enum ShareCardInsets {
     }
 }
 
-/// 帯や余白の端に添える小さなアプリの印(アイコンと名前)。箱の見た目に合わせて名前の色を変える。
+/// 右上か右下の角に添える小さなアプリの印(アイコンと名前)。文字の色に合わせる。
+/// 白い文字は明るい写真の上でも読めるよう薄い影を落とし、アプリの色は白い札に載せる。
 struct ShareCardLogoMark: View {
     var size: CGFloat = 20
-    var color: Color = Pop.ink
+    let textStyle: ShareCardTextStyle
 
     var body: some View {
         HStack(spacing: size * 0.25) {
@@ -114,8 +115,18 @@ struct ShareCardLogoMark: View {
                 .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
             Text("よりみち")
                 .font(.system(size: size * 0.55, weight: .black, design: .rounded))
-                .foregroundStyle(color)
+                .foregroundStyle(textStyle.primary)
                 .fixedSize()
         }
+        .padding(.vertical, textStyle == .theme ? size * 0.15 : 0)
+        .padding(.leading, textStyle == .theme ? size * 0.2 : 0)
+        .padding(.trailing, textStyle == .theme ? size * 0.4 : 0)
+        .background {
+            if textStyle == .theme {
+                Capsule().fill(Color.white.opacity(0.94))
+            }
+        }
+        .compositingGroup()
+        .shadow(color: textStyle == .light ? .black.opacity(0.45) : .clear, radius: 2.5, y: 1)
     }
 }

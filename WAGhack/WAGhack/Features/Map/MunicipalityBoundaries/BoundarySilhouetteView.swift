@@ -12,7 +12,7 @@ struct SilhouetteMapView: View {
     var outlineWidth: CGFloat = 0.8
     var style: Style = .solid
 
-    enum Style {
+    enum Style: Equatable {
         /// 未訪問を灰色で塗る(これまでの見た目)。
         case solid
         /// 本物の地図の上に重ねる(シェア用のカード)。未訪問は細い線とごく薄い色だけにして、下の地図を透かす。
@@ -20,8 +20,11 @@ struct SilhouetteMapView: View {
         /// 写真の上に重ねる(シェア用のカード)。未訪問は線だけにして写真を透かし、訪問済みだけを塗る。
         /// どんな色の写真でも形が分かるよう、白い線に薄い影を落とす。
         case overPhoto
-        /// 明るい写真の上(シェアの「黒の線」)。未訪問は黒い線だけにする。
+        /// 明るい写真の上(シェアの「黒い文字」)。未訪問は黒い線だけにする。
         case overLightPhoto
+        /// 一回り大きな範囲の中の位置を示す(シェアの「県の中の位置」、1.8.0 (8))。塗らない区画は`context`の色で薄く塗りつぶし、
+        /// 塗る区画はテーマ色に太めの縁取りを付ける。県の中の小さな町でも点として見えるようにするため。
+        case location(context: Color)
     }
 
     var body: some View {
@@ -59,6 +62,17 @@ struct SilhouetteMapView: View {
                     unvisited.stroke(Color.black.opacity(0.85), style: StrokeStyle(lineWidth: max(outlineWidth, 0.8), lineJoin: .round))
                     outlined(visited, color: .teal)
                 }
+            case .location(let context):
+                // 区画の縁が重なって濃くならないよう、不透明な色で描いてからまとめて薄くする。
+                outlined(unvisited, color: context)
+                    .compositingGroup()
+                    .opacity(0.42)
+                visited
+                    .fill(Color.teal)
+                    .overlay {
+                        // 日本地図の中の小さな県でも目に入るよう、太い縁取りで一回り大きく見せる。
+                        visited.stroke(Color.teal, style: StrokeStyle(lineWidth: max(outlineWidth * 4, 3), lineJoin: .round))
+                    }
             }
             if !emphasizedCodes.isEmpty {
                 let emphasized = SilhouetteShape(
@@ -85,6 +99,7 @@ struct SilhouetteMapView: View {
         case .overMap: AnyShapeStyle(Pop.border)
         case .overPhoto: AnyShapeStyle(Color.white.opacity(0.9))
         case .overLightPhoto: AnyShapeStyle(Color.black.opacity(0.85))
+        case .location(let context): AnyShapeStyle(context.opacity(0.6))
         }
     }
 

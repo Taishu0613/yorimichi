@@ -1,28 +1,27 @@
 import CoreGraphics
 import Foundation
 
-/// どのレイアウトでも使う、カードの中身の要約(1.8.0 (7))。中身を少なくするため、レイアウトはこれだけで描く。
+/// まとまり(`ShareCardPanel`)とステッカーに載せる中身の要約(1.8.0 (8))。中身を少なくするため、描く側はこれだけで描く。
 ///
-/// - `name`: 帯・余白・ステッカーに載せる短い名前(「名古屋市」「愛知県」「わたしの日本地図」)。
-/// - `headline`: 数字・地図の見出し(「わたしの愛知県」「愛知県に来た！」)。
-/// - `label`: フォトの帯に添える短い一言(「初訪問」「制覇率 55.1%」「みどころ」)。
-/// - `stat`: 主役の数字1つ(豆知識はnil)。
-/// - `shape`: 塗った形。
-/// - `topic`: 豆知識の本文(読み物・フォトの一文に使う)。豆知識のときだけ。
+/// - `name`: 大きく載せる名前(「名古屋市」「愛知県」「わたしの日本地図」)。
+/// - `label`: 小さな見出し(「初訪問」「みどころ」「制覇率」)。
+/// - `stat`: 制覇率のカードの大きな数字(%)とn/N。ほかはnil。
+/// - `shape`: その範囲だけの形(「県の中の位置」はシェア画面が`ShareCardModel.locationShape`で差し替える)。
+/// - `topic`: 豆知識の本文。豆知識のときだけ。
+/// - `firstVisitDateText`: 初訪問の「初めて訪れた日 yyyy.MM.dd」。確かな日が分かるときだけ。
 struct ShareCardSummary {
     let name: String
-    let headline: String
     let label: String
-    let stat: ShareCardKeyStat?
+    var stat: ShareCardKeyStat? = nil
     let shape: ShareCardShape
     var topic: TriviaShareCardContent? = nil
+    var firstVisitDateText: String? = nil
 }
 
-/// カードの主役の数字。「55.1%」を大きく、「制覇率」を見出しに、「38 / 69 市区町村」を補足の1行にする。
+/// 制覇率のカードの数字。「55.1%」を大きく、「38 / 69 市区町村」を下に1行。
 struct ShareCardKeyStat: Equatable {
     let value: String
-    let caption: String
-    var detail: String? = nil
+    let detail: String
 }
 
 /// 塗った形。境界データの本物の形(`SilhouetteMap`)で、訪れた区画を塗る。ピン・座標・住所は持たない。
@@ -32,9 +31,11 @@ struct ShareCardShape {
     let filledCodes: Set<String>
     /// 強く示す区画(都道府県の「全国の都道府県」のその県)。
     var emphasizedCodes: Set<String> = []
-    /// 区画の隙間を埋める縁取りの太さ(大きく描くとき)。区画が細かい地図ほど細くする。
+    /// 区画の隙間を埋める縁取りの太さ。区画が細かい地図ほど細くする。
     let outlineWidth: CGFloat
     let placeholderSystemImage: String
+    /// 一回り大きな範囲の中の位置を示す形か(塗っていない区画を薄く塗りつぶして描く)。
+    var isLocation = false
 }
 
 extension ShareCardSubject {
@@ -47,20 +48,14 @@ extension ShareCardSubject {
         case .firstVisit(let content, let map, let highlightedCodes):
             return ShareCardSummary(
                 name: content.municipalityName,
-                headline: "\(content.municipalityName) 初訪問",
                 label: "初訪問",
-                stat: ShareCardKeyStat(
-                    value: content.visitedMunicipalityCount.formatted(), caption: "訪れた市区町村",
-                    detail: "/ \(content.totalMunicipalityCount.formatted())"
-                ),
-                shape: ShareCardShape(map: map, filledCodes: highlightedCodes, outlineWidth: 1.2, placeholderSystemImage: "mappin.and.ellipse")
+                shape: ShareCardShape(map: map, filledCodes: highlightedCodes, outlineWidth: 1.2, placeholderSystemImage: "mappin.and.ellipse"),
+                firstVisitDateText: content.firstVisitDate.map { "初めて訪れた日 \(FirstVisitShareCardContent.dateText(for: $0))" }
             )
         case .trivia(let content, let map, let highlightedCodes):
             return ShareCardSummary(
                 name: content.municipalityName,
-                headline: content.municipalityName,
                 label: content.title,
-                stat: nil,
                 shape: ShareCardShape(map: map, filledCodes: highlightedCodes, outlineWidth: 1.2, placeholderSystemImage: "mappin.and.ellipse"),
                 topic: content
             )
@@ -72,20 +67,18 @@ extension ShareCardSubject {
         switch fill {
         case .municipalities:
             stat = ShareCardKeyStat(
-                value: content.visitedMunicipalityCount.formatted(), caption: "訪れた市区町村",
-                detail: "/ \(content.totalMunicipalityCount.formatted())　\(content.percentageText)"
+                value: content.percentageText,
+                detail: "\(content.visitedMunicipalityCount.formatted()) / \(content.totalMunicipalityCount.formatted()) 市区町村"
             )
         case .prefectures:
             let progress = ExplorationCount(visited: content.visitedPrefectureCount, total: content.totalPrefectureCount)
             stat = ShareCardKeyStat(
-                value: "\(content.visitedPrefectureCount)/\(content.totalPrefectureCount)", caption: "訪れた都道府県",
-                detail: "制覇率 \(progress.percentageText)"
+                value: progress.percentageText, detail: "\(content.visitedPrefectureCount) / \(content.totalPrefectureCount) 都道府県"
             )
         }
         return ShareCardSummary(
             name: "わたしの日本地図",
-            headline: "わたしの日本地図",
-            label: "\(stat.value) \(fill == .municipalities ? "市区町村" : "都道府県")",
+            label: "制覇率",
             stat: stat,
             shape: ShareCardShape(
                 map: fill == .municipalities ? maps.municipalityMap : maps.prefectureMap,
@@ -95,28 +88,15 @@ extension ShareCardSubject {
     }
 
     private func regionSummary(_ content: RegionShareCardContent, map: SilhouetteMap?) -> ShareCardSummary {
-        let stat: ShareCardKeyStat
-        switch content.kind {
-        case .prefecture, .designatedCity:
-            stat = ShareCardKeyStat(
-                value: content.percentageText, caption: "制覇率",
-                detail: "\(content.visitedCount.formatted()) / \(content.totalCount.formatted()) \(content.unit)"
-            )
-        case .nationwidePrefecture:
-            stat = ShareCardKeyStat(
-                value: "\(content.visitedCount)/\(content.totalCount)", caption: "訪れた都道府県",
-                detail: "制覇率 \(content.percentageText)"
-            )
-        }
-        let label = switch content.kind {
-        case .prefecture, .designatedCity: "制覇率 \(content.percentageText)"
-        case .nationwidePrefecture: "\(content.totalCount)都道府県中 \(content.visitedCount)"
-        }
+        // 全国の都道府県は数えるのが全国の都道府県なので、県名だけだと県の制覇率に見える。見出し(「愛知県に来た！」)にする。
+        let name = content.kind == .nationwidePrefecture ? content.headline : content.name
         return ShareCardSummary(
-            name: content.name,
-            headline: content.headline,
-            label: label,
-            stat: stat,
+            name: name,
+            label: "制覇率",
+            stat: ShareCardKeyStat(
+                value: content.percentageText,
+                detail: "\(content.visitedCount.formatted()) / \(content.totalCount.formatted()) \(content.unit)"
+            ),
             shape: ShareCardShape(
                 map: map, filledCodes: content.visitedCodes, emphasizedCodes: content.emphasizedCodes,
                 outlineWidth: content.kind == .nationwidePrefecture ? 0.4 : 0.6,

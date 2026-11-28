@@ -1157,7 +1157,7 @@ struct MunicipalityFirstVisitSheet: View {
         let target = ShareMunicipalityTarget(
             code: municipality.code, name: municipality.municipalityName, prefectureName: municipality.prefectureName
         )
-        return MunicipalityShareSubject(target: target, isVisited: true, municipality: municipality)
+        return MunicipalityShareSubject(target: target, isVisited: true, municipality: municipality, firstVisitDate: result.recordedAt)
     }
 
     private var title: String {

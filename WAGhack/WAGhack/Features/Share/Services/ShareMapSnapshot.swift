@@ -36,29 +36,16 @@ nonisolated struct ShareCardMapBox: Hashable, Sendable {
         return inner.fitted(aspectRatio: aspectRatio)
     }
 
-    // MARK: - レイアウトごとの枠(レイアウトのViewと同じ値。変えるときは両方そろえる)
+    // MARK: - カードの枠
 
-    /// 本物の地図を敷く枠。写真を敷くレイアウトで写真が無いときと、地図のレイアウトで使う。
-    /// 数字・ステッカー・読み物は本物の地図を敷かない(nil)。
-    static func backdropBox(for layout: ShareCardLayout, size: ShareCardSize) -> ShareCardMapBox? {
-        let isStory = size == .story
-        switch layout {
-        case .photo: return isStory ? .photoStory : .photoSquare
-        case .photoMat: return isStory ? .photoMatStory : .photoMatSquare
-        case .map: return isStory ? .mapStory : .mapSquare
-        case .sticker, .number, .reading: return nil
-        }
+    /// 写真が無いときにカード全体に敷く本物の地図の枠(1.8.0 (8))。まとまりは上か下に動くので、
+    /// その範囲が上下どちらのまとまりにも隠れにくい真ん中寄りに来るよう、上下の余白を広めに取る。
+    static func backdropBox(for size: ShareCardSize) -> ShareCardMapBox {
+        size == .story ? .cardStory : .cardSquare
     }
 
-    /// フォト(写真の代わり)。カード全体に敷き、下の帯より上に範囲が来るようにする。
-    static let photoStory = ShareCardMapBox(width: 360, height: 640, padding: 36, topPadding: 90, bottomPadding: 200)
-    static let photoSquare = ShareCardMapBox(width: 360, height: 360, padding: 24, topPadding: 28, bottomPadding: 100)
-    /// フォト・余白(写真の代わり)。白い余白の内側の写真の枠(`PhotoMatCardLayout.photoFrame`)。
-    static let photoMatStory = ShareCardMapBox(width: 320, height: 424, padding: 28)
-    static let photoMatSquare = ShareCardMapBox(width: 324, height: 270, padding: 22)
-    /// 地図。カード全体に敷き、上の見出しと下のロゴの間に形を大きく描く。
-    static let mapStory = ShareCardMapBox(width: 360, height: 640, padding: 20, topPadding: 150, bottomPadding: 120)
-    static let mapSquare = ShareCardMapBox(width: 360, height: 360, padding: 16, topPadding: 84, bottomPadding: 48)
+    static let cardStory = ShareCardMapBox(width: 360, height: 640, padding: 36, topPadding: 150, bottomPadding: 210)
+    static let cardSquare = ShareCardMapBox(width: 360, height: 360, padding: 28, topPadding: 70, bottomPadding: 110)
 }
 
 /// スナップショットを撮る範囲と、撮れた画像を置く位置の計算。状態を持たない純粋な計算なので単体テストできる。

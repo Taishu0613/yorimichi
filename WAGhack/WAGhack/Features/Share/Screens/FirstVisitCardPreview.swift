@@ -19,25 +19,27 @@ struct FirstVisitCardPreview: View {
     @State private var fallbackStore = SilhouetteMapStore()
     @State private var snapshotStore = ShareMapSnapshotStore()
     @State private var isMapLoaded = false
+    @State private var isLocationMapLoaded = false
     @State private var rendered: RenderedShareCard?
-    /// シェア画面で最後に選んだ箱の見た目に合わせる(シェア画面を開いたときと同じカードにするため)。
-    @AppStorage(ShareCardBoxStyle.storageKey) private var boxStyle: ShareCardBoxStyle = ShareCardBoxStyle.defaultStyle
+    /// シェア画面で最後に選んだ文字の色・形の見せ方に合わせる(シェア画面を開いたときと同じカードにするため)。
+    @AppStorage(ShareCardTextStyle.storageKey) private var textStyle: ShareCardTextStyle = .defaultStyle
+    @AppStorage(ShareCardShapeMode.storageKey) private var shapeMode: ShareCardShapeMode = .defaultMode
 
+    /// 写真はまだ無いので、その街の本物の地図を薄く敷き、左下に形と名前を載せる。
     private static let size: ShareCardSize = .square
-    /// 初訪問の初めのレイアウト(フォト)。写真はまだ無いので、その街の本物の地図を薄く敷き、下の帯に形と名前を載せる。
-    private static let layout = ShareCardSubjectKind.firstVisit.defaultLayout
     /// プレビューの高さ。お祝いのシートが縦に伸びすぎないよう抑える。
     private static let previewHeight: CGFloat = 190
 
     private var store: SilhouetteMapStore { environmentStore ?? fallbackStore }
     private var snapshotKey: ShareMapSnapshotStore.Key {
-        ShareMapSnapshotStore.Key(id: subject.target.snapshotID, box: ShareCardMapBox.backdropBox(for: Self.layout, size: Self.size) ?? .photoSquare)
+        ShareMapSnapshotStore.Key(id: subject.target.snapshotID, box: ShareCardMapBox.backdropBox(for: Self.size))
     }
 
     var body: some View {
         let summary = summaryStore.summary(municipalities: municipalities, savedPlaces: savedPlaces, visitedPrefectures: visitedPrefectures)
         let content = FirstVisitShareCardContent(
-            municipalityName: subject.target.name, prefectureName: subject.target.prefectureName, progress: summary.progress
+            municipalityName: subject.target.name, prefectureName: subject.target.prefectureName, progress: summary.progress,
+            firstVisitDate: subject.firstVisitDate
         )
         VStack(spacing: 10) {
             Button(action: openEditor) {
@@ -59,17 +61,26 @@ struct FirstVisitCardPreview: View {
             await subject.target.loadMap(in: store)
             isMapLoaded = true
         }
+        .task(id: shapeMode) {
+            guard shapeMode == .location else { return }
+            await subject.target.loadLocationMap(in: store)
+            isLocationMapLoaded = true
+        }
         .task(id: isMapLoaded) {
             guard isMapLoaded, let map = subject.target.map(in: store) else { return }
             await snapshotStore.loadBackdropIfNeeded(for: snapshotKey, map: map)
         }
         // 地図ができたとき・本物の地図が届いたとき・数が変わったときに描き直す(シェア画面の初訪問と同じ描き方)。
-        .task(id: RenderKey(content: content, isMapLoaded: isMapLoaded, hasBackdrop: snapshotStore.backdrop(for: snapshotKey) != nil, boxStyle: boxStyle)) {
+        .task(id: RenderKey(
+            content: content, isMapLoaded: isMapLoaded, hasBackdrop: snapshotStore.backdrop(for: snapshotKey) != nil,
+            textStyle: textStyle, shapeMode: shapeMode, isLocationMapLoaded: isLocationMapLoaded
+        )) {
             guard isMapLoaded else { return }
             let map = subject.target.map(in: store)
             let model = ShareCardModel(
                 subject: .firstVisit(content, map: map, highlightedCodes: map.map(subject.target.highlightedCodes(in:)) ?? []),
-                layout: Self.layout, size: Self.size, backdrop: snapshotStore.backdrop(for: snapshotKey), boxStyle: boxStyle
+                size: Self.size, backdrop: snapshotStore.backdrop(for: snapshotKey), textStyle: textStyle,
+                locationShape: shapeMode == .location ? subject.target.locationShape(in: store) : nil
             )
             rendered = ShareCardRenderer.render(model)
         }
@@ -79,6 +90,8 @@ struct FirstVisitCardPreview: View {
         let content: FirstVisitShareCardContent
         let isMapLoaded: Bool
         let hasBackdrop: Bool
-        let boxStyle: ShareCardBoxStyle
+        let textStyle: ShareCardTextStyle
+        let shapeMode: ShareCardShapeMode
+        let isLocationMapLoaded: Bool
     }
 }
