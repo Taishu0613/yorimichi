@@ -18,6 +18,22 @@ nonisolated struct SilhouetteMap: Sendable {
     let aspectRatio: CGFloat
     /// 本体と縮尺を変えて差し込んだ小窓(日本地図の沖縄)の囲み。無ければnil。
     let insetFrame: CGRect?
+    /// 0〜1の枠に当たる経緯度の範囲。メルカトル図法で作った地図(`SilhouetteProjectionKind.mercator`)だけが持ち、
+    /// シェア用のカードで本物の地図(MapKitのスナップショット、同じくメルカトル)を同じ範囲で撮って重ねるのに使う。
+    /// 正距円筒図法の地図は本物の地図と緯度方向の伸び方が違って重ならないため、nilにして重ねさせない。
+    var geoFrame: GeoBoundingBox? = nil
+    /// 小窓の中で、`insetGeoFrame`が描かれている範囲(0〜1)。`insetFrame`より余白の分だけ内側。
+    var insetContentFrame: CGRect? = nil
+    /// 小窓に描いた範囲の経緯度(沖縄本島を囲む範囲)。`geoFrame`と同じくメルカトル図法の地図だけが持つ。
+    var insetGeoFrame: GeoBoundingBox? = nil
+}
+
+/// 経緯度を平面に写す方法。
+nonisolated enum SilhouetteProjectionKind: Sendable {
+    /// 枠の中央の緯度で経度方向を縮めるだけの簡易な図法。進捗の隣などの小さな地図に使う(これまでの見た目)。
+    case equirectangular
+    /// メルカトル図法。Apple Mapsと同じ図法なので、MapKitで撮った本物の地図にぴったり重ねられる(シェア用のカード)。
+    case mercator
 }
 
 /// 境界データから、サムネイル用の軽い地図を作る。状態を持たない純粋な計算なので単体テストできる。
@@ -27,6 +43,8 @@ nonisolated struct SilhouetteMap: Sendable {
 nonisolated struct BoundarySilhouetteBuilder: Sendable {
     /// 想定する描画サイズ(pt)。枠の長い方の辺がこの長さになる前提で、捨てる島の大きさ・間引きの細かさを決める。
     let targetPoints: CGFloat
+    /// 図法。本物の地図に重ねるシェア用のカードだけ`.mercator`にする。
+    var projectionKind: SilhouetteProjectionKind = .equirectangular
 
     /// 頂点を間引くときの許容誤差(pt)。1.5ptでは半島や湾が消えて県の形が分からなくなったため、
     /// 1pt未満に抑えている。それでも1区画あたり数十〜百数十頂点に収まり、描画の負担は小さい。
@@ -49,32 +67,83 @@ nonisolated struct BoundarySilhouetteBuilder: Sendable {
 
     /// 日本地図。沖縄県は左上の小窓に、沖縄本島を枠いっぱいに描く(左上は日本海で本体と重ならない)。
     func japanMap(of prefectures: [AdministrativeBoundary]) -> SilhouetteMap {
-        let projection = SilhouetteProjection(frame: Self.japanMainlandFrame, targetPoints: targetPoints)
-        var areas = prefectures
-            .filter { $0.code != Self.japanInsetPrefectureCode }
+        let okinawaMainIsland = prefectures.first { $0.code == Self.japanInsetPrefectureCode }?.polygons.first?.boundingBox
+        return japanMap(of: prefectures, okinawaMainIsland: okinawaMainIsland)
+    }
+
+    /// 全国の市区町村を区画にした日本地図(シェア用のカードで、訪れた市区町村を塗るのに使う)。
+    /// 枠と沖縄の小窓は都道府県の日本地図と同じ。小窓に入るのは沖縄本島に掛かる市町村だけになる。
+    ///
+    /// - Parameter okinawaMainIsland: 沖縄本島を囲む範囲。市区町村の形からは本島の範囲が分からないので、
+    ///   都道府県の境界(沖縄県の最大のピース)から渡す。nilなら小窓を作らない。
+    func japanMunicipalityMap(of municipalities: [AdministrativeBoundary], okinawaMainIsland: GeoBoundingBox?) -> SilhouetteMap {
+        japanMap(of: municipalities, okinawaMainIsland: okinawaMainIsland)
+    }
+
+    /// 都道府県・市区町村の日本地図の共通部分。沖縄県(`prefectureCode`で判定)の区画は小窓に、それ以外は本体に描く。
+    private func japanMap(of boundaries: [AdministrativeBoundary], okinawaMainIsland: GeoBoundingBox?) -> SilhouetteMap {
+        let projection = SilhouetteProjection(frame: Self.japanMainlandFrame, targetPoints: targetPoints, kind: projectionKind)
+        var areas = boundaries
+            .filter { $0.prefectureCode != Self.japanInsetPrefectureCode }
             .compactMap { area(of: $0, with: projection, keeping: Self.keepsPieceBySize) }
 
         var insetFrame: CGRect?
-        if let okinawa = prefectures.first(where: { $0.code == Self.japanInsetPrefectureCode }),
-           let mainIsland = okinawa.polygons.first {
-            let insetProjection = SilhouetteProjection(frame: mainIsland.boundingBox, targetPoints: targetPoints * Self.japanInsetScale)
-            // 小窓の囲みと本体の端の間に少し余白を取る。
-            let margin: CGFloat = 1.5
-            let rings = projectedRings(of: okinawa, with: insetProjection, keeping: Self.keepsPieceBySize).map { ring in
-                ring.map { projection.normalized(CGPoint(x: $0.x + margin * 2, y: $0.y + margin * 2)) }
+        var insetContentFrame: CGRect?
+        let insetBoundaries = boundaries.filter { $0.prefectureCode == Self.japanInsetPrefectureCode }
+        if let okinawaMainIsland, !insetBoundaries.isEmpty {
+            let insetProjection = SilhouetteProjection(
+                frame: okinawaMainIsland, targetPoints: targetPoints * Self.japanInsetScale, kind: projectionKind
+            )
+            // 小窓の囲みと本体の端の間に少し余白を取る。進捗の隣・ヘッダーの小さな地図では1.5pt。
+            let margin: CGFloat = max(1.5, 1.5 * targetPoints / Self.referenceTargetPoints)
+            let insetAreas = insetBoundaries.compactMap { boundary -> SilhouetteMap.Area? in
+                let rings = projectedRings(of: boundary, with: insetProjection, keeping: Self.keepsPieceBySize).map { ring in
+                    ring.map { projection.normalized(CGPoint(x: $0.x + margin * 2, y: $0.y + margin * 2)) }
+                }
+                return rings.isEmpty ? nil : SilhouetteMap.Area(code: boundary.code, rings: rings)
             }
-            if !rings.isEmpty {
-                areas.append(SilhouetteMap.Area(code: okinawa.code, rings: rings))
+            if !insetAreas.isEmpty {
+                areas += insetAreas
                 let origin = projection.normalized(CGPoint(x: margin, y: margin))
                 let end = projection.normalized(CGPoint(
                     x: insetProjection.width + margin * 3,
                     y: insetProjection.height + margin * 3
                 ))
                 insetFrame = CGRect(x: origin.x, y: origin.y, width: end.x - origin.x, height: end.y - origin.y)
+                // 小窓の中身は(2×余白, 2×余白)から沖縄本島の範囲の大きさで描いてある(上の`insetAreas`)。
+                let contentOrigin = projection.normalized(CGPoint(x: margin * 2, y: margin * 2))
+                let contentEnd = projection.normalized(CGPoint(
+                    x: insetProjection.width + margin * 2,
+                    y: insetProjection.height + margin * 2
+                ))
+                insetContentFrame = CGRect(
+                    x: contentOrigin.x, y: contentOrigin.y,
+                    width: contentEnd.x - contentOrigin.x, height: contentEnd.y - contentOrigin.y
+                )
             }
         }
-        return SilhouetteMap(areas: areas, aspectRatio: projection.aspectRatio, insetFrame: insetFrame)
+        var map = SilhouetteMap(areas: areas, aspectRatio: projection.aspectRatio, insetFrame: insetFrame)
+        if projectionKind == .mercator {
+            map.geoFrame = projection.frame
+            if insetContentFrame != nil {
+                map.insetContentFrame = insetContentFrame
+                map.insetGeoFrame = okinawaMainIsland
+            }
+        }
+        return map
     }
+
+    /// メルカトル図法で作ったときだけ、本物の地図と重ねるための経緯度の範囲を付ける。
+    private func map(areas: [SilhouetteMap.Area], projection: SilhouetteProjection) -> SilhouetteMap {
+        var map = SilhouetteMap(areas: areas, aspectRatio: projection.aspectRatio, insetFrame: nil)
+        if projectionKind == .mercator {
+            map.geoFrame = projection.frame
+        }
+        return map
+    }
+
+    /// 小窓の余白を決めたときの描画サイズ(旅の記録の進捗の隣、96pt)。大きく描く地図では余白も同じ比率で広げる。
+    private static let referenceTargetPoints: CGFloat = 96
 
     /// 1つの都道府県を市区町村ごとに分けた地図。都道府県の形が無ければnil。
     ///
@@ -83,7 +152,7 @@ nonisolated struct BoundarySilhouetteBuilder: Sendable {
     /// 描くのは本土に載っているピースと大きな島だけ。小さな離島だけでできた町村は描かない(地図に出てこない)。
     func prefectureMap(of prefecture: AdministrativeBoundary, municipalities: [AdministrativeBoundary]) -> SilhouetteMap? {
         guard let mainland = prefecture.polygons.first else { return nil }
-        let projection = SilhouetteProjection(frame: mainland.boundingBox, targetPoints: targetPoints)
+        let projection = SilhouetteProjection(frame: mainland.boundingBox, targetPoints: targetPoints, kind: projectionKind)
         let mainlandPoints = mainland.exterior.map(projection.point)
         // 本土かどうかの判定用。元の頂点数(北海道で数万)のままだと判定が重いので、描画と同じ細かさに間引く。
         let mainlandRing = Self.simplifiedRing(mainlandPoints, tolerance: Self.simplificationTolerance) ?? mainlandPoints
@@ -93,15 +162,36 @@ nonisolated struct BoundarySilhouetteBuilder: Sendable {
             }
         }
         guard !areas.isEmpty else { return nil }
-        return SilhouetteMap(areas: areas, aspectRatio: projection.aspectRatio, insetFrame: nil)
+        return map(areas: areas, projection: projection)
+    }
+
+    /// 政令指定都市を区ごとに分けた地図(シェア用のカードで、訪れた区を塗るのに使う)。区が無ければnil。
+    ///
+    /// 境界データに市そのものの形は無いので、枠は全区の最も大きいピースをまとめて囲む範囲にする。
+    /// 区の飛び地や小島は、枠に掛かる大きさのものだけを描く(日本地図と同じ大きさの規則)。
+    func designatedCityMap(of wards: [AdministrativeBoundary]) -> SilhouetteMap? {
+        let boxes = wards.compactMap { $0.polygons.first?.boundingBox }
+        guard let first = boxes.first else { return nil }
+        let frame = boxes.dropFirst().reduce(first) { box, other in
+            GeoBoundingBox(
+                minLongitude: min(box.minLongitude, other.minLongitude),
+                minLatitude: min(box.minLatitude, other.minLatitude),
+                maxLongitude: max(box.maxLongitude, other.maxLongitude),
+                maxLatitude: max(box.maxLatitude, other.maxLatitude)
+            )
+        }
+        let projection = SilhouetteProjection(frame: frame, targetPoints: targetPoints, kind: projectionKind)
+        let areas = wards.compactMap { area(of: $0, with: projection, keeping: Self.keepsPieceBySize) }
+        guard !areas.isEmpty else { return nil }
+        return map(areas: areas, projection: projection)
     }
 
     /// 1つの市区町村だけの地図。枠はその市区町村の最も大きいピースに合わせ、枠に掛からない離島は描かない。
     func municipalityMap(of municipality: AdministrativeBoundary) -> SilhouetteMap? {
         guard let largest = municipality.polygons.first else { return nil }
-        let projection = SilhouetteProjection(frame: largest.boundingBox, targetPoints: targetPoints)
+        let projection = SilhouetteProjection(frame: largest.boundingBox, targetPoints: targetPoints, kind: projectionKind)
         guard let area = area(of: municipality, with: projection, keeping: Self.keepsPieceBySize) else { return nil }
-        return SilhouetteMap(areas: [area], aspectRatio: projection.aspectRatio, insetFrame: nil)
+        return map(areas: [area], projection: projection)
     }
 
     /// 大きさだけで選ぶ規則(日本地図・市区町村単体の地図)。各行政単位の最大のピースは小さくても必ず残し、
@@ -188,36 +278,45 @@ nonisolated struct BoundarySilhouetteBuilder: Sendable {
 
 /// 経緯度を、枠の左上を原点とするpt単位の平面座標へ写す。
 ///
-/// 小さなサムネイル用なので正確な地図投影はせず、枠の中央の緯度で経度方向を縮めるだけ(正距円筒図法の補正)にしている。
-/// 日本全体でも南北の歪みは見た目で気にならない程度に収まる。
-private nonisolated struct SilhouetteProjection {
+/// - 正距円筒図法(`.equirectangular`): 小さなサムネイル用なので正確な地図投影はせず、枠の中央の緯度で経度方向を
+///   縮めるだけにしている。日本全体でも南北の歪みは見た目で気にならない程度に収まる。
+/// - メルカトル図法(`.mercator`): Apple Mapsと同じ図法。経度はそのまま、緯度はln(tan(45°+φ/2))で伸ばす。
+///   MapKitの`MKMapPoint`はこれを定数倍しただけなので、0〜1に正規化した座標が本物の地図の位置と一致する。
+nonisolated struct SilhouetteProjection {
     let frame: GeoBoundingBox
-    /// 経度1度が緯度1度の何倍の長さか(= cos(中央の緯度))。
+    let kind: SilhouetteProjectionKind
+    /// 経度方向の1単位の長さの補正(正距円筒図法ではcos(中央の緯度)、メルカトル図法では1)。
     private let longitudeScale: Double
-    /// 緯度1度あたりのpt。
-    private let pointsPerDegree: Double
+    /// 図法の1単位あたりのpt。
+    private let pointsPerUnit: Double
     /// 枠の大きさ(pt)。
     let width: CGFloat
     let height: CGFloat
 
-    init(frame: GeoBoundingBox, targetPoints: CGFloat) {
+    init(frame: GeoBoundingBox, targetPoints: CGFloat, kind: SilhouetteProjectionKind = .equirectangular) {
         self.frame = frame
-        let centerLatitude = (frame.minLatitude + frame.maxLatitude) / 2
-        longitudeScale = cos(centerLatitude * .pi / 180)
-        let widthDegrees = (frame.maxLongitude - frame.minLongitude) * longitudeScale
-        let heightDegrees = frame.maxLatitude - frame.minLatitude
+        self.kind = kind
+        switch kind {
+        case .equirectangular:
+            let centerLatitude = (frame.minLatitude + frame.maxLatitude) / 2
+            longitudeScale = cos(centerLatitude * .pi / 180)
+        case .mercator:
+            longitudeScale = 1
+        }
+        let widthUnits = (Self.x(frame.maxLongitude, kind: kind) - Self.x(frame.minLongitude, kind: kind)) * longitudeScale
+        let heightUnits = Self.y(frame.maxLatitude, kind: kind) - Self.y(frame.minLatitude, kind: kind)
         // 幅・高さが0の枠(点や線)でも割り算が破綻しないよう、ごく小さい値で下支えする。
-        pointsPerDegree = Double(targetPoints) / max(widthDegrees, heightDegrees, .ulpOfOne)
-        width = max(widthDegrees * pointsPerDegree, .ulpOfOne)
-        height = max(heightDegrees * pointsPerDegree, .ulpOfOne)
+        pointsPerUnit = Double(targetPoints) / max(widthUnits, heightUnits, .ulpOfOne)
+        width = max(widthUnits * pointsPerUnit, .ulpOfOne)
+        height = max(heightUnits * pointsPerUnit, .ulpOfOne)
     }
 
     var aspectRatio: CGFloat { width / height }
 
     func point(_ coordinate: CLLocationCoordinate2D) -> CGPoint {
         CGPoint(
-            x: (coordinate.longitude - frame.minLongitude) * longitudeScale * pointsPerDegree,
-            y: (frame.maxLatitude - coordinate.latitude) * pointsPerDegree
+            x: (Self.x(coordinate.longitude, kind: kind) - Self.x(frame.minLongitude, kind: kind)) * longitudeScale * pointsPerUnit,
+            y: (Self.y(frame.maxLatitude, kind: kind) - Self.y(coordinate.latitude, kind: kind)) * pointsPerUnit
         )
     }
 
@@ -226,11 +325,24 @@ private nonisolated struct SilhouetteProjection {
         CGPoint(x: point.x / width, y: point.y / height)
     }
 
-    /// 経緯度の矩形の、長い方の辺の長さ(pt)。
-    func longerSide(of box: GeoBoundingBox) -> CGFloat {
-        let boxWidth = (box.maxLongitude - box.minLongitude) * longitudeScale * pointsPerDegree
-        let boxHeight = (box.maxLatitude - box.minLatitude) * pointsPerDegree
-        return max(boxWidth, boxHeight)
+    /// 図法の横の値。正距円筒図法は度、メルカトル図法はラジアン(どちらも経度に比例する)。
+    private static func x(_ longitude: Double, kind: SilhouetteProjectionKind) -> Double {
+        switch kind {
+        case .equirectangular: longitude
+        case .mercator: longitude * .pi / 180
+        }
+    }
+
+    /// 図法の縦の値(北が大きい)。メルカトル図法は極に近づくほど伸びる。
+    private static func y(_ latitude: Double, kind: SilhouetteProjectionKind) -> Double {
+        switch kind {
+        case .equirectangular:
+            return latitude
+        case .mercator:
+            // 極では無限大になるので、Web地図と同じく約85度で止める。
+            let clamped = min(max(latitude, -85.05112878), 85.05112878) * .pi / 180
+            return log(tan(.pi / 4 + clamped / 2))
+        }
     }
 }
 

@@ -12,6 +12,7 @@ struct PrefectureExplorationScreen: View {
     @State private var store = SavedPlacesStore()
     /// マップのシート内でだけ渡される。プレビューなど渡されない場所では地図を出さない。
     @Environment(SilhouetteMapStore.self) private var silhouetteStore: SilhouetteMapStore?
+    @State private var isPresentingShare = false
 
     var body: some View {
         let summary = store.summary(municipalities: municipalities, savedPlaces: savedPlaces, visitedPrefectures: visitedPrefectures)
@@ -89,6 +90,14 @@ struct PrefectureExplorationScreen: View {
         .task { await silhouetteStore?.loadPrefectureMapIfNeeded(code: prefectureCode) }
         .navigationTitle(name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("\(name)の地図をシェア", systemImage: "square.and.arrow.up") { isPresentingShare = true }
+            }
+        }
+        .sheet(isPresented: $isPresentingShare) {
+            ShareCardSheet(entry: .region(.prefecture(code: prefectureCode)), silhouetteStore: silhouetteStore)
+        }
         .alert("削除できませんでした", isPresented: Binding(
             get: { store.deletionErrorMessage != nil },
             set: { if !$0 { store.deletionErrorMessage = nil } }

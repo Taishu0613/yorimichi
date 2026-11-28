@@ -18,6 +18,8 @@ struct MapVisitResult {
     let milestone: Int?
     /// この記録で初めて訪れた政令指定都市(区を記録して市も訪問済みになった)のマスタの行政区域コード。
     var firstDesignatedCityCode: String? = nil
+    /// 記録した日時。初訪問なら、初めて訪れた日としてシェアのカードに載せる(訪問記録の日時は訪れ直すと書き換わるため)。
+    var recordedAt: Date = .now
 
     /// 節目は初訪問でしか起きないが、初訪問より重い達成として祝うため、両方に当てはまる時は節目を優先する。
     var kind: Kind {

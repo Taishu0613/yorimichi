@@ -14,6 +14,7 @@ nonisolated enum BadgeID: String, CaseIterable, Codable, Hashable {
     case tripleBoundary = "triple_boundary"
     case quadrupleBoundary = "quadruple_boundary"
     case threeCapitals = "three_capitals"
+    case tripSharer = "trip_sharer"
 }
 
 /// 何を数えて判定するか。判定そのものは`BadgeRuleEvaluator`が行い、画面は判定を個別に実装しない。
@@ -37,6 +38,8 @@ enum BadgeCriterion {
     /// 記録した場所がおたがい`maxDistanceMeters`以内にある市区町村の数のうち、最も多いもの(超・境目！・超超・境目！)。
     /// 判定には記録した場所の座標を使う。いくつ集めれば獲得かは`tiers`の最後の値。
     case nearbyMunicipalities(maxDistanceMeters: Double)
+    /// シェアし終えた回数(共有シートで共有・保存を終えたときだけ数える。`ShareCompletionCounter`)。訪問記録とは別に端末に保存する。
+    case completedShareCount
     /// 判定がまだ無い。一覧には絵柄と名前だけを見せ、獲得済みにはしない。
     case comingSoon
 }
@@ -103,6 +106,8 @@ enum BadgeCategory: CaseIterable, Identifiable {
     case footprints
     /// 街の個性・豆知識・観光テーマ。今はこのカテゴリのバッジが無いので、図鑑では絞り込みの候補に出さない。
     case knowledge
+    /// 旅をカードにしてシェアした積み重ね(1.8.0 (6))。
+    case sharing
 
     var id: Self { self }
 
@@ -112,6 +117,7 @@ enum BadgeCategory: CaseIterable, Identifiable {
         case .placeNames: "地名のひみつ"
         case .footprints: "旅の足あと"
         case .knowledge: "知識と発見"
+        case .sharing: "シェア"
         }
     }
 }

@@ -6,23 +6,101 @@ struct SilhouetteMapView: View {
     let map: SilhouetteMap
     /// 塗る区画のコード。
     let visitedCodes: Set<String>
+    /// 強く示す区画のコード。黄色で塗り、濃い線で縁取って一番上に描く(シェアの「全国の都道府県」でその県を示す、1.8.0 (7))。
+    var emphasizedCodes: Set<String> = []
+    /// 区画の隙間を埋める縁取りの太さ(pt)。シェア用のカードのように大きく描くときは、小さな区画が太って見えないよう細くする。
+    var outlineWidth: CGFloat = 0.8
+    var style: Style = .solid
+
+    enum Style: Equatable {
+        /// 未訪問を灰色で塗る(これまでの見た目)。
+        case solid
+        /// 本物の地図の上に重ねる(シェア用のカード)。未訪問は細い線とごく薄い色だけにして、下の地図を透かす。
+        case overMap
+        /// 写真の上に重ねる(シェア用のカード)。未訪問は線だけにして写真を透かし、訪問済みだけを塗る。
+        /// どんな色の写真でも形が分かるよう、白い線に薄い影を落とす。
+        case overPhoto
+        /// 明るい写真の上(シェアの「黒い文字」)。未訪問は黒い線だけにする。
+        case overLightPhoto
+        /// 一回り大きな範囲の中の位置を示す(シェアの「県の中の位置」、1.8.0 (8))。塗らない区画は`context`の色で薄く塗りつぶし、
+        /// 塗る区画はテーマ色に太めの縁取りを付ける。県の中の小さな町でも点として見えるようにするため。
+        case location(context: Color)
+    }
 
     var body: some View {
         // 区画ごとにShapeを分けると数十〜百数十個の描画になるため、未訪問・訪問済みの2枚にまとめる。
-        let visited = map.areas.filter { visitedCodes.contains($0.code) }.flatMap(\.rings)
-        let unvisited = map.areas.filter { !visitedCodes.contains($0.code) }.flatMap(\.rings)
+        let visited = SilhouetteShape(rings: map.areas.filter { visitedCodes.contains($0.code) }.flatMap(\.rings), aspectRatio: map.aspectRatio)
+        let unvisited = SilhouetteShape(rings: map.areas.filter { !visitedCodes.contains($0.code) }.flatMap(\.rings), aspectRatio: map.aspectRatio)
         ZStack {
-            // `.secondary`は色自体が半透明で、塗りと縁取りが重なる縁だけ濃くなるため、不透明な灰色で描いてからまとめて薄くする。
-            outlined(SilhouetteShape(rings: unvisited, aspectRatio: map.aspectRatio), color: .gray)
-                .compositingGroup()
-                .opacity(0.45)
-            outlined(SilhouetteShape(rings: visited, aspectRatio: map.aspectRatio), color: .teal)
+            switch style {
+            case .solid:
+                // `.secondary`は色自体が半透明で、塗りと縁取りが重なる縁だけ濃くなるため、不透明な灰色で描いてからまとめて薄くする。
+                outlined(unvisited, color: .gray)
+                    .compositingGroup()
+                    .opacity(0.45)
+                outlined(visited, color: .teal)
+            case .overMap:
+                unvisited
+                    .fill(Color.gray.opacity(0.08))
+                    .overlay {
+                        unvisited.stroke(Color.gray.opacity(0.55), style: StrokeStyle(lineWidth: max(outlineWidth, 0.4), lineJoin: .round))
+                    }
+                // 地名がうっすら透けるよう少しだけ透かす。重なる縁が濃くならないよう、まとめてから薄くする。
+                outlined(visited, color: .teal)
+                    .compositingGroup()
+                    .opacity(0.82)
+            case .overPhoto:
+                ZStack {
+                    unvisited.stroke(Color.white.opacity(0.9), style: StrokeStyle(lineWidth: max(outlineWidth, 0.8), lineJoin: .round))
+                    outlined(visited, color: .teal)
+                        .compositingGroup()
+                        .opacity(0.88)
+                }
+                .shadow(color: .black.opacity(0.35), radius: 1.5, y: 0.5)
+            case .overLightPhoto:
+                ZStack {
+                    unvisited.stroke(Color.black.opacity(0.85), style: StrokeStyle(lineWidth: max(outlineWidth, 0.8), lineJoin: .round))
+                    outlined(visited, color: .teal)
+                }
+            case .location(let context):
+                // 区画の縁が重なって濃くならないよう、不透明な色で描いてからまとめて薄くする。
+                outlined(unvisited, color: context)
+                    .compositingGroup()
+                    .opacity(0.42)
+                visited
+                    .fill(Color.teal)
+                    .overlay {
+                        // 日本地図の中の小さな県でも目に入るよう、太い縁取りで一回り大きく見せる。
+                        visited.stroke(Color.teal, style: StrokeStyle(lineWidth: max(outlineWidth * 4, 3), lineJoin: .round))
+                    }
+            }
+            if !emphasizedCodes.isEmpty {
+                let emphasized = SilhouetteShape(
+                    rings: map.areas.filter { emphasizedCodes.contains($0.code) }.flatMap(\.rings), aspectRatio: map.aspectRatio
+                )
+                emphasized
+                    .fill(Pop.yellow)
+                    .overlay {
+                        emphasized.stroke(Pop.inkOnAccent, style: StrokeStyle(lineWidth: max(outlineWidth * 2.5, 1), lineJoin: .round))
+                    }
+            }
             if let insetFrame = map.insetFrame {
                 InsetFrameShape(frame: insetFrame, aspectRatio: map.aspectRatio)
-                    .stroke(.secondary, lineWidth: 0.5)
+                    .stroke(insetFrameStyle, lineWidth: style == .solid ? 0.5 : 1)
             }
         }
         .accessibilityHidden(true)
+    }
+
+    /// 沖縄の小窓の囲みの色。写真の上では白にする。
+    private var insetFrameStyle: AnyShapeStyle {
+        switch style {
+        case .solid: AnyShapeStyle(.secondary)
+        case .overMap: AnyShapeStyle(Pop.border)
+        case .overPhoto: AnyShapeStyle(Color.white.opacity(0.9))
+        case .overLightPhoto: AnyShapeStyle(Color.black.opacity(0.85))
+        case .location(let context): AnyShapeStyle(context.opacity(0.6))
+        }
     }
 
     /// 区画ごとに別々に間引いて角を丸めているため(丸めると形がわずかに内側へ縮む)、隣り合う区画の間に隙間ができる。
@@ -31,7 +109,7 @@ struct SilhouetteMapView: View {
         shape
             .fill(color)
             .overlay {
-                shape.stroke(color, style: StrokeStyle(lineWidth: 0.8, lineJoin: .round))
+                shape.stroke(color, style: StrokeStyle(lineWidth: outlineWidth, lineJoin: .round))
             }
     }
 }
@@ -107,19 +185,5 @@ struct SilhouetteShape: Shape {
             path.addQuadCurve(to: midpoint(index), control: vertices[index])
         }
         path.closeSubpath()
-    }
-}
-
-private extension CGRect {
-    /// 縦横比を保ったまま、この矩形の中央に収まる最大の矩形。
-    func fitted(aspectRatio: CGFloat) -> CGRect {
-        guard aspectRatio > 0, height > 0 else { return self }
-        if width / height > aspectRatio {
-            let fittedWidth = height * aspectRatio
-            return CGRect(x: midX - fittedWidth / 2, y: minY, width: fittedWidth, height: height)
-        } else {
-            let fittedHeight = width / aspectRatio
-            return CGRect(x: minX, y: midY - fittedHeight / 2, width: width, height: fittedHeight)
-        }
     }
 }

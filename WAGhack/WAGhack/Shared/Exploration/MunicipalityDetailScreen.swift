@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import TipKit
 
 /// 市区町村の図鑑の1ページ。「その街の小さな旅行ガイド」として、街の写真→この街でできること→
 /// 読みものの「みどころ」「怪奇・都市伝説」の順に並べる。見た目はRakugakiSNSと同じPOPな見た目(`Pop`)。
@@ -17,6 +18,18 @@ struct MunicipalityDetailScreen: View {
     @Environment(SilhouetteMapStore.self) private var silhouetteStore: SilhouetteMapStore?
     @Query private var savedPlaces: [SavedPlace]
     @State private var viewModel = MunicipalityDetailViewModel()
+    /// 開いているシェア画面。
+    @State private var presentedShare: DetailShare?
+    /// ツールバーの「カードにしてシェア」を初めて見たときの案内。押すか閉じるかしたら二度と出さない(TipKitが覚える)。
+    private let shareCardTip = MunicipalityShareCardTip()
+    /// 案内を出すときに、ボタンの絵を一度だけ弾ませる。
+    @State private var shareButtonBounce = 0
+    /// 右上の「カードにする」を絵だけに縮めているか(写真の枠より下まで読み進めたら縮める)。
+    @State private var isShareEntryCollapsed = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// 本文の上の余白。入口を縮めるスクロール量(`MunicipalityShareEntryCollapse.threshold`)にも使う。
+    private static let topPadding: CGFloat = 16
 
     /// 画面の左右の余白。カードのずらした影が端で切れないよう、影の分も含めて広めに取る。
     private static let horizontalPadding: CGFloat = 20
@@ -40,6 +53,38 @@ struct MunicipalityDetailScreen: View {
             municipalityName: municipality.municipalityName,
             spotsJSON: municipality.spotsJSON
         )
+    }
+
+    /// この画面から開けるシェア画面。
+    private enum DetailShare: Identifiable {
+        /// 政令指定都市の区めぐりの地図。
+        case cityMap(code: String)
+        /// 市区町村のカード(初訪問・みどころ・都市伝説・この街でできること)。押した入口の種類を選んで開く。
+        case municipality(initialKind: MunicipalityShareKind)
+
+        var id: String {
+            switch self {
+            case .cityMap: "cityMap"
+            case .municipality(let kind): "municipality-\(kind.rawValue)"
+            }
+        }
+    }
+
+    /// 豆知識・初訪問のカードに描く街。政令指定都市そのものは区を集めた地図にする。
+    private var shareTarget: ShareMunicipalityTarget? {
+        guard let municipality else { return nil }
+        return ShareMunicipalityTarget(
+            code: municipality.code,
+            name: municipality.municipalityName,
+            prefectureName: municipality.prefectureName,
+            wardCodes: designatedCity.map { Set($0.wards.map(\.code)) }
+        )
+    }
+
+    /// 市区町村のシェア画面に渡す材料。街が分からない(住所だけの記録)ときはnil。
+    private var shareSubject: MunicipalityShareSubject? {
+        guard let municipality, let shareTarget else { return nil }
+        return MunicipalityShareSubject(target: shareTarget, isVisited: isVisited, municipality: municipality)
     }
 
     private var isVisited: Bool {
@@ -93,12 +138,37 @@ struct MunicipalityDetailScreen: View {
                 }
             }
             .padding(.horizontal, Self.horizontalPadding)
-            .padding(.top, 16)
+            .padding(.top, Self.topPadding)
             .padding(.bottom, 32)
+        }
+        .onScrollGeometryChange(for: Bool.self) { geometry in
+            MunicipalityShareEntryCollapse.isCollapsed(
+                contentOffsetY: geometry.contentOffset.y, topInset: geometry.contentInsets.top,
+                threshold: MunicipalityShareEntryCollapse.threshold(
+                    hasHero: target != nil, heroHeight: MunicipalityHeroView.height, topPadding: Self.topPadding
+                )
+            )
+        } action: { _, isCollapsed in
+            withAnimation(reduceMotion ? nil : .snappy(duration: 0.25)) {
+                isShareEntryCollapsed = isCollapsed
+            }
         }
         .background(Pop.paper.ignoresSafeArea())
         .navigationTitle(displayName)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) { toolbarShareButton }
+        }
+        .sheet(item: $presentedShare) { share in
+            switch share {
+            case .cityMap(let code):
+                ShareCardSheet(entry: .region(.designatedCity(code: code)), silhouetteStore: silhouetteStore)
+            case .municipality(let initialKind):
+                if let shareSubject {
+                    ShareCardSheet(entry: .town(shareSubject, initialKind: initialKind))
+                }
+            }
+        }
         .task(id: silhouetteCode) {
             guard let silhouetteCode else { return }
             await silhouetteStore?.loadMunicipalityMapIfNeeded(code: silhouetteCode)
@@ -111,6 +181,63 @@ struct MunicipalityDetailScreen: View {
         .task(id: viewModel.isShowingAllSpots) {
             await viewModel.loadVisibleSpotPhotos()
         }
+    }
+
+    /// ツールバーの共有ボタン(図鑑のシェアの入口はここ1つ。1.8.0 (6)で見出しごとのボタンは無くした)。
+    /// 市区町村のカード(訪れた街は初訪問、まだなら出せる最初の豆知識を選んで開く。種類はシェア画面で切り替えられる)と、
+    /// 政令指定都市は区めぐりの地図をシェアできる。両方あるときはメニューで選ぶ。
+    ///
+    /// 「画像のカードを作る」ことが伝わるよう、共有の矢印ではなくカードの絵に「カードにする」を添え(1.8.0 (7))、
+    /// テーマ色のガラスのボタンにして目立たせる。読み進めたら絵だけに縮める。初めて見たときだけ案内を出す。
+    @ViewBuilder
+    private var toolbarShareButton: some View {
+        let initialKind = shareSubject?.initialKind(preferred: .firstVisit)
+        if let initialKind, let designatedCity {
+            Menu {
+                Button(
+                    initialKind == .firstVisit ? "初訪問のカード" : "\(designatedCity.name)のカード",
+                    systemImage: initialKind == .firstVisit ? "sparkles" : "rectangle.portrait.on.rectangle.portrait"
+                ) {
+                    presentShare(.municipality(initialKind: initialKind))
+                }
+                Button("\(designatedCity.name)の地図", systemImage: "map") { presentShare(.cityMap(code: designatedCity.code)) }
+            } label: {
+                shareCardLabel
+            }
+            .buttonStyle(.glassProminent)
+            .tint(Pop.theme)
+            .popoverTip(shareCardTip)
+            .onAppear(perform: bounceIfTipShows)
+        } else if let initialKind {
+            Button {
+                presentShare(.municipality(initialKind: initialKind))
+            } label: {
+                shareCardLabel
+            }
+            .buttonStyle(.glassProminent)
+            .tint(Pop.theme)
+            .popoverTip(shareCardTip)
+            .onAppear(perform: bounceIfTipShows)
+        } else if let designatedCity {
+            // 区めぐりの進み具合を見ている政令指定都市の画面にだけ、その市の地図をシェアする入口を置く。
+            Button("\(designatedCity.name)の地図をシェア", systemImage: "square.and.arrow.up") {
+                presentedShare = .cityMap(code: designatedCity.code)
+            }
+        }
+    }
+
+    private var shareCardLabel: some View {
+        MunicipalityShareEntryLabel(isCollapsed: isShareEntryCollapsed, bounceTrigger: shareButtonBounce)
+    }
+
+    private func presentShare(_ share: DetailShare) {
+        shareCardTip.invalidate(reason: .actionPerformed)
+        presentedShare = share
+    }
+
+    /// 案内を出す(まだ押しても閉じてもいない)ときだけ、ボタンを弾ませて目を引く。
+    private func bounceIfTipShows() {
+        if shareCardTip.shouldDisplay { shareButtonBounce += 1 }
     }
 
     /// 都道府県のピル、蛍光ペンを引いた市区町村名、訪問の状態。
@@ -306,4 +433,10 @@ private struct WardChip: View {
         .accessibilityElement(children: .combine)
         .accessibilityValue(isVisited ? "訪問済み" : "未訪問")
     }
+}
+
+/// 図鑑の「カードにしてシェア」を初めて見たときの案内。チュートリアル中は図鑑が開かないので出ない。
+struct MunicipalityShareCardTip: Tip {
+    var title: Text { Text("この街をカードにしてシェアできます") }
+    var image: Image? { Image(systemName: "photo.on.rectangle.angled") }
 }

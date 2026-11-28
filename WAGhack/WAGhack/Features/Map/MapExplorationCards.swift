@@ -1115,6 +1115,7 @@ struct MunicipalityFirstVisitSheet: View {
     @State private var showsButtons = false
     /// Wikipediaの代表画像。取得は本体の`.task`で非同期に行い、揃ったときだけ帯を差し込む。
     @State private var imageURLs: [URL] = []
+    @State private var isPresentingShare = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var isMilestone: Bool {
@@ -1147,6 +1148,16 @@ struct MunicipalityFirstVisitSheet: View {
     private var showsDetailLink: Bool {
         guard case .celebration = mode else { return false }
         return municipality != nil
+    }
+
+    /// 記録後に見せる初訪問のカードと、それを押して開くシェア画面の材料。シェア画面は初訪問のカードを選んで開き、
+    /// 豆知識・県・全国にも切り替えられる。記録前や市区町村が分からないときはnilでカードを出さない。
+    private var shareSubject: MunicipalityShareSubject? {
+        guard case .celebration(let result, let municipality?, _) = mode, result.isFirstVisit else { return nil }
+        let target = ShareMunicipalityTarget(
+            code: municipality.code, name: municipality.municipalityName, prefectureName: municipality.prefectureName
+        )
+        return MunicipalityShareSubject(target: target, isVisited: true, municipality: municipality, firstVisitDate: result.recordedAt)
     }
 
     private var title: String {
@@ -1216,10 +1227,15 @@ struct MunicipalityFirstVisitSheet: View {
             if !imageURLs.isEmpty {
                 WikipediaImageStrip(urls: imageURLs)
             }
+            if let shareSubject {
+                // できあがる初訪問のカードを見せ、そのままシェアできるようにする(1.8.0 (6))。押すとシェア画面で写真などを変えられる。
+                FirstVisitCardPreview(subject: shareSubject) { isPresentingShare = true }
+                    .opacity(showsButtons ? 1 : 0)
+            }
             VStack(spacing: 10) {
                 primaryButton
                 if showsDetailLink {
-                    // 主役は「みどころを見る」(primaryButton)なので、閉じるは控えめな二番手に置く。
+                    // 主役は「みどころを見る」(primaryButton)なので、閉じるは控えめな二番手にする。
                     Button(action: dismiss) {
                         Label("閉じる", systemImage: "checkmark")
                             .frame(maxWidth: .infinity)
@@ -1245,6 +1261,11 @@ struct MunicipalityFirstVisitSheet: View {
             withAnimation(.spring(response: 0.4, dampingFraction: 0.7).delay(0.18)) { showsTitle = true }
             withAnimation(.easeOut(duration: 0.3).delay(0.3)) { showsSubtitle = true }
             withAnimation(.spring(response: 0.4, dampingFraction: 0.75).delay(0.4)) { showsButtons = true }
+        }
+        .sheet(isPresented: $isPresentingShare) {
+            if let shareSubject {
+                ShareCardSheet(entry: .town(shareSubject, initialKind: .firstVisit))
+            }
         }
         .task(id: municipality?.code) {
             guard let municipality else { return }
