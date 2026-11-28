@@ -204,8 +204,8 @@ struct ShareCardKindsSampleRenderer {
             achievement: BadgeAchievement(tierCount: 2, achievedAt: achievedAt, tierAchievedAt: achievedAt, announcedTierCount: 2)
         )
         let badge = BadgeShareCardContent(status: status)
-        for layout in ShareCardLayout.allCases {
-            try write(BadgeShareCardView(content: badge, layout: layout), layout: layout, name: "badge", in: directory)
+        for size in ShareCardSize.allCases {
+            try write(BadgeShareCardView(content: badge, size: size), size: size, name: "badge", in: directory)
         }
 
         // 豆知識(名古屋市のみどころ)と初訪問(名古屋市、写真なし)。名古屋市は区を集めた地図になる。
@@ -223,22 +223,22 @@ struct ShareCardKindsSampleRenderer {
         let firstVisit = FirstVisitShareCardContent(
             municipalityName: "名古屋市", prefectureName: "愛知県", progress: ExplorationCount(visited: 124, total: 1_918)
         )
-        for layout in ShareCardLayout.allCases {
-            let triviaKey = ShareMapSnapshotStore.Key(id: target.snapshotID, box: layout == .story ? .triviaStory : .triviaSquare)
+        for size in ShareCardSize.allCases {
+            let triviaKey = ShareMapSnapshotStore.Key(id: target.snapshotID, box: size == .story ? .triviaStory : .triviaSquare)
             await snapshots.loadBackdropIfNeeded(for: triviaKey, map: map)
             for (name, content) in [("trivia-nagoya-highlights", trivia), ("trivia-nagoya-legend", legend)] {
-                try write(TriviaShareCardView(
-                    content: content, layout: layout, map: map, highlightedCodes: target.highlightedCodes(in: map),
+                try write(TriviaStandardCard(
+                    content: content, size: size, map: map, highlightedCodes: target.highlightedCodes(in: map),
                     backdrop: snapshots.backdrop(for: triviaKey)
-                ), layout: layout, name: name, in: directory)
+                ), size: size, name: name, in: directory)
             }
 
-            let firstVisitKey = ShareMapSnapshotStore.Key(id: target.snapshotID, box: layout == .story ? .firstVisitStory : .firstVisitSquare)
+            let firstVisitKey = ShareMapSnapshotStore.Key(id: target.snapshotID, box: size == .story ? .firstVisitStory : .firstVisitSquare)
             await snapshots.loadBackdropIfNeeded(for: firstVisitKey, map: map)
-            try write(FirstVisitShareCardView(
-                content: firstVisit, layout: layout, photo: nil, map: map, highlightedCodes: target.highlightedCodes(in: map),
+            try write(FirstVisitStandardCard(
+                content: firstVisit, size: size, photo: nil, map: map, highlightedCodes: target.highlightedCodes(in: map),
                 backdrop: snapshots.backdrop(for: firstVisitKey)
-            ), layout: layout, name: "first-visit-nagoya", in: directory)
+            ), size: size, name: "first-visit-nagoya", in: directory)
         }
     }
 
@@ -259,8 +259,8 @@ struct ShareCardKindsSampleRenderer {
                 achievement: BadgeAchievement(tierCount: tierCount, achievedAt: achievedAt, tierAchievedAt: achievedAt, announcedTierCount: tierCount)
             )
             let badge = BadgeShareCardContent(status: status)
-            for layout in ShareCardLayout.allCases {
-                try write(BadgeShareCardView(content: badge, layout: layout), layout: layout, name: "badge-condition-\(id.rawValue)", in: directory)
+            for size in ShareCardSize.allCases {
+                try write(BadgeShareCardView(content: badge, size: size), size: size, name: "badge-condition-\(id.rawValue)", in: directory)
             }
         }
 
@@ -271,28 +271,28 @@ struct ShareCardKindsSampleRenderer {
             ("legend", .legend("名古屋城の天守の金鯱は、何度も盗難にあった。1876年には鱗3枚がはがされ、1937年には北の鯱の鱗58枚から金が盗まれた。江戸時代には、盗賊の柿木金助が大凧に乗って天守に近づき、鯱の鱗を盗んだという話が作られた。")),
             ("spots", .spot(name: "名古屋城", line: "金の鯱がのる天守と、復元された本丸御殿の豪華なふすま絵を見られる。")),
         ]
-        for layout in ShareCardLayout.allCases {
-            let key = ShareMapSnapshotStore.Key(id: target.snapshotID, box: layout == .story ? .triviaStory : .triviaSquare)
+        for size in ShareCardSize.allCases {
+            let key = ShareMapSnapshotStore.Key(id: target.snapshotID, box: size == .story ? .triviaStory : .triviaSquare)
             await snapshots.loadBackdropIfNeeded(for: key, map: map)
             for (name, topic) in topics {
                 let content = TriviaShareCardContent(municipalityName: "名古屋市", prefectureName: "愛知県", isVisited: true, topic: topic)
-                try write(TriviaShareCardView(
-                    content: content, layout: layout, map: map, highlightedCodes: target.highlightedCodes(in: map),
+                try write(TriviaStandardCard(
+                    content: content, size: size, map: map, highlightedCodes: target.highlightedCodes(in: map),
                     backdrop: snapshots.backdrop(for: key)
-                ), layout: layout, name: "municipality-nagoya-\(name)", in: directory)
+                ), size: size, name: "municipality-nagoya-\(name)", in: directory)
                 if let photo {
-                    try write(TriviaShareCardView(
-                        content: content, layout: layout, map: nil, highlightedCodes: [], photo: photo
-                    ), layout: layout, name: "municipality-nagoya-\(name)-photo", in: directory)
+                    try write(TriviaStandardCard(
+                        content: content, size: size, map: nil, highlightedCodes: [], photo: photo
+                    ), size: size, name: "municipality-nagoya-\(name)-photo", in: directory)
                 }
             }
             if let photo {
                 let firstVisit = FirstVisitShareCardContent(
                     municipalityName: "名古屋市", prefectureName: "愛知県", progress: ExplorationCount(visited: 124, total: 1_918)
                 )
-                try write(FirstVisitShareCardView(
-                    content: firstVisit, layout: layout, photo: photo, map: nil, highlightedCodes: []
-                ), layout: layout, name: "municipality-nagoya-first-visit-photo", in: directory)
+                try write(FirstVisitStandardCard(
+                    content: firstVisit, size: size, photo: photo, map: nil, highlightedCodes: []
+                ), size: size, name: "municipality-nagoya-first-visit-photo", in: directory)
             }
         }
     }
@@ -311,10 +311,10 @@ struct ShareCardKindsSampleRenderer {
         return (target, try #require(target.map(in: store)))
     }
 
-    private func write(_ view: some View, layout: ShareCardLayout, name: String, in directory: URL) throws {
-        let image = try #require(ShareCardRenderer.render(view, layout: layout))
-        #expect(image.size.width * image.scale == layout.pixelSize.width)
+    private func write(_ view: some View, size: ShareCardSize, name: String, in directory: URL) throws {
+        let image = try #require(ShareCardRenderer.render(view, size: size))
+        #expect(image.size.width * image.scale == size.pixelSize.width)
         let data = try #require(image.pngData())
-        try data.write(to: directory.appendingPathComponent("share-card-\(name)-\(layout.rawValue).png"))
+        try data.write(to: directory.appendingPathComponent("share-card-\(name)-\(size.rawValue).png"))
     }
 }

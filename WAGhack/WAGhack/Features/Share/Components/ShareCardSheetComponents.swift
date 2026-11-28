@@ -1,13 +1,6 @@
 import SwiftUI
 import UIKit
 
-/// 共有するカード。画像と、一緒に共有する文・共有シートの見出し。
-struct RenderedShareCard {
-    let image: UIImage
-    let message: String
-    let title: String
-}
-
 /// シェア画面の共通の骨組み。プレビュー→選択肢→注意書き→シェアするボタンの順に並べる。
 ///
 /// 地図・市区町村のシェア(`ShareCardSheet`)とバッジのシェアで同じ並びにして、どこから開いても迷わないようにする。
@@ -17,7 +10,7 @@ struct ShareCardSheetScaffold<Controls: View>: View {
     let navigationTitle: String
     let footnote: String
     let rendered: RenderedShareCard?
-    @Binding var layout: ShareCardLayout
+    @Binding var size: ShareCardSize
     /// プレビューをタップしたときの操作(写真の上の箱を動かす)。nilならタップできず、案内も出さない。
     var onTapPreview: (() -> Void)? = nil
     @ViewBuilder let controls: () -> Controls
@@ -29,7 +22,7 @@ struct ShareCardSheetScaffold<Controls: View>: View {
             ScrollView {
                 VStack(spacing: 20) {
                     VStack(spacing: 8) {
-                        ShareCardPreview(rendered: rendered, layout: layout, onTap: onTapPreview)
+                        ShareCardPreview(rendered: rendered, size: size, onTap: onTapPreview)
                         if onTapPreview != nil {
                             // 画像には入れず、プレビューの下にだけ出す。
                             Label("タップで位置を変更", systemImage: "hand.tap")
@@ -40,8 +33,8 @@ struct ShareCardSheetScaffold<Controls: View>: View {
                     VStack(alignment: .leading, spacing: 14) {
                         controls()
                         ShareCardLabeledControl("形") {
-                            Picker("形", selection: $layout) {
-                                ForEach(ShareCardLayout.allCases) { Text($0.title).tag($0) }
+                            Picker("形", selection: $size) {
+                                ForEach(ShareCardSize.allCases) { Text($0.title).tag($0) }
                             }
                             .pickerStyle(.segmented)
                         }
@@ -67,21 +60,20 @@ struct ShareCardSheetScaffold<Controls: View>: View {
 /// 共有する画像のプレビュー。縦長でも画面に収まるよう高さを抑え、形の違いは縦横比で見せる。
 struct ShareCardPreview: View {
     let rendered: RenderedShareCard?
-    let layout: ShareCardLayout
+    let size: ShareCardSize
     var placeholder = "カードを準備しています"
     /// タップしたときの操作。nilならただの画像。
     var onTap: (() -> Void)? = nil
 
     var body: some View {
-        let size = layout.pixelSize
         Group {
             if let rendered {
                 if let onTap {
-                    Button(action: onTap) { image(rendered.image) }
+                    Button(action: onTap) { image(rendered) }
                         .buttonStyle(.plain)
                         .accessibilityHint("箱の位置を上・真ん中・下の順に変えます")
                 } else {
-                    image(rendered.image)
+                    image(rendered)
                 }
             } else {
                 ProgressView(placeholder)
@@ -89,18 +81,19 @@ struct ShareCardPreview: View {
                     .background(Pop.themeTint, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
         }
-        .aspectRatio(size.width / size.height, contentMode: .fit)
+        .aspectRatio(size.pixelSize.width / size.pixelSize.height, contentMode: .fit)
         .frame(maxHeight: 440)
         .frame(maxWidth: .infinity)
-        .animation(.easeOut(duration: 0.2), value: layout)
+        .animation(.easeOut(duration: 0.2), value: size)
     }
 
-    private func image(_ image: UIImage) -> some View {
-        Image(uiImage: image)
+    private func image(_ rendered: RenderedShareCard) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        return Image(uiImage: rendered.image)
             .resizable()
             .scaledToFit()
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Pop.border, lineWidth: 1))
+            .clipShape(shape)
+            .overlay(shape.stroke(Pop.border, lineWidth: 1))
             .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
             .accessibilityLabel("シェアする画像のプレビュー")
     }

@@ -98,10 +98,10 @@ struct ShareCardBoxStyleSampleRenderer {
         }
         let japan = ShareCardContent(summary: ExplorationProgressCalculator().summarize(municipalities: entries, visitedCodes: visited), date: .now)
         for style in ShareCardBoxStyle.allCases {
-            for layout in ShareCardLayout.allCases {
+            for size in ShareCardSize.allCases {
                 try write(
-                    ShareCardView(content: japan, layout: layout, fill: .municipalities, maps: maps, photo: photo, boxStyle: style, boxPosition: .bottom),
-                    layout: layout, name: "japan-photo-\(style.rawValue)", in: directory
+                    JapanStandardCard(content: japan, size: size, fill: .municipalities, maps: maps, photo: photo, boxStyle: style, boxPosition: .bottom),
+                    size: size, name: "japan-photo-\(style.rawValue)", in: directory
                 )
             }
         }
@@ -118,10 +118,10 @@ struct ShareCardBoxStyleSampleRenderer {
         let prefecture = try #require(ExplorationProgressCalculator().summarize(municipalities: aichi, visitedCodes: aichiVisited).prefectures.first)
         await store.loadSharePrefectureMapIfNeeded(code: "23")
         let aichiContent = RegionShareCardContent(prefecture: prefecture, date: .now)
-        for layout in ShareCardLayout.allCases {
+        for size in ShareCardSize.allCases {
             try write(
-                RegionShareCardView(content: aichiContent, layout: layout, map: store.sharePrefectureMaps["23"], photo: photo, boxStyle: .app, boxPosition: .top),
-                layout: layout, name: "aichi-photo-app-top", in: directory
+                RegionStandardCard(content: aichiContent, size: size, map: store.sharePrefectureMaps["23"], photo: photo, boxStyle: .app, boxPosition: .top),
+                size: size, name: "aichi-photo-app-top", in: directory
             )
         }
 
@@ -131,12 +131,12 @@ struct ShareCardBoxStyleSampleRenderer {
             topic: .highlights("名古屋市は、愛知県の県庁所在地で、中部地方の中心となる大都市だ。1610年に徳川家康が名古屋城を築き、清須の町をまるごと移した「清須越し」で町ができた。久屋大通と若宮大通は、幅100mの広い道路だ。")
         )
         for position in [ShareCardBoxPosition.top, .bottom] {
-            for layout in ShareCardLayout.allCases {
+            for size in ShareCardSize.allCases {
                 try write(
-                    TriviaShareCardView(
-                        content: nagoya, layout: layout, map: nil, highlightedCodes: [], photo: photo, boxStyle: .whiteLine, boxPosition: position
+                    TriviaStandardCard(
+                        content: nagoya, size: size, map: nil, highlightedCodes: [], photo: photo, boxStyle: .whiteLine, boxPosition: position
                     ),
-                    layout: layout, name: "nagoya-highlights-photo-whiteLine-\(position.rawValue)", in: directory
+                    size: size, name: "nagoya-highlights-photo-whiteLine-\(position.rawValue)", in: directory
                 )
             }
         }
@@ -144,7 +144,7 @@ struct ShareCardBoxStyleSampleRenderer {
 
     /// 架空の写真。夕方の空・山・湖を描く(明るい空と暗い山の両方で、白と黒の箱の読みやすさを見るため)。
     private static func fakePhoto() -> UIImage {
-        let size = ShareCardLayout.story.pixelSize
+        let size = ShareCardSize.story.pixelSize
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         return UIGraphicsImageRenderer(size: size, format: format).image { context in
@@ -173,10 +173,10 @@ struct ShareCardBoxStyleSampleRenderer {
         }
     }
 
-    private func write(_ view: some View, layout: ShareCardLayout, name: String, in directory: URL) throws {
-        let image = try #require(ShareCardRenderer.render(view, layout: layout))
-        #expect(image.size.width * image.scale == layout.pixelSize.width)
+    private func write(_ view: some View, size: ShareCardSize, name: String, in directory: URL) throws {
+        let image = try #require(ShareCardRenderer.render(view, size: size))
+        #expect(image.size.width * image.scale == size.pixelSize.width)
         let data = try #require(image.pngData())
-        try data.write(to: directory.appendingPathComponent("share-card-\(name)-\(layout.rawValue).png"))
+        try data.write(to: directory.appendingPathComponent("share-card-\(name)-\(size.rawValue).png"))
     }
 }

@@ -70,9 +70,9 @@ struct ShareCardContentTests {
     }
 
     @Test func 書き出す画像はSNSの推奨サイズで横360ptを3倍にする() {
-        #expect(ShareCardLayout.story.pixelSize == CGSize(width: 1080, height: 1920))
-        #expect(ShareCardLayout.square.pixelSize == CGSize(width: 1080, height: 1080))
-        #expect(ShareCardLayout.story.pointSize.width == 360)
+        #expect(ShareCardSize.story.pixelSize == CGSize(width: 1080, height: 1920))
+        #expect(ShareCardSize.square.pixelSize == CGSize(width: 1080, height: 1080))
+        #expect(ShareCardSize.story.pointSize.width == 360)
     }
 
     private func entry(_ code: String, _ name: String) -> ExplorationMunicipality {
@@ -214,16 +214,17 @@ struct ShareCardSampleRenderer {
 
         // 本物の地図(MapKitのスナップショット)はネットワークが要る。撮れなければ図形だけのカードになる。
         let snapshots = ShareMapSnapshotStore()
-        for layout in ShareCardLayout.allCases {
-            let key = ShareMapSnapshotStore.Key(id: "japan", box: layout == .story ? .japanStory : .japanSquare)
+        for size in ShareCardSize.allCases {
+            let key = ShareMapSnapshotStore.Key(id: "japan", box: size == .story ? .japanStory : .japanSquare)
             await snapshots.loadBackdropIfNeeded(for: key, map: maps.municipalityMap)
             let backdrop = snapshots.backdrop(for: key)
             for fill in ShareCardFill.allCases {
-                let image = try #require(ShareCardRenderer.render(content: content, layout: layout, fill: fill, maps: maps, backdrop: backdrop))
+                let model = ShareCardModel(subject: .japan(content, fill: fill, maps: maps), size: size, backdrop: backdrop)
+                let image = try #require(ShareCardRenderer.render(model)).image
                 let data = try #require(image.pngData())
-                #expect(image.size.width * image.scale == layout.pixelSize.width)
-                #expect(image.size.height * image.scale == layout.pixelSize.height)
-                try data.write(to: directory.appendingPathComponent("share-card-\(layout.rawValue)-\(fill.rawValue).png"))
+                #expect(image.size.width * image.scale == size.pixelSize.width)
+                #expect(image.size.height * image.scale == size.pixelSize.height)
+                try data.write(to: directory.appendingPathComponent("share-card-\(size.rawValue)-\(fill.rawValue).png"))
             }
         }
     }
@@ -266,15 +267,14 @@ struct ShareCardSampleRenderer {
         ]
         let snapshots = ShareMapSnapshotStore()
         for card in cards {
-            for layout in ShareCardLayout.allCases {
-                let key = ShareMapSnapshotStore.Key(id: card.name, box: layout == .story ? .regionStory : .regionSquare)
+            for size in ShareCardSize.allCases {
+                let key = ShareMapSnapshotStore.Key(id: card.name, box: size == .story ? .regionStory : .regionSquare)
                 await snapshots.loadBackdropIfNeeded(for: key, map: card.map)
-                let image = try #require(ShareCardRenderer.render(
-                    content: card.content, layout: layout, map: card.map, backdrop: snapshots.backdrop(for: key)
-                ))
-                #expect(image.size.width * image.scale == layout.pixelSize.width)
+                let model = ShareCardModel(subject: .region(card.content, map: card.map), size: size, backdrop: snapshots.backdrop(for: key))
+                let image = try #require(ShareCardRenderer.render(model)).image
+                #expect(image.size.width * image.scale == size.pixelSize.width)
                 let data = try #require(image.pngData())
-                try data.write(to: directory.appendingPathComponent("share-card-\(card.name)-\(layout.rawValue).png"))
+                try data.write(to: directory.appendingPathComponent("share-card-\(card.name)-\(size.rawValue).png"))
             }
         }
     }

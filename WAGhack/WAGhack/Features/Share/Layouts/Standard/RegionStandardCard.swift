@@ -2,12 +2,13 @@ import SwiftUI
 import UIKit
 
 /// 都道府県・政令指定都市のシェア用カード。区画(市区町村・区)を塗った地図を大きく描き、制覇率を主役の数字にする。
+/// 都道府県の「全国の都道府県」(1.8.0 (7))は、日本地図の訪れた都道府県を塗ってその県を強く示し、訪れた都道府県の数を主役にする。
 ///
-/// 全国のカード(`ShareCardView`)と同じく`ShareCardRenderer`がライト外観・文字サイズ固定で書き出す。
+/// 全国のカード(`JapanStandardCard`)と同じく`ShareCardRenderer`がライト外観・文字サイズ固定で書き出す。
 /// 載せるのは塗った地図と件数・称号だけで、ピン・座標・住所・訪問日時は載せない。
-struct RegionShareCardView: View {
+struct RegionStandardCard: View {
     let content: RegionShareCardContent
-    let layout: ShareCardLayout
+    let size: ShareCardSize
     /// 区画に分けた地図。読み込めなかったときはnilで、地図の枠にアイコンだけを出す(数字だけでもシェアできるようにする)。
     let map: SilhouetteMap?
     /// 地図の下に薄く敷く本物の地図。撮れるまで・撮れなかったときはnilで、図形だけの地図にする。写真があるときは使わない。
@@ -21,18 +22,18 @@ struct RegionShareCardView: View {
     var body: some View {
         ZStack {
             if let photo {
-                ShareCardPhotoBackground(photo: photo, size: layout.pointSize)
+                ShareCardPhotoBackground(photo: photo, size: size.pointSize)
             } else {
                 ShareCardBackground()
             }
-            switch (layout, photo != nil) {
+            switch (size, photo != nil) {
             case (.story, false): storyLayout
             case (.square, false): squareLayout
             case (.story, true): storyPhotoLayout
             case (.square, true): squarePhotoLayout
             }
         }
-        .frame(width: layout.pointSize.width, height: layout.pointSize.height)
+        .frame(width: size.pointSize.width, height: size.pointSize.height)
         .clipped()
     }
 
@@ -84,7 +85,7 @@ struct RegionShareCardView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 VStack(alignment: .leading, spacing: 0) {
-                    caption("制覇率", style: boxStyle)
+                    caption(content.countCaption, style: boxStyle)
                     percentage(size: percentageSize, style: boxStyle)
                 }
                 Spacer(minLength: 8)
@@ -115,7 +116,7 @@ struct RegionShareCardView: View {
                 // 右の列は箱に入れていないので、線の版でもアプリの色で描く(水玉の地に白い字は読めないため)。
                 VStack(alignment: .leading, spacing: 8) {
                     VStack(alignment: .leading, spacing: 0) {
-                        caption("制覇率", style: .app)
+                        caption(content.countCaption, style: .app)
                         percentage(size: 34, style: .app)
                     }
                     count(size: 14, style: .app)
@@ -141,6 +142,10 @@ struct RegionShareCardView: View {
                         dateLabel(size: 11, style: boxStyle)
                     }
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        // 全国の都道府県は数だけだと何の数か分からないので、「47都道府県中」を前に添える。
+                        if content.kind == .nationwidePrefecture {
+                            caption(content.countCaption, style: boxStyle)
+                        }
                         percentage(size: 30, style: boxStyle)
                         Spacer(minLength: 8)
                         count(size: 14, style: boxStyle)
@@ -179,17 +184,26 @@ struct RegionShareCardView: View {
     /// 全国のカードより区画が大きいので、隙間を埋める縁取りは少し太くてもよい。
     private func mapView(box: ShareCardMapBox) -> some View {
         ShareMapCanvas(
-            map: map, visitedCodes: content.visitedCodes, box: box, backdrop: backdrop, outlineWidth: 0.6,
-            placeholderSystemImage: content.kind == .prefecture ? "map.fill" : "building.columns.fill"
+            map: map, visitedCodes: content.visitedCodes, emphasizedCodes: content.emphasizedCodes, box: box, backdrop: backdrop,
+            outlineWidth: outlineWidth, placeholderSystemImage: placeholderSystemImage
         )
     }
 
     /// 写真の上に描く地図。未訪問は線だけにして写真を透かす。
     private var photoMap: some View {
         ShareCardPhotoMap(
-            map: map, visitedCodes: content.visitedCodes, outlineWidth: 0.6,
-            placeholderSystemImage: content.kind == .prefecture ? "map.fill" : "building.columns.fill"
+            map: map, visitedCodes: content.visitedCodes, emphasizedCodes: content.emphasizedCodes, outlineWidth: outlineWidth,
+            placeholderSystemImage: placeholderSystemImage
         )
+    }
+
+    /// 全国の都道府県は日本地図(区画が小さい)なので、全国のカードと同じく縁取りを細くする。
+    private var outlineWidth: CGFloat {
+        content.kind == .nationwidePrefecture ? 0.4 : 0.6
+    }
+
+    private var placeholderSystemImage: String {
+        content.kind == .designatedCity ? "building.columns.fill" : "map.fill"
     }
 
     private func caption(_ text: String, style: ShareCardBoxStyle) -> some View {
@@ -199,7 +213,7 @@ struct RegionShareCardView: View {
     }
 
     private func percentage(size: CGFloat, style: ShareCardBoxStyle) -> some View {
-        Text(content.percentageText)
+        Text(content.primaryValueText)
             .font(.system(size: size, weight: .black, design: .rounded))
             .foregroundStyle(style.primary())
             .monospacedDigit()
@@ -208,7 +222,22 @@ struct RegionShareCardView: View {
     }
 
     /// 「30 / 54 市区町村」。単位は都道府県なら市区町村、政令指定都市なら区。
+    /// 全国の都道府県は主役の数字が都道府県の数なので、代わりに制覇率(「制覇率 25.5%」)を添える。
+    @ViewBuilder
     private func count(size: CGFloat, style: ShareCardBoxStyle) -> some View {
+        if content.kind == .nationwidePrefecture {
+            Text(content.secondaryValueText)
+                .font(.system(size: size * 0.8, weight: .black, design: .rounded))
+                .foregroundStyle(style.primary())
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+        } else {
+            fraction(size: size, style: style)
+        }
+    }
+
+    private func fraction(size: CGFloat, style: ShareCardBoxStyle) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
             Text(content.visitedCount.formatted())
                 .font(.system(size: size, weight: .black, design: .rounded))

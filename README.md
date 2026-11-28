@@ -542,3 +542,15 @@ MapKitはポリゴン1枚ごとに描画を持つため、枚数がそのまま�
 - **初訪問のお祝いにカードのプレビュー**（`FirstVisitCardPreview`）: 記録した直後のお祝いのシートに、その街の初訪問のカード（正方形。シートを縦に伸ばしすぎないよう高さ190pt）を出し、下の「シェアする」でその画像をそのまま共有する。プレビューを押すと、写真や種類を変えられるシェア画面を開く。今までの小さな「シェアする」ボタンは無くした。
 - **旅のおすそわけのバッジ**（`BadgeID.tripSharer`、カテゴリ「シェア」）: シェアし終えた回数が1回・5回・20回でブロンズ・シルバー・ゴールド。入手条件は「旅のカードを{n}回シェアする」。
   - 数えるのは共有シートで共有・保存を終えたとき（`completed == true`）だけ。`ShareLink`では終えたかが分からないので、共有シートは`UIActivityViewController`で開く（`ShareCardActivity`）。回数はUserDefaultsの`share.completedCount`（`ShareCompletionCounter`）に持ち、`MapScreen`が`@AppStorage`で読んで変わったらバッジを評価し直す。今までのシェアは数えていない（全員0回から）。
+
+### 「カードにする」の入口、全国の都道府県、シェアのコードの整理（1.8.0 (7)）
+
+- **図鑑の入口に「カードにする」の文字**（`MunicipalityShareEntryLabel`）: 右上のボタンをカードの絵＋「カードにする」のカプセル（テーマ色の`.glassProminent`）にした。街の写真の枠（`MunicipalityHeroView.height`＋上の余白）より下まで読み進めたら絵だけに縮める（`MunicipalityShareEntryCollapse`、`onScrollGeometryChange`）。読み上げは「カードにしてシェア」のまま。初回の案内（TipKit）もそのまま。
+- **都道府県の「全国の都道府県」**（`PrefectureShareFocus`、`RegionShareCardContent.Kind.nationwidePrefecture`）: 都道府県のカードの「塗り」で「県内の市区町村 / 全国の都道府県」を切り替える。全国の都道府県は日本地図の訪れた都道府県を塗り、その県を黄色＋濃い縁取りで示す（`SilhouetteMapView.emphasizedCodes`）。見出しは「{県名}に来た！」（まだ訪れていない県は「次は{県名}へ」）、主役の数字は「47都道府県中 {n}」、添える数は都道府県の制覇率。共有文「{n}/47都道府県を訪れました({県名}も制覇) #よりみち」＋URL。
+- **レイアウトの仕組み**（`ShareCardLayout`／`ShareCardSubjectKind`）: 中身の種類（地図・初訪問・豆知識）ごとに選べるレイアウトと初めのレイアウトを決め、2つ以上あるときだけシェア画面に「レイアウト」を出す。最後に選んだものは地図のカードと街のカードで別々に覚える（`shareCardLayout.map`／`shareCardLayout.town`）。今は標準だけ（新しいレイアウトはユーザーと中身を決めてから足す）。
+- **シェアのコードの整理**: 1枚のカードを「中身（`ShareCardSubject`）＋見た目（レイアウト・形・写真・本物の地図・箱の見た目と位置）」の`ShareCardModel`で表し、`ShareCardCanvas`がレイアウトに応じて描き、`ShareCardRenderer.render(_:)`が画像と共有文にする。地図のカードと街のカードで別々だった描き分けは`ShareCardSubjectFactory`に集めた。型名`ShareCardLayout`（縦長・正方形）は`ShareCardSize`に変えた。`Features/Share`の並び:
+  - `Models/`: カードの中身と選択肢（`ShareCardModel`・`ShareCardLayout`・`ShareCardSize`・各カードの`…Content`・`ShareScope`・`MunicipalityShareSubject`・`ShareCardBoxStyle`・`ShareMilestone`）
+  - `Layouts/`: `ShareCardCanvas`（レイアウトの振り分け）と`Standard/`（全国・地域・初訪問・豆知識の標準のカード）
+  - `Components/`: カードとシェア画面の部品（地・アプリの印・箱・地図の描画・選択肢・骨組み・節目の知らせ）
+  - `Screens/`: `ShareCardSheet`と`ShareCardSelection`（選択と中身の作り方）、バッジのシェア画面、初訪問のプレビュー
+  - `Services/`: 画像にする（`ShareCardRenderer`）、本物の地図を撮る（`ShareMapSnapshot`）、共有シート（`ShareActivity`）

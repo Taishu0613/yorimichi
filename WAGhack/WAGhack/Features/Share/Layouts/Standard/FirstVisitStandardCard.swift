@@ -1,40 +1,13 @@
 import SwiftUI
 import UIKit
 
-/// 初訪問のシェア用カードに載せるもの。「〇〇市 初訪問」と、全国で訪れた市区町村の数。
-///
-/// 訪れた日は載せない(カードの日付も入れない)。後から図鑑で開いても作れるため、作った日を載せると訪問日に見えてしまう。
-struct FirstVisitShareCardContent: Hashable {
-    let municipalityName: String
-    let prefectureName: String
-    let visitedMunicipalityCount: Int
-    let totalMunicipalityCount: Int
-    let percentageText: String
-
-    init(municipalityName: String, prefectureName: String, progress: ExplorationCount) {
-        self.municipalityName = municipalityName
-        self.prefectureName = prefectureName
-        visitedMunicipalityCount = progress.visited
-        totalMunicipalityCount = progress.total
-        percentageText = progress.percentageText
-    }
-
-    /// 画像と一緒に共有する文。
-    var shareText: String {
-        let headline = visitedMunicipalityCount > 0
-            ? "\(municipalityName)に初訪問！ これで全国\(visitedMunicipalityCount)市区町村 #よりみち"
-            : "\(municipalityName)に初訪問！ #よりみち"
-        return "\(headline)\n\(ShareCardContent.appStoreURL.absoluteString)"
-    }
-}
-
 /// 初訪問のシェア用カード。
 ///
 /// - 写真あり: 選んだ写真をカードいっぱいに敷き、半透明のパネルに記録を載せる(Stravaの記録の貼り付けと同じ考え方)。
 /// - 写真なし: その市区町村の本物の地図を薄く敷き、形を塗って描く。地図が撮れないときは水玉の地に形だけを描く。
-struct FirstVisitShareCardView: View {
+struct FirstVisitStandardCard: View {
     let content: FirstVisitShareCardContent
-    let layout: ShareCardLayout
+    let size: ShareCardSize
     let photo: UIImage?
     let map: SilhouetteMap?
     let highlightedCodes: Set<String>
@@ -49,23 +22,23 @@ struct FirstVisitShareCardView: View {
     var body: some View {
         ZStack {
             background
-            switch layout {
+            switch size {
             case .story: storyLayout
             case .square: squareLayout
             }
         }
-        .frame(width: layout.pointSize.width, height: layout.pointSize.height)
+        .frame(width: size.pointSize.width, height: size.pointSize.height)
         .clipped()
     }
 
     @ViewBuilder
     private var background: some View {
         if let photo {
-            ShareCardPhotoBackground(photo: photo, size: layout.pointSize)
+            ShareCardPhotoBackground(photo: photo, size: size.pointSize)
         } else {
             ShareCardBackground()
             ShareMapCanvas(
-                map: map, visitedCodes: highlightedCodes, box: layout == .story ? .firstVisitStory : .firstVisitSquare,
+                map: map, visitedCodes: highlightedCodes, box: size == .story ? .firstVisitStory : .firstVisitSquare,
                 backdrop: backdrop, outlineWidth: 1.2, placeholderSystemImage: "mappin.and.ellipse", cornerRadius: 0
             )
         }

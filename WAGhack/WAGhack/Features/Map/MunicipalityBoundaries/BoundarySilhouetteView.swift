@@ -6,6 +6,8 @@ struct SilhouetteMapView: View {
     let map: SilhouetteMap
     /// 塗る区画のコード。
     let visitedCodes: Set<String>
+    /// 強く示す区画のコード。黄色で塗り、濃い線で縁取って一番上に描く(シェアの「全国の都道府県」でその県を示す、1.8.0 (7))。
+    var emphasizedCodes: Set<String> = []
     /// 区画の隙間を埋める縁取りの太さ(pt)。シェア用のカードのように大きく描くときは、小さな区画が太って見えないよう細くする。
     var outlineWidth: CGFloat = 0.8
     var style: Style = .solid
@@ -50,6 +52,16 @@ struct SilhouetteMapView: View {
                         .opacity(0.88)
                 }
                 .shadow(color: .black.opacity(0.35), radius: 1.5, y: 0.5)
+            }
+            if !emphasizedCodes.isEmpty {
+                let emphasized = SilhouetteShape(
+                    rings: map.areas.filter { emphasizedCodes.contains($0.code) }.flatMap(\.rings), aspectRatio: map.aspectRatio
+                )
+                emphasized
+                    .fill(Pop.yellow)
+                    .overlay {
+                        emphasized.stroke(Pop.inkOnAccent, style: StrokeStyle(lineWidth: max(outlineWidth * 2.5, 1), lineJoin: .round))
+                    }
             }
             if let insetFrame = map.insetFrame {
                 InsetFrameShape(frame: insetFrame, aspectRatio: map.aspectRatio)

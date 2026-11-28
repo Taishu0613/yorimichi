@@ -58,16 +58,16 @@ struct BadgeShareCardContent {
 /// バッジのシェア用カード。スタンプを台紙に押したように大きく描き、名前とひとことを添える。
 struct BadgeShareCardView: View {
     let content: BadgeShareCardContent
-    let layout: ShareCardLayout
+    let size: ShareCardSize
 
     var body: some View {
         Group {
-            switch layout {
+            switch size {
             case .story: storyLayout
             case .square: squareLayout
             }
         }
-        .frame(width: layout.pointSize.width, height: layout.pointSize.height)
+        .frame(width: size.pointSize.width, height: size.pointSize.height)
         .background(ShareCardBackground())
     }
 
@@ -187,7 +187,7 @@ struct BadgeShareCardView: View {
 struct BadgeShareSheet: View {
     let status: BadgeStatus
 
-    @State private var layout: ShareCardLayout = .story
+    @State private var size: ShareCardSize = .story
     @State private var rendered: RenderedShareCard?
 
     var body: some View {
@@ -195,13 +195,13 @@ struct BadgeShareSheet: View {
             navigationTitle: "バッジをシェア",
             footnote: "画像にはバッジと入手条件、獲得した日だけが入ります。訪れた場所や時刻は入りません。",
             rendered: rendered,
-            layout: $layout
+            size: $size
         ) {
             EmptyView()
         }
-        .task(id: layout) {
+        .task(id: size) {
             let content = BadgeShareCardContent(status: status)
-            rendered = ShareCardRenderer.render(BadgeShareCardView(content: content, layout: layout), layout: layout)
+            rendered = ShareCardRenderer.render(BadgeShareCardView(content: content, size: size), size: size)
                 .map { RenderedShareCard(image: $0, message: content.shareText, title: "バッジ「\(content.name)」") }
         }
     }

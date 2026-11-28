@@ -24,6 +24,12 @@ struct MunicipalityDetailScreen: View {
     private let shareCardTip = MunicipalityShareCardTip()
     /// 案内を出すときに、ボタンの絵を一度だけ弾ませる。
     @State private var shareButtonBounce = 0
+    /// 右上の「カードにする」を絵だけに縮めているか(写真の枠より下まで読み進めたら縮める)。
+    @State private var isShareEntryCollapsed = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// 本文の上の余白。入口を縮めるスクロール量(`MunicipalityShareEntryCollapse.threshold`)にも使う。
+    private static let topPadding: CGFloat = 16
 
     /// 画面の左右の余白。カードのずらした影が端で切れないよう、影の分も含めて広めに取る。
     private static let horizontalPadding: CGFloat = 20
@@ -132,8 +138,20 @@ struct MunicipalityDetailScreen: View {
                 }
             }
             .padding(.horizontal, Self.horizontalPadding)
-            .padding(.top, 16)
+            .padding(.top, Self.topPadding)
             .padding(.bottom, 32)
+        }
+        .onScrollGeometryChange(for: Bool.self) { geometry in
+            MunicipalityShareEntryCollapse.isCollapsed(
+                contentOffsetY: geometry.contentOffset.y, topInset: geometry.contentInsets.top,
+                threshold: MunicipalityShareEntryCollapse.threshold(
+                    hasHero: target != nil, heroHeight: MunicipalityHeroView.height, topPadding: Self.topPadding
+                )
+            )
+        } action: { _, isCollapsed in
+            withAnimation(reduceMotion ? nil : .snappy(duration: 0.25)) {
+                isShareEntryCollapsed = isCollapsed
+            }
         }
         .background(Pop.paper.ignoresSafeArea())
         .navigationTitle(displayName)
@@ -169,7 +187,8 @@ struct MunicipalityDetailScreen: View {
     /// 市区町村のカード(訪れた街は初訪問、まだなら出せる最初の豆知識を選んで開く。種類はシェア画面で切り替えられる)と、
     /// 政令指定都市は区めぐりの地図をシェアできる。両方あるときはメニューで選ぶ。
     ///
-    /// 「画像のカードを作る」ことが伝わるよう、共有の矢印ではなくカードの絵にする。初めて見たときだけ案内を出す。
+    /// 「画像のカードを作る」ことが伝わるよう、共有の矢印ではなくカードの絵に「カードにする」を添え(1.8.0 (7))、
+    /// テーマ色のガラスのボタンにして目立たせる。読み進めたら絵だけに縮める。初めて見たときだけ案内を出す。
     @ViewBuilder
     private var toolbarShareButton: some View {
         let initialKind = shareSubject?.initialKind(preferred: .firstVisit)
@@ -185,6 +204,8 @@ struct MunicipalityDetailScreen: View {
             } label: {
                 shareCardLabel
             }
+            .buttonStyle(.glassProminent)
+            .tint(Pop.theme)
             .popoverTip(shareCardTip)
             .onAppear(perform: bounceIfTipShows)
         } else if let initialKind {
@@ -193,6 +214,8 @@ struct MunicipalityDetailScreen: View {
             } label: {
                 shareCardLabel
             }
+            .buttonStyle(.glassProminent)
+            .tint(Pop.theme)
             .popoverTip(shareCardTip)
             .onAppear(perform: bounceIfTipShows)
         } else if let designatedCity {
@@ -204,8 +227,7 @@ struct MunicipalityDetailScreen: View {
     }
 
     private var shareCardLabel: some View {
-        Label("カードにしてシェア", systemImage: "photo.on.rectangle.angled")
-            .symbolEffect(.bounce, options: .repeat(2), value: shareButtonBounce)
+        MunicipalityShareEntryLabel(isCollapsed: isShareEntryCollapsed, bounceTrigger: shareButtonBounce)
     }
 
     private func presentShare(_ share: DetailShare) {

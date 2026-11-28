@@ -23,7 +23,7 @@ struct FirstVisitCardPreview: View {
     /// シェア画面で最後に選んだ箱の見た目に合わせる(シェア画面を開いたときと同じカードにするため)。
     @AppStorage(ShareCardBoxStyle.storageKey) private var boxStyle: ShareCardBoxStyle = ShareCardBoxStyle.defaultStyle
 
-    private static let layout: ShareCardLayout = .square
+    private static let size: ShareCardSize = .square
     /// プレビューの高さ。お祝いのシートが縦に伸びすぎないよう抑える。
     private static let previewHeight: CGFloat = 190
 
@@ -39,7 +39,7 @@ struct FirstVisitCardPreview: View {
         )
         VStack(spacing: 10) {
             Button(action: openEditor) {
-                ShareCardPreview(rendered: rendered, layout: Self.layout)
+                ShareCardPreview(rendered: rendered, size: Self.size)
             }
             .buttonStyle(.plain)
             .frame(height: Self.previewHeight)
@@ -65,14 +65,11 @@ struct FirstVisitCardPreview: View {
         .task(id: RenderKey(content: content, isMapLoaded: isMapLoaded, hasBackdrop: snapshotStore.backdrop(for: snapshotKey) != nil, boxStyle: boxStyle)) {
             guard isMapLoaded else { return }
             let map = subject.target.map(in: store)
-            let view = FirstVisitShareCardView(
-                content: content, layout: Self.layout, photo: nil, map: map,
-                highlightedCodes: map.map(subject.target.highlightedCodes(in:)) ?? [],
-                backdrop: snapshotStore.backdrop(for: snapshotKey), boxStyle: boxStyle
+            let model = ShareCardModel(
+                subject: .firstVisit(content, map: map, highlightedCodes: map.map(subject.target.highlightedCodes(in:)) ?? []),
+                size: Self.size, backdrop: snapshotStore.backdrop(for: snapshotKey), boxStyle: boxStyle
             )
-            rendered = ShareCardRenderer.render(view, layout: Self.layout).map {
-                RenderedShareCard(image: $0, message: content.shareText, title: "\(subject.target.name) 初訪問")
-            }
+            rendered = ShareCardRenderer.render(model)
         }
     }
 
