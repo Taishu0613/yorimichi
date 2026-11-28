@@ -20,6 +20,8 @@ struct ShareMapCanvas: View {
     var cornerRadius: CGFloat = Pop.cornerRadius
     /// 写真の上に描くとき。未訪問は線だけにして写真を透かす(`backdrop`は使わない)。
     var isOverPhoto = false
+    /// 写真の上に描くときの形の描き方。箱の見た目に合わせる(`ShareCardBoxStyle.silhouetteStyle`)。
+    var overPhotoStyle: SilhouetteMapView.Style = .overPhoto
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -34,7 +36,7 @@ struct ShareMapCanvas: View {
                 }
                 SilhouetteMapView(
                     map: map, visitedCodes: visitedCodes, emphasizedCodes: emphasizedCodes, outlineWidth: outlineWidth,
-                    style: isOverPhoto ? .overPhoto : (backdrop == nil ? .solid : .overMap)
+                    style: isOverPhoto ? overPhotoStyle : (backdrop == nil ? .solid : .overMap)
                 )
                 .frame(width: contentRect.width, height: contentRect.height)
                 .offset(x: contentRect.minX, y: contentRect.minY)
@@ -63,22 +65,54 @@ struct ShareMapCanvas: View {
     }
 }
 
-/// 写真の上に描く地図。与えられた広さいっぱいに、縦横比を保って区画を塗る(本物の地図は敷かない)。
-struct ShareCardPhotoMap: View {
-    let map: SilhouetteMap?
-    let visitedCodes: Set<String>
-    var emphasizedCodes: Set<String> = []
-    var outlineWidth: CGFloat = 0.6
-    var placeholderSystemImage = "map.fill"
+/// 本物の地図だけを薄く敷く(形は描かない)。写真を敷くレイアウトで、写真がまだ無いときの背景にする。
+struct ShareMapBackdropView: View {
+    let backdrop: ShareMapBackdrop
+    let box: ShareCardMapBox
 
     var body: some View {
-        GeometryReader { proxy in
-            ShareMapCanvas(
-                map: map, visitedCodes: visitedCodes, emphasizedCodes: emphasizedCodes,
-                box: ShareCardMapBox(width: proxy.size.width, height: proxy.size.height, padding: 0, bottomPadding: 0),
-                backdrop: nil, outlineWidth: outlineWidth, placeholderSystemImage: placeholderSystemImage,
-                cornerRadius: 0, isOverPhoto: true
+        Image(uiImage: backdrop.main.image)
+            .resizable()
+            .frame(width: backdrop.main.frame.width, height: backdrop.main.frame.height)
+            .offset(x: backdrop.main.frame.minX, y: backdrop.main.frame.minY)
+            .frame(width: box.size.width, height: box.size.height, alignment: .topLeading)
+            .opacity(ShareMapSnapshotStore.mapOpacity)
+            .background(Color.white)
+            .clipped()
+    }
+}
+
+/// 小さな形(帯・余白・見出しに添える印)と、ステッカー・数字の形。与えられた広さに縦横比を保って収める。
+struct ShareCardShapeView: View {
+    let shape: ShareCardShape
+    var style: SilhouetteMapView.Style = .solid
+    /// 小さく描くときは縁取りを細くしすぎない(区画の隙間が見えないよう、最低でも0.5pt)。
+    var outlineWidth: CGFloat? = nil
+
+    var body: some View {
+        if let map = shape.map {
+            SilhouetteMapView(
+                map: map, visitedCodes: shape.filledCodes, emphasizedCodes: shape.emphasizedCodes,
+                outlineWidth: outlineWidth ?? max(shape.outlineWidth, 0.5), style: style
             )
+        } else {
+            Image(systemName: shape.placeholderSystemImage)
+                .resizable()
+                .scaledToFit()
+                .padding(4)
+                .foregroundStyle(style == .solid ? Pop.theme : Color.white)
+                .accessibilityHidden(true)
+        }
+    }
+}
+
+extension ShareCardBoxStyle {
+    /// 箱の見た目に合わせた形の描き方。白の線は写真の上の白い線、黒の線は明るい写真の上の黒い線。
+    var silhouetteStyle: SilhouetteMapView.Style {
+        switch self {
+        case .app: .solid
+        case .whiteLine: .overPhoto
+        case .blackLine: .overLightPhoto
         }
     }
 }

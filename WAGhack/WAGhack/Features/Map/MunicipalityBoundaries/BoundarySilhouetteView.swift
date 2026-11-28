@@ -20,6 +20,8 @@ struct SilhouetteMapView: View {
         /// 写真の上に重ねる(シェア用のカード)。未訪問は線だけにして写真を透かし、訪問済みだけを塗る。
         /// どんな色の写真でも形が分かるよう、白い線に薄い影を落とす。
         case overPhoto
+        /// 明るい写真の上(シェアの「黒の線」)。未訪問は黒い線だけにする。
+        case overLightPhoto
     }
 
     var body: some View {
@@ -52,6 +54,11 @@ struct SilhouetteMapView: View {
                         .opacity(0.88)
                 }
                 .shadow(color: .black.opacity(0.35), radius: 1.5, y: 0.5)
+            case .overLightPhoto:
+                ZStack {
+                    unvisited.stroke(Color.black.opacity(0.85), style: StrokeStyle(lineWidth: max(outlineWidth, 0.8), lineJoin: .round))
+                    outlined(visited, color: .teal)
+                }
             }
             if !emphasizedCodes.isEmpty {
                 let emphasized = SilhouetteShape(
@@ -77,6 +84,7 @@ struct SilhouetteMapView: View {
         case .solid: AnyShapeStyle(.secondary)
         case .overMap: AnyShapeStyle(Pop.border)
         case .overPhoto: AnyShapeStyle(Color.white.opacity(0.9))
+        case .overLightPhoto: AnyShapeStyle(Color.black.opacity(0.85))
         }
     }
 

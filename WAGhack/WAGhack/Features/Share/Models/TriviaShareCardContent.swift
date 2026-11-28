@@ -36,6 +36,30 @@ struct TriviaShareCardContent: Equatable {
         return "\(headline)\n\(ShareCardContent.appStoreURL.absoluteString)"
     }
 
+    /// 都市伝説か。伝説や噂話なので、カードには「※諸説あり」を添える。
+    var isLegend: Bool {
+        if case .legend = topic { return true }
+        return false
+    }
+
+    /// フォトのレイアウトに載せる一文(1.8.0 (7))。写真が主役なので本文は短くする。
+    /// みどころ・都市伝説は本文の最初の文(「。」まで)、この街でできることはスポットの名前と一言。
+    var leadSentence: String {
+        switch topic {
+        case .highlights(let text), .legend(let text):
+            return Self.firstSentence(of: text)
+        case .spot(let name, let line):
+            return line.isEmpty ? "「\(name)」" : "「\(name)」\(line)"
+        }
+    }
+
+    /// 最初の「。」までの文。「。」が無ければ全文。
+    static func firstSentence(of text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let end = trimmed.firstIndex(of: "。") else { return trimmed }
+        return String(trimmed[...end])
+    }
+
     /// 都市伝説の無い街のマスタに入っている決まり文句。これはカードにしても話のネタにならないので、シェアを出さない。
     static let noLegendSuffix = "には、特に有名な怪談・都市伝説はありません。"
 

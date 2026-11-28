@@ -25,35 +25,3 @@ extension View {
         }
     }
 }
-
-/// 写真を敷いたカードで、箱を上・真ん中・下に置く。
-///
-/// - 上・下: 箱と`filler`(地図のカードなら地図、ほかは空き)を縦に並べ、箱の無い側を`filler`に譲る。
-///   地図のカードで箱が地図に重ならないようにするため。
-/// - 真ん中: `filler`を全体に広げ、その上の真ん中に箱を置く。
-struct ShareCardBoxArrangement<Box: View, Filler: View>: View {
-    let position: ShareCardBoxPosition
-    var spacing: CGFloat = 12
-    @ViewBuilder let box: () -> Box
-    @ViewBuilder let filler: () -> Filler
-
-    var body: some View {
-        switch position {
-        case .top:
-            VStack(spacing: spacing) {
-                box()
-                filler().frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        case .middle:
-            ZStack {
-                filler().frame(maxWidth: .infinity, maxHeight: .infinity)
-                box()
-            }
-        case .bottom:
-            VStack(spacing: spacing) {
-                filler().frame(maxWidth: .infinity, maxHeight: .infinity)
-                box()
-            }
-        }
-    }
-}

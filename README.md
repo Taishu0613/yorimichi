@@ -547,10 +547,18 @@ MapKitはポリゴン1枚ごとに描画を持つため、枚数がそのまま�
 
 - **図鑑の入口に「カードにする」の文字**（`MunicipalityShareEntryLabel`）: 右上のボタンをカードの絵＋「カードにする」のカプセル（テーマ色の`.glassProminent`）にした。街の写真の枠（`MunicipalityHeroView.height`＋上の余白）より下まで読み進めたら絵だけに縮める（`MunicipalityShareEntryCollapse`、`onScrollGeometryChange`）。読み上げは「カードにしてシェア」のまま。初回の案内（TipKit）もそのまま。
 - **都道府県の「全国の都道府県」**（`PrefectureShareFocus`、`RegionShareCardContent.Kind.nationwidePrefecture`）: 都道府県のカードの「塗り」で「県内の市区町村 / 全国の都道府県」を切り替える。全国の都道府県は日本地図の訪れた都道府県を塗り、その県を黄色＋濃い縁取りで示す（`SilhouetteMapView.emphasizedCodes`）。見出しは「{県名}に来た！」（まだ訪れていない県は「次は{県名}へ」）、主役の数字は「47都道府県中 {n}」、添える数は都道府県の制覇率。共有文「{n}/47都道府県を訪れました({県名}も制覇) #よりみち」＋URL。
-- **レイアウトの仕組み**（`ShareCardLayout`／`ShareCardSubjectKind`）: 中身の種類（地図・初訪問・豆知識）ごとに選べるレイアウトと初めのレイアウトを決め、2つ以上あるときだけシェア画面に「レイアウト」を出す。最後に選んだものは地図のカードと街のカードで別々に覚える（`shareCardLayout.map`／`shareCardLayout.town`）。今は標準だけ（新しいレイアウトはユーザーと中身を決めてから足す）。
-- **シェアのコードの整理**: 1枚のカードを「中身（`ShareCardSubject`）＋見た目（レイアウト・形・写真・本物の地図・箱の見た目と位置）」の`ShareCardModel`で表し、`ShareCardCanvas`がレイアウトに応じて描き、`ShareCardRenderer.render(_:)`が画像と共有文にする。地図のカードと街のカードで別々だった描き分けは`ShareCardSubjectFactory`に集めた。型名`ShareCardLayout`（縦長・正方形）は`ShareCardSize`に変えた。`Features/Share`の並び:
-  - `Models/`: カードの中身と選択肢（`ShareCardModel`・`ShareCardLayout`・`ShareCardSize`・各カードの`…Content`・`ShareScope`・`MunicipalityShareSubject`・`ShareCardBoxStyle`・`ShareMilestone`）
-  - `Layouts/`: `ShareCardCanvas`（レイアウトの振り分け）と`Standard/`（全国・地域・初訪問・豆知識の標準のカード）
+- **レイアウト**（`ShareCardLayout`、`Layouts/`に1レイアウト1ファイル）: 使いみちごとの6つに置き換えた（これまでの「標準」は無くした。バッジのカードはそのまま）。どれも形・名前・数字1つ・小さなロゴだけにして、飾りは足さない。
+  - **フォト**（景色を見せる）: 写真を全面に、細い帯に小さな形・名前・短い一言（「初訪問」「制覇率 50.7%」）。帯は下が既定で、プレビューのタップで上と入れ替える。豆知識では帯に本文の最初の一文を添える（都市伝説は「※諸説あり」も）。
+  - **フォト・余白**（フィード向け）: 白い余白の中に写真、下の余白に小さな形・名前・数字1つ。
+  - **ステッカー**（ストーリーズで自分の写真に貼る）: 背景が透明なPNG（横900px、縦は中身の高さ）に形・名前・数字1つ。プレビューは市松模様の上。共有シートにはPNGのファイルで渡す（`UIImage`のままだと写真への保存でJPEGにされ透明が消えることがあるため）。見た目は白の線が既定で、カードの「箱の見た目」とは別に覚える（`shareCardBoxStyle.sticker`）。
+  - **数字**（制覇を自慢）: 主役の数字（「50.7%」「12/47」）を大きく、塗った形を中くらい、補足1行。写真は白で薄めて地に。
+  - **地図**（どこへ行ったか）: 塗った形をカードいっぱいに、見出しと数字は左上の小さな箱。地は写真か本物の地図。
+  - **読み物**（みどころ・都市伝説を読んでもらう）: 本文を大きく、見出しに名前と小さな形。写真は上に細い帯で（任意）。都市伝説は夜色＋「※諸説あり」、この街でできることはスポット名と一言。
+  - 選べるもの（先頭が初めのレイアウト）: 初訪問＝フォト・フォト・余白・ステッカー、豆知識＝読み物・フォト、都道府県（両方の塗り）・政令指定都市・全国＝数字・地図・フォト・ステッカー（`ShareCardSubjectKind.availableLayouts`）。最後に選んだものを種類ごとに覚え（`shareCardLayout.map`／`.firstVisit`／`.trivia`）、選べないものを覚えていたら初めのレイアウトにする。
+  - 写真が無いときのフォト・フォト・余白は、写真の代わりにその範囲の本物の地図を薄く敷き、シェア画面で写真を選ぶよう案内する。箱の見た目はフォト・ステッカー・地図でだけ選ぶ。初訪問のお祝いのプレビューはフォト（写真なし）の正方形。
+- **シェアのコードの整理**: 1枚のカードを「中身（`ShareCardSubject`）＋見た目（レイアウト・形・写真・本物の地図・箱の見た目と位置）」の`ShareCardModel`で表し、`ShareCardCanvas`がレイアウトに応じて描き、`ShareCardRenderer.render(_:)`が画像と共有文にする。どのレイアウトも中身の要約（`ShareCardSummary`: 名前・見出し・一言・数字1つ・形・豆知識の本文）だけで描くので、中身ごとの描き分けは無い。地図のカードと街のカードで別々だった描き分けは`ShareCardSubjectFactory`に集めた。型名`ShareCardLayout`（縦長・正方形）は`ShareCardSize`に変えた。`Features/Share`の並び:
+  - `Models/`: カードの中身と選択肢（`ShareCardModel`・`ShareCardSummary`・`ShareCardLayout`・`ShareCardSize`・各カードの`…Content`・`ShareScope`・`MunicipalityShareSubject`・`ShareCardBoxStyle`・`ShareMilestone`）
+  - `Layouts/`: `ShareCardCanvas`（レイアウトの振り分け）と6つのレイアウト（`PhotoCardLayout`・`PhotoMatCardLayout`・`StickerCardLayout`・`NumberCardLayout`・`MapCardLayout`・`ReadingCardLayout`）
   - `Components/`: カードとシェア画面の部品（地・アプリの印・箱・地図の描画・選択肢・骨組み・節目の知らせ）
   - `Screens/`: `ShareCardSheet`と`ShareCardSelection`（選択と中身の作り方）、バッジのシェア画面、初訪問のプレビュー
   - `Services/`: 画像にする（`ShareCardRenderer`）、本物の地図を撮る（`ShareMapSnapshot`）、共有シート（`ShareActivity`）

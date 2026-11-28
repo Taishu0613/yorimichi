@@ -18,13 +18,14 @@ enum ShareCardSheetEntry {
 /// - 範囲: 市区町村から開いたら「この街 / 愛知県 / 全国」、それ以外から開いたら「全国 / 都道府県 / 政令指定都市」。
 ///   どこから開いても同じ画面・同じ選択肢(写真・箱の見た目・形)で、範囲を変えても写真と箱の位置はそのまま残す。
 /// - この街: 初訪問・みどころ・都市伝説・この街でできることをセグメントで切り替える。
-/// - 写真: どのカードにも敷ける。写真があるときは本物の地図(Appleマップのスナップショット)を撮らない(ロゴも出ない)。
-///   写真の上の箱はプレビューをタップするたびに上→真ん中→下と動かせる。
-/// - 箱の見た目: アプリの色・白の線・黒の線。最後に選んだものを覚えておく(`ShareCardBoxStyle.storageKey`)。
+/// - 写真: ステッカー以外のカードに敷ける。写真があるときは本物の地図(Appleマップのスナップショット)を撮らない(ロゴも出ない)。
+///   フォトの帯はプレビューをタップするたびに上と下を入れ替える。
+/// - 箱の見た目: アプリの色・白の線・黒の線。箱のあるレイアウトだけで選ぶ。最後に選んだものを覚えておく
+///   (`ShareCardBoxStyle.storageKey`。ステッカーは`stickerStorageKey`で別に覚え、初めは白の線)。
 ///
 /// - 都道府県: 「県内の市区町村 / 全国の都道府県」を切り替える(1.8.0 (7))。全国の都道府県は日本地図でその県を強く示す。
-/// - レイアウト: 中身の種類ごとに選べるもの(`ShareCardSubjectKind.availableLayouts`)が2つ以上あるときだけ選ばせ、
-///   最後に選んだものを地図のカード・街のカードで別々に覚える(`ShareCardLayoutFamily`)。
+/// - レイアウト: 中身の種類(地図・初訪問・豆知識)ごとに選べるもの(`ShareCardSubjectKind.availableLayouts`)から選び、
+///   最後に選んだものを種類ごとに覚える(`ShareCardLayoutFamily`)。選べないものを覚えていたら、その種類の初めのレイアウトにする。
 ///
 /// 何を描くか(範囲・種類・塗り)は`ShareCardSelection`、その中身の作り方は`ShareCardSubjectFactory`、
 /// 見た目は`ShareCardModel`にまとめ、この画面は選択肢の並びと読み込みのきっかけだけを持つ。
@@ -70,15 +71,17 @@ struct ShareCardSheet: View {
     // MARK: どのカードにも共通
 
     @State private var size: ShareCardSize = .story
-    /// 最後に選んだレイアウト。地図のカードと街のカードで別々に覚える。
-    @AppStorage(ShareCardLayoutFamily.map.storageKey) private var mapLayout: ShareCardLayout = .standard
-    @AppStorage(ShareCardLayoutFamily.town.storageKey) private var townLayout: ShareCardLayout = .standard
+    /// 最後に選んだレイアウト。カードの種類(地図・初訪問・豆知識)ごとに覚える。覚えていなければ種類の初めのレイアウト。
+    @AppStorage(ShareCardLayoutFamily.map.storageKey) private var mapLayout: ShareCardLayout?
+    @AppStorage(ShareCardLayoutFamily.firstVisit.storageKey) private var firstVisitLayout: ShareCardLayout?
+    @AppStorage(ShareCardLayoutFamily.trivia.storageKey) private var triviaLayout: ShareCardLayout?
     @State private var photoItem: PhotosPickerItem?
     @State private var photo: UIImage?
     /// 写真を読み込めなかったときの案内。
     @State private var photoErrorMessage: String?
     @State private var boxPosition: ShareCardBoxPosition = .bottom
-    @AppStorage(ShareCardBoxStyle.storageKey) private var boxStyle: ShareCardBoxStyle = ShareCardBoxStyle.defaultStyle
+    @AppStorage(ShareCardBoxStyle.storageKey) private var cardBoxStyle: ShareCardBoxStyle = ShareCardBoxStyle.defaultStyle
+    @AppStorage(ShareCardBoxStyle.stickerStorageKey) private var stickerBoxStyle: ShareCardBoxStyle = ShareCardBoxStyle.stickerDefaultStyle
     @State private var rendered: RenderedShareCard?
 
     private let logger = Logger(subsystem: "com.wakasugi.yorimichi", category: "ShareCardSheet")
@@ -118,14 +121,18 @@ struct ShareCardSheet: View {
         let selection = makeSelection(candidates: candidates)
         let layout = selection.subjectKind.resolvedLayout(storedLayout(for: selection.subjectKind))
         let factory = factory
-        let backdropKey = factory.backdropKey(for: selection, size: size)
+        let boxStyle = layout.isTransparent ? stickerBoxStyle : cardBoxStyle
+        // ステッカーは写真を使わないので、選んであっても描かない(レイアウトを戻したら、また敷く)。
+        let cardPhoto = layout.usesPhoto ? photo : nil
+        let backdropKey = factory.backdropKey(for: selection, size: size, layout: layout)
         let isMapReady = factory.isMapReady(for: selection)
         ShareCardSheetScaffold(
             navigationTitle: navigationTitle,
-            footnote: footnote(for: selection),
+            footnote: footnote(for: selection, layout: layout),
             rendered: rendered,
             size: $size,
-            onTapPreview: layout.canMoveBox(hasPhoto: photo != nil) ? { boxPosition = boxPosition.next } : nil
+            showsSizePicker: layout.usesCardSize,
+            onTapPreview: layout.canMoveBox ? { boxPosition = boxPosition.next } : nil
         ) {
             scopeControls(candidates: candidates, summary: summary, target: selection.target)
             if selection.target == .town {
@@ -141,8 +148,16 @@ struct ShareCardSheet: View {
                 )
             }
             layoutControls(for: selection.subjectKind)
-            ShareCardPhotoControls(photoItem: $photoItem, photo: $photo, errorMessage: photoErrorMessage)
-            ShareCardSegmentedControl(title: "箱の見た目", selection: $boxStyle, options: ShareCardBoxStyle.allCases, label: \.title)
+            if layout.usesPhoto {
+                ShareCardPhotoControls(photoItem: $photoItem, photo: $photo, errorMessage: photoErrorMessage, expectsPhoto: layout.expectsPhoto)
+            }
+            if layout.usesBoxStyle {
+                ShareCardSegmentedControl(
+                    title: layout.isTransparent ? "見た目" : "箱の見た目",
+                    selection: layout.isTransparent ? $stickerBoxStyle : $cardBoxStyle,
+                    options: ShareCardBoxStyle.allCases, label: \.title
+                )
+            }
         }
         .task(id: townSubject?.target) {
             guard let townTarget = townSubject?.target else { return }
@@ -153,9 +168,9 @@ struct ShareCardSheet: View {
             guard let scope = selection.mapScope else { return }
             await loadMap(for: scope, summary: summary)
         }
-        // 写真を敷いている間は地図が見えないので撮らない。写真を外したら、その時の範囲・種類・形で撮る。
-        .task(id: BackdropRequest(key: backdropKey, isMapReady: isMapReady, needsMap: photo == nil)) {
-            guard photo == nil, let backdropKey, let map = factory.silhouetteMap(for: selection) else { return }
+        // 写真を敷いている間は地図が見えないので撮らない。写真を外したら、その時の範囲・レイアウト・形で撮る。
+        .task(id: BackdropRequest(key: backdropKey, isMapReady: isMapReady, needsMap: cardPhoto == nil)) {
+            guard cardPhoto == nil, let backdropKey, let map = factory.silhouetteMap(for: selection) else { return }
             await snapshotStore.loadBackdropIfNeeded(for: backdropKey, map: map)
         }
         .task(id: photoItem) { await loadPhoto() }
@@ -163,17 +178,17 @@ struct ShareCardSheet: View {
         .task(id: RenderKey(
             selection: selection, size: size, layout: layout, isMapReady: isMapReady,
             hasBackdrop: backdropKey.flatMap(snapshotStore.backdrop(for:)) != nil,
-            photoID: photo.map(ObjectIdentifier.init), boxStyle: boxStyle, boxPosition: boxPosition,
+            photoID: cardPhoto.map(ObjectIdentifier.init), boxStyle: boxStyle, boxPosition: boxPosition,
             visitedCount: summary.progress.visited, visitedPrefectureCount: summary.visitedPrefectureCount
         )) {
-            guard let subject = factory.subject(for: selection, summary: summary, hasPhoto: photo != nil) else {
+            guard let subject = factory.subject(for: selection, summary: summary, hasPhoto: cardPhoto != nil) else {
                 rendered = nil
                 return
             }
             let model = ShareCardModel(
-                subject: subject, layout: layout, size: size, photo: photo,
-                // 写真があるときは本物の地図を使わない(写真の上に塗りだけを描く)。
-                backdrop: photo == nil ? backdropKey.flatMap(snapshotStore.backdrop(for:)) : nil,
+                subject: subject, layout: layout, size: size, photo: cardPhoto,
+                // 写真があるときは本物の地図を使わない。
+                backdrop: cardPhoto == nil ? backdropKey.flatMap(snapshotStore.backdrop(for:)) : nil,
                 boxStyle: boxStyle, boxPosition: boxPosition
             )
             rendered = ShareCardRenderer.render(model)
@@ -185,15 +200,17 @@ struct ShareCardSheet: View {
         return "地図をシェア"
     }
 
-    private func footnote(for selection: ShareCardSelection) -> String {
-        switch selection.target {
+    private func footnote(for selection: ShareCardSelection, layout: ShareCardLayout) -> String {
+        let privacy = switch selection.target {
         case .region:
-            return "画像には塗った地図と件数だけが入ります。ピン・住所・訪れた日時、写真の位置情報は入りません。"
+            "画像には塗った地図と件数だけが入ります。ピン・住所・訪れた日時、写真の位置情報は入りません。"
         case .town where selection.townKind == .firstVisit:
-            return "画像には街の名前と、訪れた市区町村の数だけが入ります。訪れた日時や場所、写真の位置情報は入りません。"
+            "画像には街の名前と形、訪れた市区町村の数だけが入ります。訪れた日時や場所、写真の位置情報は入りません。"
         case .town:
-            return "画像には街の名前と形、選んだ話題だけが入ります。訪れた日時や場所、写真の位置情報は入りません。"
+            "画像には街の名前と形、選んだ話題だけが入ります。訪れた日時や場所、写真の位置情報は入りません。"
         }
+        guard layout.isTransparent else { return privacy }
+        return "背景が透明な画像(PNG)です。ストーリーズで自分の写真に重ねて使えます。" + privacy
     }
 
     // MARK: - 範囲
@@ -274,7 +291,7 @@ struct ShareCardSheet: View {
         }
     }
 
-    /// 選べるレイアウトが2つ以上あるときだけ出す。選んだものは、その種類の仲間(地図・街)の分として覚える。
+    /// 選べるレイアウトが2つ以上あるときだけ出す。選んだものは、その種類(地図・初訪問・豆知識)の分として覚える。
     @ViewBuilder
     private func layoutControls(for kind: ShareCardSubjectKind) -> some View {
         let layouts = kind.availableLayouts
@@ -284,7 +301,8 @@ struct ShareCardSheet: View {
                 set: { newValue in
                     switch kind.family {
                     case .map: mapLayout = newValue
-                    case .town: townLayout = newValue
+                    case .firstVisit: firstVisitLayout = newValue
+                    case .trivia: triviaLayout = newValue
                     }
                 }
             )
@@ -292,10 +310,11 @@ struct ShareCardSheet: View {
         }
     }
 
-    private func storedLayout(for kind: ShareCardSubjectKind) -> ShareCardLayout {
+    private func storedLayout(for kind: ShareCardSubjectKind) -> ShareCardLayout? {
         switch kind.family {
         case .map: mapLayout
-        case .town: townLayout
+        case .firstVisit: firstVisitLayout
+        case .trivia: triviaLayout
         }
     }
 

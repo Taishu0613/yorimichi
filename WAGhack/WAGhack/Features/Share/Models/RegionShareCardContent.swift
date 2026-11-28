@@ -92,24 +92,6 @@ struct RegionShareCardContent: Equatable {
         }
     }
 
-    /// 主役の数字の見出し。全国の都道府県は「47都道府県中」と数を主役にし、ほかは制覇率を主役にする。
-    var countCaption: String {
-        switch kind {
-        case .prefecture, .designatedCity: "制覇率"
-        case .nationwidePrefecture: "\(totalCount)都道府県中"
-        }
-    }
-
-    /// 主役の数字。全国の都道府県は訪れた都道府県の数、ほかは制覇率。
-    var primaryValueText: String {
-        kind == .nationwidePrefecture ? visitedCount.formatted() : percentageText
-    }
-
-    /// 主役の数字に添える数。全国の都道府県は制覇率、ほかは「30 / 54 市区町村」。
-    var secondaryValueText: String {
-        kind == .nationwidePrefecture ? "制覇率 \(percentageText)" : "\(visitedCount.formatted()) / \(totalCount.formatted()) \(unit)"
-    }
-
     /// 画像と一緒に共有する文。全国のカードと同じく、ハッシュタグとApp Storeのリンクを添える。
     var shareText: String {
         "\(shareHeadline)\n\(ShareCardContent.appStoreURL.absoluteString)"

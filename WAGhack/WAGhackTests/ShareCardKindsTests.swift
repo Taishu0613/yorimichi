@@ -183,7 +183,7 @@ struct ShareCardKindsTests {
     }
 }
 
-/// バッジ・豆知識・初訪問のカードの見本の画像を書き出す。ふだんのテストでは動かさない。
+/// バッジのカードの見本の画像を書き出す。ふだんのテストでは動かさない(地図・市区町村のカードの見本は`ShareCardLayoutSampleRenderer`)。
 ///
 /// `TEST_RUNNER_SHARE_CARD_SAMPLE_DIR=/path/to/dir xcodebuild test -only-testing:WAGhackTests/ShareCardKindsSampleRenderer ...`
 @MainActor
@@ -191,66 +191,11 @@ struct ShareCardKindsSampleRenderer {
     private static let outputDirectory = ProcessInfo.processInfo.environment["SHARE_CARD_SAMPLE_DIR"]
 
     @Test(.enabled(if: outputDirectory != nil))
-    func バッジ_豆知識_初訪問の見本の画像を書き出す() async throws {
+    func バッジの見本の画像を書き出す() throws {
         let directory = URL(fileURLWithPath: try #require(Self.outputDirectory))
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
-        // バッジ: 段階式のバッジをシルバーで獲得した架空の記録。
-        let definition = try #require(BadgeCatalog.all.first { $0.isTiered && $0.isAvailable })
-        let progress = BadgeProgress(definition: definition, value: definition.tiers[1])
-        let achievedAt = Calendar(identifier: .gregorian).date(from: DateComponents(year: 2026, month: 11, day: 20))
-        let status = BadgeStatus(
-            progress: progress,
-            achievement: BadgeAchievement(tierCount: 2, achievedAt: achievedAt, tierAchievedAt: achievedAt, announcedTierCount: 2)
-        )
-        let badge = BadgeShareCardContent(status: status)
-        for size in ShareCardSize.allCases {
-            try write(BadgeShareCardView(content: badge, size: size), size: size, name: "badge", in: directory)
-        }
-
-        // 豆知識(名古屋市のみどころ)と初訪問(名古屋市、写真なし)。名古屋市は区を集めた地図になる。
-        let (target, map) = try await Self.loadNagoya()
-        let snapshots = ShareMapSnapshotStore()
-
-        let trivia = TriviaShareCardContent(
-            municipalityName: "名古屋市", prefectureName: "愛知県", isVisited: true,
-            topic: .highlights("名古屋市は、愛知県の県庁所在地で、中部地方の中心となる大都市だ。1610年に徳川家康が名古屋城を築き、清須の町をまるごと移した「清須越し」で町ができた。久屋大通と若宮大通は、幅100mの広い道路だ。熱田神宮には、三種の神器の一つ、草薙剣が祀られている。人口は東京23区、横浜市、大阪市に次ぐ多さだ。名古屋城は市の中区にある。")
-        )
-        let legend = TriviaShareCardContent(
-            municipalityName: "名古屋市", prefectureName: "愛知県", isVisited: false,
-            topic: .legend("名古屋城の天守の金鯱は、何度も盗難にあった。1876年には鱗3枚がはがされ、1937年には北の鯱の鱗58枚から金が盗まれた。江戸時代には、盗賊の柿木金助が大凧に乗って天守に近づき、鯱の鱗を盗んだという話が作られ、歌舞伎でも演じられた。")
-        )
-        let firstVisit = FirstVisitShareCardContent(
-            municipalityName: "名古屋市", prefectureName: "愛知県", progress: ExplorationCount(visited: 124, total: 1_918)
-        )
-        for size in ShareCardSize.allCases {
-            let triviaKey = ShareMapSnapshotStore.Key(id: target.snapshotID, box: size == .story ? .triviaStory : .triviaSquare)
-            await snapshots.loadBackdropIfNeeded(for: triviaKey, map: map)
-            for (name, content) in [("trivia-nagoya-highlights", trivia), ("trivia-nagoya-legend", legend)] {
-                try write(TriviaStandardCard(
-                    content: content, size: size, map: map, highlightedCodes: target.highlightedCodes(in: map),
-                    backdrop: snapshots.backdrop(for: triviaKey)
-                ), size: size, name: name, in: directory)
-            }
-
-            let firstVisitKey = ShareMapSnapshotStore.Key(id: target.snapshotID, box: size == .story ? .firstVisitStory : .firstVisitSquare)
-            await snapshots.loadBackdropIfNeeded(for: firstVisitKey, map: map)
-            try write(FirstVisitStandardCard(
-                content: firstVisit, size: size, photo: nil, map: map, highlightedCodes: target.highlightedCodes(in: map),
-                backdrop: snapshots.backdrop(for: firstVisitKey)
-            ), size: size, name: "first-visit-nagoya", in: directory)
-        }
-    }
-
-    /// 市区町村のシェア画面のカード(みどころ・都市伝説・この街でできること、写真あり・なし)と、入手条件入りのバッジ。
-    /// 写真は`SHARE_CARD_SAMPLE_PHOTO`(画像のパス)で渡す。渡さなければ写真ありの見本は作らない。
-    @Test(.enabled(if: outputDirectory != nil))
-    func 市区町村の切り替えカードと入手条件入りのバッジの見本の画像を書き出す() async throws {
-        let directory = URL(fileURLWithPath: try #require(Self.outputDirectory))
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let photo = ProcessInfo.processInfo.environment["SHARE_CARD_SAMPLE_PHOTO"].flatMap { UIImage(contentsOfFile: $0) }
-
-        // バッジ: 足あとコレクターをゴールドで獲得した架空の記録と、補足付きの条件を持つ都会にこんにちは。
+        // 足あとコレクターをゴールドで獲得した架空の記録と、補足付きの条件を持つ都会にこんにちは。
         for (id, tierCount) in [(BadgeID.footprintCollector, 3), (.helloMetropolis, 1)] {
             let definition = try #require(BadgeCatalog.all.first { $0.id == id })
             let achievedAt = Calendar(identifier: .gregorian).date(from: DateComponents(year: 2026, month: 11, day: 20))
@@ -260,61 +205,11 @@ struct ShareCardKindsSampleRenderer {
             )
             let badge = BadgeShareCardContent(status: status)
             for size in ShareCardSize.allCases {
-                try write(BadgeShareCardView(content: badge, size: size), size: size, name: "badge-condition-\(id.rawValue)", in: directory)
+                let image = try #require(ShareCardRenderer.render(BadgeShareCardView(content: badge, size: size), size: size))
+                #expect(image.size.width * image.scale == size.pixelSize.width)
+                let data = try #require(image.pngData())
+                try data.write(to: directory.appendingPathComponent("share-card-badge-\(id.rawValue)-\(size.rawValue).png"))
             }
         }
-
-        let (target, map) = try await Self.loadNagoya()
-        let snapshots = ShareMapSnapshotStore()
-        let topics: [(String, TriviaShareCardContent.Topic)] = [
-            ("highlights", .highlights("名古屋市は、愛知県の県庁所在地で、中部地方の中心となる大都市だ。1610年に徳川家康が名古屋城を築き、清須の町をまるごと移した「清須越し」で町ができた。久屋大通と若宮大通は、幅100mの広い道路だ。熱田神宮には、三種の神器の一つ、草薙剣が祀られている。")),
-            ("legend", .legend("名古屋城の天守の金鯱は、何度も盗難にあった。1876年には鱗3枚がはがされ、1937年には北の鯱の鱗58枚から金が盗まれた。江戸時代には、盗賊の柿木金助が大凧に乗って天守に近づき、鯱の鱗を盗んだという話が作られた。")),
-            ("spots", .spot(name: "名古屋城", line: "金の鯱がのる天守と、復元された本丸御殿の豪華なふすま絵を見られる。")),
-        ]
-        for size in ShareCardSize.allCases {
-            let key = ShareMapSnapshotStore.Key(id: target.snapshotID, box: size == .story ? .triviaStory : .triviaSquare)
-            await snapshots.loadBackdropIfNeeded(for: key, map: map)
-            for (name, topic) in topics {
-                let content = TriviaShareCardContent(municipalityName: "名古屋市", prefectureName: "愛知県", isVisited: true, topic: topic)
-                try write(TriviaStandardCard(
-                    content: content, size: size, map: map, highlightedCodes: target.highlightedCodes(in: map),
-                    backdrop: snapshots.backdrop(for: key)
-                ), size: size, name: "municipality-nagoya-\(name)", in: directory)
-                if let photo {
-                    try write(TriviaStandardCard(
-                        content: content, size: size, map: nil, highlightedCodes: [], photo: photo
-                    ), size: size, name: "municipality-nagoya-\(name)-photo", in: directory)
-                }
-            }
-            if let photo {
-                let firstVisit = FirstVisitShareCardContent(
-                    municipalityName: "名古屋市", prefectureName: "愛知県", progress: ExplorationCount(visited: 124, total: 1_918)
-                )
-                try write(FirstVisitStandardCard(
-                    content: firstVisit, size: size, photo: photo, map: nil, highlightedCodes: []
-                ), size: size, name: "municipality-nagoya-first-visit-photo", in: directory)
-            }
-        }
-    }
-
-    /// 名古屋市(区を集めた地図)を読み込む。
-    private static func loadNagoya() async throws -> (ShareMunicipalityTarget, SilhouetteMap) {
-        let store = SilhouetteMapStore()
-        let repository = BoundaryRepository.bundled()
-        let manifest = try await repository.loadManifest()
-        let wards = try await repository.boundaries(
-            in: manifest.files(in: .municipalities, lod: 2, prefectureCode: "23"),
-            pieceFilter: BoundaryPieceFilter(visibleWidthMeters: 100_000)
-        ).map(\.code).filter { $0.hasPrefix("231") && $0 != "23100" }
-        let target = ShareMunicipalityTarget(code: "23100", name: "名古屋市", prefectureName: "愛知県", wardCodes: Set(wards))
-        await target.loadMap(in: store)
-        return (target, try #require(target.map(in: store)))
-    }
-
-    private func write(_ view: some View, size: ShareCardSize, name: String, in directory: URL) throws {
-        let image = try #require(ShareCardRenderer.render(view, size: size))
-        #expect(image.size.width * image.scale == size.pixelSize.width)
-        let data = try #require(image.pngData())
-        try data.write(to: directory.appendingPathComponent("share-card-\(name)-\(size.rawValue).png"))
     }
 }

@@ -8,18 +8,21 @@ import UIKit
 struct ShareCardModel {
     let subject: ShareCardSubject
     /// 描くレイアウト。シェア画面で、中身の種類で選べるもの(`ShareCardSubjectKind.resolvedLayout`)にしてから渡す。
-    var layout: ShareCardLayout = .standard
+    var layout: ShareCardLayout
+    /// 縦長・正方形。ステッカーでは使わない(中身の大きさで書き出す)。
     var size: ShareCardSize
-    /// カードいっぱいに敷く写真。
+    /// カードに敷く写真。
     var photo: UIImage? = nil
-    /// 地図の下に薄く敷く本物の地図。撮れるまで・撮れなかったときはnilで、図形だけで描く。
+    /// 写真の代わりに薄く敷く本物の地図。撮れるまで・撮れなかったときはnilで、水玉の地にする。
     var backdrop: ShareMapBackdrop? = nil
     var boxStyle: ShareCardBoxStyle = .app
-    /// 写真の上の箱の位置(`ShareCardLayout.canMoveBox`のときだけ使う)。
+    /// フォトの帯の位置。
     var boxPosition: ShareCardBoxPosition = .bottom
+
+    var summary: ShareCardSummary { subject.summary }
 }
 
-/// カードの中身。標準のレイアウトでは、中身ごとに専用のカード(`Layouts/Standard`)で描く。
+/// カードの中身。どのレイアウトも、ここから作る要約(`ShareCardSummary`)で描く。
 enum ShareCardSubject {
     /// 全国の地図。
     case japan(ShareCardContent, fill: ShareCardFill, maps: ShareCardMaps)
@@ -57,16 +60,6 @@ enum ShareCardSubject {
         case .trivia(let content, _, _): "\(content.municipalityName)の\(content.title)"
         }
     }
-
-    /// 地図。本物の地図を撮る範囲を決めるのに使う。
-    var map: SilhouetteMap? {
-        switch self {
-        case .japan(_, let fill, let maps): fill == .municipalities ? maps.municipalityMap : maps.prefectureMap
-        case .region(_, let map): map
-        case .firstVisit(_, let map, _): map
-        case .trivia(_, let map, _): map
-        }
-    }
 }
 
 /// 共有するカード。画像と、一緒に共有する文・共有シートの見出し。
@@ -74,4 +67,6 @@ struct RenderedShareCard {
     let image: UIImage
     let message: String
     let title: String
+    /// 背景が透明な画像(ステッカー)か。透明な画像はPNGのファイルとして共有する(写真に保存しても透明のまま残すため)。
+    var isTransparent = false
 }

@@ -4,6 +4,7 @@ import SwiftUI
 ///
 /// 1.8.0 (4)への声「アプリのテーマとは別に、白の線で背景を透明にした版や、その黒版も欲しい」を受けて足した(1.8.0 (5))。
 /// 写真を敷いたときに写真を隠さないための選択肢で、写真の明るさで白と黒を選び分けてもらう。
+/// 1.8.0 (7)からは、箱(帯)のあるレイアウト(フォト・ステッカー・地図)で使う(`ShareCardLayout.usesBoxStyle`)。
 /// 最後に選んだものを覚えておく(`storageKey`)。値はUserDefaultsに残るので、`rawValue`は変えないこと。
 enum ShareCardBoxStyle: String, CaseIterable, Identifiable, Hashable {
     /// これまでどおり、白い箱にテーマ色の枠とずらした影。
@@ -27,6 +28,11 @@ enum ShareCardBoxStyle: String, CaseIterable, Identifiable, Hashable {
     static let storageKey = "shareCardBoxStyle"
     /// 初めてシェアするときの見た目。
     static let defaultStyle: ShareCardBoxStyle = .app
+    /// ステッカー(背景が透明なPNG)の見た目は別に覚える(1.8.0 (7))。ストーリーズで自分の写真の上に重ねるので、
+    /// どんな写真でも読める白の線を初めの見た目にする。カードの見た目と分けるのは、ステッカーを作るたびに
+    /// カードの見た目まで変わってしまわないようにするため。
+    static let stickerStorageKey = "shareCardBoxStyle.sticker"
+    static let stickerDefaultStyle: ShareCardBoxStyle = .whiteLine
 
     /// 箱の中の主な文字の色。`app`のときは呼び出し側の色(ふだんは`Pop.ink`)。
     func primary(_ appColor: Color = Pop.ink) -> Color {
@@ -62,28 +68,18 @@ enum ShareCardBoxStyle: String, CaseIterable, Identifiable, Hashable {
     }
 }
 
-/// 写真(や地図)の上に置いた箱の位置。プレビューをタップするたびに上→真ん中→下→上と変える。
+/// フォトのレイアウトの帯の位置。プレビューをタップするたびに上と下を入れ替える(1.8.0 (7)。それまでの真ん中は無くした)。
 ///
 /// シェア画面を開いている間だけ持ち、種類や範囲を切り替えても同じ位置にする(覚えておくのは見た目だけ)。
 nonisolated enum ShareCardBoxPosition: String, CaseIterable, Hashable {
     case top
-    case middle
     case bottom
 
     /// タップしたときの次の位置。
     var next: ShareCardBoxPosition {
         switch self {
-        case .top: .middle
-        case .middle: .bottom
+        case .top: .bottom
         case .bottom: .top
-        }
-    }
-
-    var title: String {
-        switch self {
-        case .top: "上"
-        case .middle: "真ん中"
-        case .bottom: "下"
         }
     }
 }

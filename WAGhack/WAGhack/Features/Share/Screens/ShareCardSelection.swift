@@ -72,25 +72,20 @@ struct ShareCardSubjectFactory {
         }
     }
 
-    /// 本物の地図は範囲とカードの地図の枠(形・種類で変わる)ごとに撮る。豆知識は見出しの下の枠、初訪問はカード全体に敷く。
-    func backdropKey(for selection: ShareCardSelection, size: ShareCardSize) -> ShareMapSnapshotStore.Key? {
-        let isStory = size == .story
+    /// 本物の地図は範囲とレイアウトの枠(`ShareCardMapBox.backdropBox`)ごとに撮る。本物の地図を敷かないレイアウトはnil。
+    func backdropKey(for selection: ShareCardSelection, size: ShareCardSize, layout: ShareCardLayout) -> ShareMapSnapshotStore.Key? {
+        guard let box = ShareCardMapBox.backdropBox(for: layout, size: size) else { return nil }
         switch selection.target {
         case .town:
             guard let townSubject else { return nil }
-            let box: ShareCardMapBox = switch selection.townKind {
-            case .firstVisit: isStory ? .firstVisitStory : .firstVisitSquare
-            case .highlights, .legend, .spots: isStory ? .triviaStory : .triviaSquare
-            }
             return ShareMapSnapshotStore.Key(id: townSubject.target.snapshotID, box: box)
         case .region(.japan):
-            return ShareMapSnapshotStore.Key(id: "japan", box: isStory ? .japanStory : .japanSquare)
+            return ShareMapSnapshotStore.Key(id: "japan", box: box)
         case .region(.prefecture(let code)):
-            // 全国の都道府県は日本地図を、都道府県のカードの枠で撮る(全国のカードとは枠が違うので別に撮る)。
-            let id = selection.isNationwidePrefecture ? "japan" : "prefecture-\(code)"
-            return ShareMapSnapshotStore.Key(id: id, box: isStory ? .regionStory : .regionSquare)
+            // 全国の都道府県は日本地図(全国のカードと同じ範囲)で撮る。
+            return ShareMapSnapshotStore.Key(id: selection.isNationwidePrefecture ? "japan" : "prefecture-\(code)", box: box)
         case .region(.designatedCity(let code)):
-            return ShareMapSnapshotStore.Key(id: "city-\(code)", box: isStory ? .regionStory : .regionSquare)
+            return ShareMapSnapshotStore.Key(id: "city-\(code)", box: box)
         }
     }
 

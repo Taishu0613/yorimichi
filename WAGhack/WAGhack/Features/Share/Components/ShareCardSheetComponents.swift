@@ -11,6 +11,8 @@ struct ShareCardSheetScaffold<Controls: View>: View {
     let footnote: String
     let rendered: RenderedShareCard?
     @Binding var size: ShareCardSize
+    /// 縦長・正方形を選ばせるか。ステッカー(中身の大きさで書き出す)では出さない。
+    var showsSizePicker = true
     /// プレビューをタップしたときの操作(写真の上の箱を動かす)。nilならタップできず、案内も出さない。
     var onTapPreview: (() -> Void)? = nil
     @ViewBuilder let controls: () -> Controls
@@ -25,18 +27,20 @@ struct ShareCardSheetScaffold<Controls: View>: View {
                         ShareCardPreview(rendered: rendered, size: size, onTap: onTapPreview)
                         if onTapPreview != nil {
                             // 画像には入れず、プレビューの下にだけ出す。
-                            Label("タップで位置を変更", systemImage: "hand.tap")
+                            Label("タップで帯を上・下に移動", systemImage: "hand.tap")
                                 .font(.footnote.weight(.semibold))
                                 .foregroundStyle(Pop.muted)
                         }
                     }
                     VStack(alignment: .leading, spacing: 14) {
                         controls()
-                        ShareCardLabeledControl("形") {
-                            Picker("形", selection: $size) {
-                                ForEach(ShareCardSize.allCases) { Text($0.title).tag($0) }
+                        if showsSizePicker {
+                            ShareCardLabeledControl("形") {
+                                Picker("形", selection: $size) {
+                                    ForEach(ShareCardSize.allCases) { Text($0.title).tag($0) }
+                                }
+                                .pickerStyle(.segmented)
                             }
-                            .pickerStyle(.segmented)
                         }
                     }
                     PopFootnote(footnote)
@@ -58,6 +62,7 @@ struct ShareCardSheetScaffold<Controls: View>: View {
 }
 
 /// 共有する画像のプレビュー。縦長でも画面に収まるよう高さを抑え、形の違いは縦横比で見せる。
+/// 背景が透明な画像(ステッカー)は、透明なところが分かるよう市松模様の上に、画像そのものの縦横比で出す。
 struct ShareCardPreview: View {
     let rendered: RenderedShareCard?
     let size: ShareCardSize
@@ -65,13 +70,20 @@ struct ShareCardPreview: View {
     /// タップしたときの操作。nilならただの画像。
     var onTap: (() -> Void)? = nil
 
+    private var aspectRatio: CGFloat {
+        if let rendered, rendered.isTransparent, rendered.image.size.height > 0 {
+            return rendered.image.size.width / rendered.image.size.height
+        }
+        return size.pixelSize.width / size.pixelSize.height
+    }
+
     var body: some View {
         Group {
             if let rendered {
                 if let onTap {
                     Button(action: onTap) { image(rendered) }
                         .buttonStyle(.plain)
-                        .accessibilityHint("箱の位置を上・真ん中・下の順に変えます")
+                        .accessibilityHint("帯の位置を上と下で入れ替えます")
                 } else {
                     image(rendered)
                 }
@@ -81,7 +93,7 @@ struct ShareCardPreview: View {
                     .background(Pop.themeTint, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
         }
-        .aspectRatio(size.pixelSize.width / size.pixelSize.height, contentMode: .fit)
+        .aspectRatio(aspectRatio, contentMode: .fit)
         .frame(maxHeight: 440)
         .frame(maxWidth: .infinity)
         .animation(.easeOut(duration: 0.2), value: size)
@@ -92,10 +104,33 @@ struct ShareCardPreview: View {
         return Image(uiImage: rendered.image)
             .resizable()
             .scaledToFit()
+            .background {
+                if rendered.isTransparent { CheckerboardBackground() }
+            }
             .clipShape(shape)
             .overlay(shape.stroke(Pop.border, lineWidth: 1))
-            .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
-            .accessibilityLabel("シェアする画像のプレビュー")
+            .shadow(color: .black.opacity(rendered.isTransparent ? 0 : 0.12), radius: 10, y: 4)
+            .accessibilityLabel(rendered.isTransparent ? "背景が透明なステッカーのプレビュー" : "シェアする画像のプレビュー")
+    }
+}
+
+/// 透明なところを示す市松模様(画像編集アプリと同じ見せ方)。プレビューにだけ使い、画像には入れない。
+struct CheckerboardBackground: View {
+    var squareSize: CGFloat = 10
+
+    var body: some View {
+        Canvas { context, size in
+            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Color(white: 0.97)))
+            let columns = Int((size.width / squareSize).rounded(.up))
+            let rows = Int((size.height / squareSize).rounded(.up))
+            for row in 0..<rows {
+                for column in 0..<columns where (row + column).isMultiple(of: 2) {
+                    let rect = CGRect(x: CGFloat(column) * squareSize, y: CGFloat(row) * squareSize, width: squareSize, height: squareSize)
+                    context.fill(Path(rect), with: .color(Color(white: 0.84)))
+                }
+            }
+        }
+        .accessibilityHidden(true)
     }
 }
 

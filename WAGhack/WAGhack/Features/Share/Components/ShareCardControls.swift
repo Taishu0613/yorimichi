@@ -90,15 +90,25 @@ struct ShareCardPhotoControls: View {
     @Binding var photo: UIImage?
     /// 写真を読み込めなかったときの案内。
     let errorMessage: String?
+    /// 写真が主役のレイアウト(フォト・フォト・余白)か。写真がまだ無ければ選ぶよう案内し、ボタンを目立たせる。
+    var expectsPhoto = false
 
     var body: some View {
         ShareCardLabeledControl("背景") {
             HStack(spacing: 10) {
-                PhotosPicker(selection: $photoItem, matching: .images) {
-                    Label(photo == nil ? "写真を選ぶ" : "写真を変える", systemImage: "photo")
+                if expectsPhoto, photo == nil {
+                    PhotosPicker(selection: $photoItem, matching: .images) {
+                        Label("写真を選ぶ", systemImage: "photo")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Pop.theme)
+                } else {
+                    PhotosPicker(selection: $photoItem, matching: .images) {
+                        Label(photo == nil ? "写真を選ぶ" : "写真を変える", systemImage: "photo")
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(Pop.theme)
                 }
-                .buttonStyle(.bordered)
-                .tint(Pop.theme)
                 if photo != nil {
                     Button("写真を外す", systemImage: "xmark.circle") {
                         photoItem = nil
@@ -107,6 +117,12 @@ struct ShareCardPhotoControls: View {
                     .buttonStyle(.bordered)
                     .tint(Pop.muted)
                 }
+            }
+            if expectsPhoto, photo == nil {
+                // 写真が無い間は、その範囲の本物の地図を薄く敷いて描いている。
+                Text("写真を選ぶと、写真が主役のカードになります(今は地図を敷いています)")
+                    .font(.footnote)
+                    .foregroundStyle(Pop.muted)
             }
             if let errorMessage {
                 Text(errorMessage)

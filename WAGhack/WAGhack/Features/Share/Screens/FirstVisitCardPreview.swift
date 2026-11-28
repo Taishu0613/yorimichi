@@ -24,12 +24,14 @@ struct FirstVisitCardPreview: View {
     @AppStorage(ShareCardBoxStyle.storageKey) private var boxStyle: ShareCardBoxStyle = ShareCardBoxStyle.defaultStyle
 
     private static let size: ShareCardSize = .square
+    /// 初訪問の初めのレイアウト(フォト)。写真はまだ無いので、その街の本物の地図を薄く敷き、下の帯に形と名前を載せる。
+    private static let layout = ShareCardSubjectKind.firstVisit.defaultLayout
     /// プレビューの高さ。お祝いのシートが縦に伸びすぎないよう抑える。
     private static let previewHeight: CGFloat = 190
 
     private var store: SilhouetteMapStore { environmentStore ?? fallbackStore }
     private var snapshotKey: ShareMapSnapshotStore.Key {
-        ShareMapSnapshotStore.Key(id: subject.target.snapshotID, box: .firstVisitSquare)
+        ShareMapSnapshotStore.Key(id: subject.target.snapshotID, box: ShareCardMapBox.backdropBox(for: Self.layout, size: Self.size) ?? .photoSquare)
     }
 
     var body: some View {
@@ -67,7 +69,7 @@ struct FirstVisitCardPreview: View {
             let map = subject.target.map(in: store)
             let model = ShareCardModel(
                 subject: .firstVisit(content, map: map, highlightedCodes: map.map(subject.target.highlightedCodes(in:)) ?? []),
-                size: Self.size, backdrop: snapshotStore.backdrop(for: snapshotKey), boxStyle: boxStyle
+                layout: Self.layout, size: Self.size, backdrop: snapshotStore.backdrop(for: snapshotKey), boxStyle: boxStyle
             )
             rendered = ShareCardRenderer.render(model)
         }

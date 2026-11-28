@@ -10,13 +10,17 @@ import os
 /// 下の余白を広めに取るのは、スナップショットの左下に入るAppleマップのロゴ(帰属表示)に塗りを重ねないため。
 nonisolated struct ShareCardMapBox: Hashable, Sendable {
     let size: CGSize
+    /// 左右の余白。
     let padding: CGFloat
+    /// 上の余白。見出しを上に置くレイアウトでは広めに取る。
+    let topPadding: CGFloat
     /// 下の余白。左下のAppleマップのロゴ(下端から約8〜22pt)より上にシルエットを収める。
     let bottomPadding: CGFloat
 
-    init(width: CGFloat, height: CGFloat, padding: CGFloat, bottomPadding: CGFloat? = nil) {
+    init(width: CGFloat, height: CGFloat, padding: CGFloat, topPadding: CGFloat? = nil, bottomPadding: CGFloat? = nil) {
         size = CGSize(width: width, height: height)
         self.padding = padding
+        self.topPadding = topPadding ?? padding
         self.bottomPadding = bottomPadding ?? max(padding, Self.attributionClearance)
     }
 
@@ -26,26 +30,35 @@ nonisolated struct ShareCardMapBox: Hashable, Sendable {
     /// シルエットを描く範囲(枠の左上が原点)。内側の余白の中に、地図の縦横比で中央に収める。
     func contentRect(aspectRatio: CGFloat) -> CGRect {
         let inner = CGRect(
-            x: padding, y: padding,
-            width: max(size.width - padding * 2, 1), height: max(size.height - padding - bottomPadding, 1)
+            x: padding, y: topPadding,
+            width: max(size.width - padding * 2, 1), height: max(size.height - topPadding - bottomPadding, 1)
         )
         return inner.fitted(aspectRatio: aspectRatio)
     }
 
-    // MARK: - カードごとの枠(カードのレイアウトと同じ値。変えるときは両方そろえる)
+    // MARK: - レイアウトごとの枠(レイアウトのViewと同じ値。変えるときは両方そろえる)
 
-    /// 全国のカード。縦長は横幅いっぱい(360 - 左右24×2)。
-    static let japanStory = ShareCardMapBox(width: 312, height: 290, padding: 12)
-    static let japanSquare = ShareCardMapBox(width: 176, height: 236, padding: 8)
-    /// 都道府県・政令指定都市のカード。
-    static let regionStory = ShareCardMapBox(width: 312, height: 300, padding: 14)
-    static let regionSquare = ShareCardMapBox(width: 186, height: 236, padding: 10)
-    /// 豆知識のカード。
-    static let triviaStory = ShareCardMapBox(width: 312, height: 210, padding: 16)
-    static let triviaSquare = ShareCardMapBox(width: 120, height: 104, padding: 8, bottomPadding: 22)
-    /// 初訪問のカード(写真なし)。カード全体に地図を敷き、下半分のパネルより上に市区町村を描く。
-    static let firstVisitStory = ShareCardMapBox(width: 360, height: 640, padding: 48, bottomPadding: 350)
-    static let firstVisitSquare = ShareCardMapBox(width: 360, height: 360, padding: 20, bottomPadding: 222)
+    /// 本物の地図を敷く枠。写真を敷くレイアウトで写真が無いときと、地図のレイアウトで使う。
+    /// 数字・ステッカー・読み物は本物の地図を敷かない(nil)。
+    static func backdropBox(for layout: ShareCardLayout, size: ShareCardSize) -> ShareCardMapBox? {
+        let isStory = size == .story
+        switch layout {
+        case .photo: return isStory ? .photoStory : .photoSquare
+        case .photoMat: return isStory ? .photoMatStory : .photoMatSquare
+        case .map: return isStory ? .mapStory : .mapSquare
+        case .sticker, .number, .reading: return nil
+        }
+    }
+
+    /// フォト(写真の代わり)。カード全体に敷き、下の帯より上に範囲が来るようにする。
+    static let photoStory = ShareCardMapBox(width: 360, height: 640, padding: 36, topPadding: 90, bottomPadding: 200)
+    static let photoSquare = ShareCardMapBox(width: 360, height: 360, padding: 24, topPadding: 28, bottomPadding: 100)
+    /// フォト・余白(写真の代わり)。白い余白の内側の写真の枠(`PhotoMatCardLayout.photoFrame`)。
+    static let photoMatStory = ShareCardMapBox(width: 320, height: 424, padding: 28)
+    static let photoMatSquare = ShareCardMapBox(width: 324, height: 270, padding: 22)
+    /// 地図。カード全体に敷き、上の見出しと下のロゴの間に形を大きく描く。
+    static let mapStory = ShareCardMapBox(width: 360, height: 640, padding: 20, topPadding: 150, bottomPadding: 120)
+    static let mapSquare = ShareCardMapBox(width: 360, height: 360, padding: 16, topPadding: 84, bottomPadding: 48)
 }
 
 /// スナップショットを撮る範囲と、撮れた画像を置く位置の計算。状態を持たない純粋な計算なので単体テストできる。

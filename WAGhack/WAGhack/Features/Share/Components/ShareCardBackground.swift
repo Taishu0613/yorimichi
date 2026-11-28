@@ -69,3 +69,53 @@ struct ShareCardPhotoBackground: View {
             .clipped()
     }
 }
+
+/// 写真を敷くレイアウトの地。写真があれば写真、無ければ本物の地図を薄く(撮れるまでは水玉の地)。
+struct ShareCardPhotoOrMapBackground: View {
+    let photo: UIImage?
+    let backdrop: ShareMapBackdrop?
+    /// 本物の地図を撮った枠(`ShareCardMapBox.backdropBox`)。
+    let box: ShareCardMapBox?
+    let size: CGSize
+
+    var body: some View {
+        if let photo {
+            ShareCardPhotoBackground(photo: photo, size: size)
+        } else if let backdrop, let box {
+            ShareMapBackdropView(backdrop: backdrop, box: box)
+        } else {
+            ShareCardBackground()
+        }
+    }
+}
+
+/// カードの縁の余白。縦長はストーリーズの上下に重なるアプリの表示(上約60pt・下約83pt)に文字を掛けない。
+/// 正方形の下は、本物の地図の左下に入るAppleマップのロゴ(下端から約8〜22pt)に掛けない。
+enum ShareCardInsets {
+    static func of(_ size: ShareCardSize) -> EdgeInsets {
+        switch size {
+        case .story: EdgeInsets(top: 64, leading: 24, bottom: 96, trailing: 24)
+        case .square: EdgeInsets(top: 20, leading: 20, bottom: 32, trailing: 20)
+        }
+    }
+}
+
+/// 帯や余白の端に添える小さなアプリの印(アイコンと名前)。箱の見た目に合わせて名前の色を変える。
+struct ShareCardLogoMark: View {
+    var size: CGFloat = 20
+    var color: Color = Pop.ink
+
+    var body: some View {
+        HStack(spacing: size * 0.25) {
+            Image("LaunchLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+            Text("よりみち")
+                .font(.system(size: size * 0.55, weight: .black, design: .rounded))
+                .foregroundStyle(color)
+                .fixedSize()
+        }
+    }
+}
